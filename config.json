@@ -1,0 +1,166 @@
+{
+  "_comment": "HSI Agents System Configuration - Informational Singularity Hypothesis",
+  "_description": "Edit these values to customize your experiment",
+  "_author": "Iban Borràs in collaboration with Augment Agent",
+
+  "level0_generation": {
+    "_comment": "Level 0: Primitive Informational State Generator",
+    "max_iterations": 25,
+    "collapse_rule": "ASYM",
+    "collapse_depth": 1,
+    "save_snapshots": true,
+    "use_compression": true,
+    "memory_threshold": 100000000,
+    "max_ram_gb": 30,
+    "max_disk_tb": 1.0,
+    "_help": {
+      "max_iterations": "Number of iterations (16=~41M bits, 20=~1.5GB, 24=~23GB)",
+      "collapse_rule": "Collapse rule: 'AND', 'ASYM', 'CUSTOM'",
+      "use_compression": "Enable automatic compression for large sequences",
+      "memory_threshold": "Bit threshold to activate compression (100M = ~100MB)",
+      "max_ram_gb": "Maximum RAM to use for hybrid collapse (GB). Set based on your available RAM.",
+      "max_disk_tb": "Safety limit: stop if accumulation exceeds this size (TB)"
+    }
+  },
+
+  "pattern_detection": {
+    "_comment": "Pattern Detector Configuration Pₖ",
+    "min_pattern_length": 3,
+    "max_pattern_length": 20,
+    "min_occurrences": 2,
+    "similarity_threshold": 0.8,
+    "_help": {
+      "min_pattern_length": "Minimum length of patterns to detect",
+      "max_pattern_length": "Maximum length of patterns",
+      "min_occurrences": "Minimum number of occurrences to consider a pattern",
+      "similarity_threshold": "Similarity threshold (0.0-1.0)"
+    }
+  },
+
+  "rule_inference": {
+    "_comment": "Rule Inferer Configuration ωₖ",
+    "context_window": 5,
+    "min_rule_confidence": 0.7,
+    "max_rule_complexity": 10,
+    "_help": {
+      "context_window": "Context window for rule inference",
+      "min_rule_confidence": "Minimum confidence to accept a rule (0.0-1.0)",
+      "max_rule_complexity": "Maximum allowed complexity for rules"
+    }
+  },
+
+  "validation": {
+    "_comment": "Validator Configuration",
+    "validation_split": 0.3,
+    "min_validation_score": 0.6,
+    "stability_threshold": 0.1,
+    "cross_validation_folds": 5,
+    "_help": {
+      "validation_split": "Percentage of data for validation (0.0-1.0)",
+      "min_validation_score": "Minimum score to consider a rule valid",
+      "stability_threshold": "Temporal stability threshold",
+      "cross_validation_folds": "Number of folds for cross-validation"
+    }
+  },
+
+  "output": {
+    "_comment": "Output and visualization configuration",
+    "save_results": true,
+    "create_visualizations": true,
+    "verbose": true,
+    "raster_bits_limit": 14000000,
+    "raster_iter_cap": 20,
+    "absolute_token": "10",
+    "_help": {
+      "save_results": "Save all results to files",
+      "create_visualizations": "Create charts and visualizations",
+      "verbose": "Show detailed information during execution",
+      "raster_bits_limit": "Max number of bits to use for 2D raster images (e.g., 14000000)",
+      "raster_iter_cap": "When iterations exceed this cap, raster2d will render this iteration instead",
+      "absolute_token": "Absolute token for decay frame: '1', '10' or '01'"
+    }
+  },
+
+  "fft": {
+    "_comment": "FFT/PSD configuration for spectra",
+    "method": "welch",
+    "window_size": 1048576,
+    "overlap": 0.5,
+    "max_windows": 64,
+    "one_sided": true,
+    "_help": {
+      "method": "welch or sampling",
+      "one_sided": "true uses rfft/rfftfreq (positive frequencies only)"
+    }
+  },
+
+  "hilbert": {
+    "_comment": "Hilbert heatmap configuration",
+    "max_bits": 1000000,
+    "target_grid": 1024,
+    "_help": {
+      "max_bits": "Max bits to read for Hilbert map (streaming)",
+      "target_grid": "Hilbert grid size (power of 2 recommended, e.g., 1024 or 2048)"
+    }
+  },
+
+  "level1": {
+    "_comment": "Level 1 Configuration (Pattern Analysis & Order Flow)",
+    "data_source": "results/var_B",
+    "max_iterations_to_load": 25,
+    "pattern_window_sizes": [8, 16, 32, 64],
+    "max_memory_gb": 16,
+    "enable_tar_compression": true,
+    "export_metadata": true,
+    "enable_structural_analysis": true,
+    "structural_metrics": ["nesting", "containment", "stratified_order"],
+    "max_nesting_depth": 50,
+    "_help": {
+      "data_source": "Path to Level 0 results directory (e.g., 'results/var_B')",
+      "max_iterations_to_load": "Maximum number of iterations to load into memory",
+      "pattern_window_sizes": "Window sizes for pattern detection (in bits)",
+      "max_memory_gb": "Maximum memory to use for Level 1 analysis (in GB)",
+      "enable_tar_compression": "Compress all iteration snapshots into single tar.gz file",
+      "export_metadata": "Export metadata.json with iteration info for Level 1",
+      "enable_structural_analysis": "Enable v33 structural analysis (nesting, containment, order)",
+      "structural_metrics": "List of structural metrics to compute: nesting, containment, stratified_order",
+      "max_nesting_depth": "Maximum expected nesting depth for structural analysis"
+    }
+  },
+
+  "_presets": {
+    "_comment": "Predefined configurations for different use cases",
+    "_usage": "Copy values from a preset to the corresponding sections",
+
+    "quick_test": {
+      "_description": "Quick test to verify everything works",
+      "max_iterations": 12,
+      "use_compression": false,
+      "create_visualizations": false,
+      "cross_validation_folds": 3
+    },
+
+    "research_standard": {
+      "_description": "Standard configuration for research",
+      "max_iterations": 20,
+      "use_compression": true,
+      "cross_validation_folds": 10,
+      "memory_threshold": 50000000
+    },
+
+    "high_performance": {
+      "_description": "Maximum performance for high iterations",
+      "max_iterations": 28,
+      "use_compression": true,
+      "memory_threshold": 10000000,
+      "create_visualizations": false,
+      "verbose": false
+    }
+  },
+
+  "_tips": {
+    "performance": "To improve performance: reduce max_iterations, disable visualizations",
+    "quality": "For better quality: increase cross_validation_folds, reduce thresholds",
+    "compression": "Compression activates automatically when sequence exceeds memory_threshold"
+  }
+}

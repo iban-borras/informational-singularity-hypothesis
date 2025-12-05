@@ -1,0 +1,32 @@
+# Dependències per al Sistema d'Agents HSI
+# Hipòtesi de Singularitat Informacional
+
+# Computació científica i arrays
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Machine Learning i clustering
+scikit-learn>=1.0.0
+
+# Visualització
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Processament de dades
+pandas>=1.3.0
+
+# Compressió i encoding eficient (v33)
+bitarray>=2.8.0
+
+# Opcional: Jupyter per anàlisi interactiva
+# jupyter>=1.0.0
+# ipywidgets>=7.6.0
+
+# Opcional: Llibreries avançades per anàlisi fractal
+# fractal-dimension>=0.1.0
+
+# JIT Compilation for performance
+numba>=0.58.0
+
+# Opcional: Acceleració amb GPU (si disponible)
+# cupy-cuda11x>=9.0.0  # Per NVIDIA CUDA 11.x

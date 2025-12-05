@@ -1,0 +1,40 @@
+# =============================================================================
+# HSI Agents Project - .gitattributes
+# Handles line ending normalization (LF vs CRLF)
+# =============================================================================
+
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Python files - always LF
+*.py text eol=lf
+
+# Shell scripts - always LF (for Linux/Mac compatibility)
+*.sh text eol=lf
+
+# Windows scripts - always CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Config and data files - LF
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+
+# Markdown and text - LF
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary files - no conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.pkl binary
+*.gz binary
+*.zip binary
+*.tar binary
+
