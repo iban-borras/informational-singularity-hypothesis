@@ -1,51 +1,65 @@
-# 🚀 HSI Agents System - Informational Singularity Hypothesis
+# 🚀 ISH Agents System — Informational Singularity Hypothesis
 
-This project implements a modular agent system to explore the **Informational Singularity Hypothesis (HSI)** developed by Iban Borràs. The system generates primitive binary sequences Φ and uses specialized agents to detect emergent patterns Pₖ and infer rules ωₖ from the Primordial Holographic Field.
+This project implements a modular agent system to explore the **Informational Singularity Hypothesis (ISH)** developed by Iban Borràs. The system generates primitive binary sequences Φ and uses specialized agents to detect emergent patterns Pₖ and infer rules ωₖ from the Primordial Holographic Field.
 
 ## 📋 Project Description
 
-The HSI proposes that all reality emerges from a primordial tension between "Absolute Nothingness" (0) and the "Absolute" (1), generating pure information that self-organizes into complex patterns. This agent system implements:
+The ISH proposes that all reality emerges from a primordial tension between "Absolute Nothingness" (0) and the "Absolute" (1), generating pure information that self-organizes into complex patterns. This agent system implements:
 
 - **Level 0**: Generation of binary sequences Φ through iterative processes
 - **Level 1**: Detection of recurrent patterns Pₖ(Φ)
 - **Rule inference**: Discovery of emergent rules ωₖ
 - **Validation**: Verification of consistency and robustness of rules
 
-> **📖 Important**: To fully understand the implementation, consult the technical specification documents (`level0_generator_spec.md`, `agents_augmentedcode.md`, `validation_metrics_agents.md`) which contain the fundamental algorithmic and theoretical details.
+> **📖 Important**: For detailed technical documentation, see the `Documentation/` folder which contains analysis guides, variant specifications, and order metrics explanations.
 
 ## 🏗️ Project Structure
 
 ```
 hsi_agents_project/
 ├── main.py                           # Main entry point
-├── Setup-virtual-envelop.ps1         # Unified setup/activation script (Windows)
+├── run_all_variants.py               # Run all ISH variants (B, D, E, F, G, H)
+├── variant_A_control.py              # Random control for comparison
+├── refresh_variant_from_cache.py     # Regenerate plots from cache
+├── example_complete_level1_analysis.py # Full Level 1 analysis example
+├── estimate_compression_requirements.py # Storage estimation tool
+├── analyze_results.py                # Quick results analysis
+├── Setup-virtual-envelop.ps1         # Setup/activation script (Windows)
 ├── config.json                       # Experiment configuration
 ├── requirements.txt                  # Python dependencies
 │
 ├── 📚 Documentation/
-│   ├── README.md                     # Main guide (this file)
-│   ├── level0_generator_spec.md      # Φ Generator Specification
-│   ├── agents_augmentedcode.md       # Agent Architecture
-│   ├── validation_metrics_agents.md  # HSI Validation Metrics
-│   └── conversa_amb_claude_sonnet4_sobre_HSI.md
+│   ├── level1_analysis_guide.md      # Complete Level 1 technical guide
+│   ├── order_metrics_explained.md    # Scientific explanation of metrics
+│   ├── variants_spec.md              # Variant specifications (v33)
+│   └── HSI_Variants_Analysis_For_Review.md # Analysis for peer review
 │
 ├── level0/                           # Level 0 Generator
-│   ├── __init__.py
-│   └── generator.py                  # Φ sequence simulation
+│   ├── generator.py                  # Φ sequence simulation
+│   ├── streaming_collapse_engine.py  # Memory-efficient collapse
+│   ├── hybrid_collapse_engine.py     # Hybrid collapse strategies
+│   └── phi_snapshot_manager.py       # Snapshot management
+├── level1/                           # Level 1 Analysis
+│   ├── data_loader.py                # Load v33 structural data
+│   └── example_usage.py              # Usage examples
 ├── agents/                           # Specialized agents
-│   ├── __init__.py
-│   ├── pattern_detector.py           # Pₖ pattern detector agent
-│   ├── rule_inferer.py               # ωₖ rule inferer agent
-│   └── validator.py                  # Iterative validator agent
+│   ├── pattern_detector.py           # Pₖ pattern detector
+│   ├── structural_pattern_detector.py # Structural pattern analysis
+│   ├── rule_inferer.py               # ωₖ rule inference
+│   ├── validator.py                  # Rule validation
+│   └── level1_orchestrator.py        # Level 1 orchestration
 ├── metrics/                          # Validation metrics
-│   ├── __init__.py
-│   ├── pattern_metrics.py            # Pattern metrics (incl. φ-alignment)
-│   └── rule_metrics.py               # Rule metrics (incl. φ-coherence)
+│   ├── pattern_metrics.py            # Pattern metrics
+│   ├── rule_metrics.py               # Rule metrics
+│   └── order_metrics.py              # Order emergence metrics
 ├── utils/                            # Auxiliary utilities
-│   ├── __init__.py
-│   └── visualization.py              # Visualization functions
+│   ├── visualization.py              # Visualization functions
+│   ├── streaming_phi_loader.py       # Streaming data loader
+│   └── bitarray_encoder.py           # Binary encoding utilities
 ├── data/                             # Generated experiment data
-└── results/                          # Results, reports and visualizations
+├── results/                          # Results (excluded from git)
+└── docs/                             # Additional documentation
+    └── GPU_ACCELERATION_PROPOSAL.md  # Future GPU integration
 ```
 
 ## 🔧 Installation and Dependencies
@@ -93,6 +107,18 @@ seaborn>=0.11.0        # Statistical visualization
 
 ## 🚀 System Usage
 
+### Main Scripts
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `main.py` | Main entry point for complete agent pipeline | `python main.py` |
+| `run_all_variants.py` | Run all ISH variants (B, D, E, F, G, H) with comparison | `python run_all_variants.py` |
+| `variant_A_control.py` | Generate random control data for comparison | `python -m hsi_agents_project.variant_A_control -i 14` |
+| `refresh_variant_from_cache.py` | Regenerate plots from cached data | `python -m hsi_agents_project.refresh_variant_from_cache -v B -i 18` |
+| `example_complete_level1_analysis.py` | Complete Level 1 analysis example | `python example_complete_level1_analysis.py` |
+| `estimate_compression_requirements.py` | Estimate storage needs for high iterations | `python estimate_compression_requirements.py --max-iteration 24` |
+| `analyze_results.py` | Quick analysis of Level 1 results | `python analyze_results.py` |
+
 ### Basic Execution
 
 ```bash
@@ -104,7 +130,7 @@ The system **always uses config.json** for configuration. If the file doesn't ex
 
 ### Configuration
 
-Note: Current Level‑0 “basal‑pure” generator no longer uses dynamic collapse parameters (no masks, no seeds). Configuration remains for operational aspects (iterations, HW limits, outputs). See HSI_L0_L1_Implementation_Plan.md for details.
+Note: Current Level‑0 “basal‑pure” generator no longer uses dynamic collapse parameters (no masks, no seeds). Configuration remains for operational aspects (iterations, HW limits, outputs).
 
 ### Command Line Options
 
@@ -136,7 +162,7 @@ The system includes **intelligent compression management** for large sequences:
 
 ### 1. Φ Generator (Level 0)
 
-Implements the fundamental iterative process of HSI with automatic compression management:
+Implements the fundamental iterative process of ISH with automatic compression management:
 
 ```python
 from level0 import simulate_phi
@@ -198,6 +224,17 @@ Verifies rule robustness:
 
 ```python
 from agents import Validator
+
+validator = Validator()
+results = validator.validate_rules(rules, patterns, test_sequences)
+```
+
+**Validation metrics:**
+- Reproducibility
+- Temporal stability
+- Predictive precision
+- Rule complexity
+
 ## 🧩 Absolute Token (ABS) Modes and Variants
 
 The outer decay frame is `(Accα)ABS`, where ABS controls how the Absolute integrates prior states:
@@ -214,10 +251,10 @@ Snapshots and outputs are segregated by variant and ABS:
 - `results/var_{VAR}/phi_final.txt`
 - Visualizations include `_abs{ABS}` in filenames
 
-## 📑 Surviving Variants (v33) — HSI v32 Aligned
+## 📑 Surviving Variants (v33) — ISH v32 Aligned
 
 **Version:** v33 (November 2025)
-**Status:** 6 active variants (A and C eliminated for incompatibility with HSI v32)
+**Status:** 6 active variants (A and C eliminated for incompatibility with ISH v32)
 
 ### ⭐ Core Variants (Tier 1)
 
@@ -263,9 +300,9 @@ Snapshots and outputs are segregated by variant and ABS:
 
 **Variant A — Random Control (PRNG/CSPRNG Baseline)** *(REPURPOSED)*
 - **Algorithm:** Pseudo-random bit generation (Mersenne Twister or cryptographic RNG)
-- **Purpose:** Provides a **scientific control** for comparing HSI-generated structures against random baselines
+- **Purpose:** Provides a **scientific control** for comparing ISH-generated structures against random baselines
 - **Properties:** No collapse process, no stratified order — pure statistical randomness
-- **Scientific Value:** Any pattern found in HSI variants (B, D, E, F, G, H) but **absent** in Variant A indicates genuine emergent structure, not algorithmic artifacts
+- **Scientific Value:** Any pattern found in ISH variants (B, D, E, F, G, H) but **absent** in Variant A indicates genuine emergent structure, not algorithmic artifacts
 
 **Usage:**
 ```powershell
@@ -278,12 +315,12 @@ python -m hsi_agents_project.variant_A_control --iterations 14 --bits 5000000 --
 # Use cryptographic RNG (maximum entropy, no seed)
 python -m hsi_agents_project.variant_A_control --iterations 14 --bits 5000000 --csprng
 
-# Visualize and compare with HSI variants
+# Visualize and compare with ISH variants
 python -m hsi_agents_project.refresh_variant_from_cache -v A -i 14
 ```
 
-**Expected Differences (A vs HSI variants):**
-| Metric | Variant A (Random) | HSI Variants (B, D, etc.) |
+**Expected Differences (A vs ISH variants):**
+| Metric | Variant A (Random) | ISH Variants (B, D, etc.) |
 |--------|-------------------|---------------------------|
 | Hilbert heatmap | Uniform noise | Structured patterns ("mesh") |
 | FFT spectrum | Flat (white noise) | Peaks at specific frequencies |
@@ -294,9 +331,9 @@ python -m hsi_agents_project.refresh_variant_from_cache -v A -i 14
 
 ### 🔬 Experimental Validation: A vs B Comparison (Dec 2024)
 
-The following results demonstrate that HSI collapse generates **genuine emergent structure**, not algorithmic artifacts:
+The following results demonstrate that ISH collapse generates **genuine emergent structure**, not algorithmic artifacts:
 
-| Metric | **Variant A (PRNG)** | **Variant B (HSI)** | Interpretation |
+| Metric | **Variant A (PRNG)** | **Variant B (ISH)** | Interpretation |
 |--------|---------------------|---------------------|----------------|
 | **β (power spectrum)** | **-0.013** | **-0.813** | A = white noise; B = blue spectrum (anti-correlation) |
 | **R²** | **0.000** | 0.119 | A = no fit; B = measurable structure |
@@ -307,17 +344,17 @@ The following results demonstrate that HSI collapse generates **genuine emergent
 
 1. **β ≈ 0 confirms white noise**: The PRNG (Mersenne Twister, seed=42) generates exactly what is expected — a completely flat spectrum with no correlations
 
-2. **β = -0.813 is REAL structure**: The blue spectrum in Variant B is **not an artifact** — it is a genuine signature of the HSI collapse process
+2. **β = -0.813 is REAL structure**: The blue spectrum in Variant B is **not an artifact** — it is a genuine signature of the ISH collapse process
 
 3. **The Hilbert mesh is information**: The "grid" pattern visible in B represents organized information, while A is pure noise
 
 4. **Physical interpretation**: The stratified collapse (eliminating "10" and "01" pairs) generates **anti-correlations** — each bit tends to be the opposite of its neighbor, producing the characteristic blue spectrum
 
-This comparison provides **empirical evidence** that the HSI collapse mechanism produces measurable, distinguishable structure that cannot arise from random processes.
+This comparison provides **empirical evidence** that the ISH collapse mechanism produces measurable, distinguishable structure that cannot arise from random processes.
 
 ---
 
-**Epistemological Note:** True randomness is philosophically problematic — if HSI is correct, even quantum randomness might have underlying structure. The comparison is therefore **relative** (different patterns) rather than **absolute** (structure vs. no-structure).
+**Epistemological Note:** True randomness is philosophically problematic — if ISH is correct, even quantum randomness might have underlying structure. The comparison is therefore **relative** (different patterns) rather than **absolute** (structure vs. no-structure).
 
 ### ❌ Eliminated Variants (v33)
 
@@ -336,7 +373,7 @@ See `Documentation/variants_spec.md` for:
 - Complete algorithmic definitions
 - Scientific justification for each variant
 - Implementation cross-reference
-- HSI v32 alignment analysis
+- ISH v32 alignment analysis
 ### Spectral analysis configuration
 
 - Method (config.json → output.spectral_method): `auto` (default), `welch`, `sampling`, `prefix`
@@ -352,19 +389,7 @@ Auto mode selects:
 Logs report the decision, e.g.:
 - [plot] spectral auto: method=welch, nwin≈8, w=1,048,576 var=B i=15
 
-
 Rationale: exposing ABS allows testing whether φ‑alignment and emergent order are robust or depend on boundary orientation.
-
-
-validator = Validator()
-results = validator.validate_rules(rules, patterns, test_sequences)
-```
-
-**Validation metrics:**
-- Reproducibility
-- Temporal stability
-- Predictive precision
-- Rule complexity
 
 ## 🔬 Level 1 Analysis (v33 Structural Format)
 
@@ -384,7 +409,7 @@ Level 1 implements advanced analysis of Level 0 data to detect **emergent order*
 - Backward compatible with v32 format (observable bits only)
 
 **Emergent Order (not φ-convergence):**
-- HSI v32 shifted focus from golden ratio convergence to **order as fundamental principle**
+- ISH v32 shifted focus from golden ratio convergence to **order as fundamental principle**
 - "Order is the only way Nothingness can contradict itself"
 - Level 1 detects and quantifies this emergent order through multiple metrics
 
@@ -499,7 +524,7 @@ See `example_complete_level1_analysis.py` for a complete end-to-end analysis pip
 For detailed technical documentation, see:
 - **`Documentation/level1_analysis_guide.md`** - Complete technical guide
 - **`Documentation/order_metrics_explained.md`** - Scientific explanation of metrics
-- **`Documentation/v33_structural_format.md`** - Format specification and rationale
+- **`Documentation/variants_spec.md`** - Variant specifications and rationale
 - **`level1/README.md`** - Quick reference for Level 1 module
 
 ### Scientific Value
@@ -507,7 +532,7 @@ For detailed technical documentation, see:
 Level 1 analysis enables:
 - **Quantification of emergent order** in informational structures
 - **Detection of hierarchical organization** through nesting analysis
-- **Validation of HSI v32 hypothesis** ("order as fundamental principle")
+- **Validation of ISH v32 hypothesis** ("order as fundamental principle")
 - **Comparison between variants** to identify which best exhibits order emergence
 - **Temporal analysis** of how order evolves across iterations
 
@@ -563,7 +588,7 @@ python estimate_compression_requirements.py --max-iteration 28 --detailed
 - **Precision**: Predictive capacity on new sequences
 - **Complexity**: Interpretability and rule simplicity
 
-### HSI-Specific Metrics
+### ISH-Specific Metrics
 
 - **φ-alignment (Golden Tendency)**: Evaluates whether generated structures show fractal dimension or internal proportions close to φ (1.618), indicating emergent order coherent with the hypothesis of convergence towards the golden ratio
 - **Informational Convergence**: Measure of how Φ sequences evolve towards stable patterns
@@ -585,7 +610,6 @@ The project implements streaming spectral analysis directly from compressed Φ s
 
 During long reads, the runner prints percentage and ETA; during Welch, it prints windows processed and ETA.
 
-See Documentation/spectral_config.md for tuning guidelines and presets (Fast/Balanced/High-Quality).
 #### Performance Profiles
 
 - Fast
@@ -707,30 +731,6 @@ phi, _, metadata = simulate_phi(**config["phi_generation"])
 # Search for convergence towards φ (1.618)
 phi, _, metadata = simulate_phi(
     max_iterations=20,
-### Environment configuration
-
-Copy .env.template to .env in the repository root (or under hsi_agents_project/) and adjust values for your machine.
-The runner will auto-load .env; the generator also reads these unless a CLI flag overrides them.
-
-Examples:
-
-```
-# Iterations and variant
-HSI_ITERATIONS=20
-HSI_VARIANT_CODE=B
-
-# Logging and timing
-HSI_LOG_EVERY=1
-HSI_ENABLE_TIMING=1
-HSI_COMPRESS_LOG=1
-
-# Compression level (gzip)
-HSI_COMPRESSION_LEVEL=5
-
-# Cleanup snapshots at the end of a run (keeps the last 2 only)
-HSI_CLEANUP_KEEP_LAST=2
-```
-
     phi_target=1.618,
     collapse_rule="AND",
     use_compression=True
@@ -745,6 +745,31 @@ if 'phi_alignment' in metadata:
     print(f"φ-alignment score: {alignment:.4f}")
 ```
 
+### Environment Configuration
+
+Copy `.env.example` to `.env` in the repository root (or under `hsi_agents_project/`) and adjust values for your machine.
+The runner will auto-load `.env`; the generator also reads these unless a CLI flag overrides them.
+
+**Available environment variables:**
+
+```bash
+# Iterations and variant
+ISH_ITERATIONS=20
+ISH_VARIANT_CODE=B
+
+# Logging and timing
+ISH_LOG_EVERY=1
+ISH_ENABLE_TIMING=1
+ISH_COMPRESS_LOG=1
+
+# Compression level (gzip)
+ISH_COMPRESSION_LEVEL=5
+
+# Cleanup snapshots at the end of a run (keeps the last 2 only)
+ISH_CLEANUP_KEEP_LAST=2
+```
+```
+
 ## 🤝 Contributions
 
 This project is part of research on the Informational Singularity Hypothesis. Contributions are welcome:
@@ -756,24 +781,22 @@ This project is part of research on the Informational Singularity Hypothesis. Co
 
 ## 📚 References and Documentation
 
-### Fundamental Documents
+### Technical Documentation
 
-- **Original paper**: `paper Latex/main_cat.tex` - "The Informational Singularity Hypothesis" - Iban Borràs
-- **Foundational conversation**: `conversa_amb_claude_sonnet4_sobre_HSI.md` - Dialogue with Claude Sonnet 4 about HSI
-
-### Detailed Technical Specifications
-
-| Document | Description | Key Content |
-|----------|-------------|-------------|
-| `level0_generator_spec.md` | **Φ Generator Specification** | Level 0 algorithm, collapse rules, φ convergence |
-| `agents_augmentedcode.md` | **Agent Architecture** | Definition of 4 main agents, workflow, interfaces |
-| `validation_metrics_agents.md` | **Validation Metrics** | Exchange formats, φ-alignment metrics, quality criteria |
+| Document | Description |
+|----------|-------------|
+| `Documentation/level1_analysis_guide.md` | Complete Level 1 technical guide |
+| `Documentation/order_metrics_explained.md` | Scientific explanation of order metrics |
+| `Documentation/variants_spec.md` | Variant specifications (v33) |
+| `Documentation/HSI_Variants_Analysis_For_Review.md` | Analysis for peer review |
+| `docs/GPU_ACCELERATION_PROPOSAL.md` | Future GPU integration proposal |
+| `level1/README.md` | Quick reference for Level 1 module |
 
 ### Code Documentation
 
 - `README.md` - This document (main guide)
 - Detailed docstrings in all Python modules
-- Inline comments explaining HSI theory
+- Inline comments explaining ISH theory
 
 ## 📄 License
 
@@ -784,21 +807,13 @@ This project is developed by Iban Borràs in collaboration with Augment Agent (C
 ### Planned Technological Expansions
 
 #### 🌌 **Symbolic Quantum Computing**
-- **Integration with quantum simulators** to explore HSI in Hilbert spaces
+- **Integration with quantum simulators** to explore ISH in Hilbert spaces
 - **Quantum algorithms** for detecting Pₖ patterns in superposition
 - **Informational entanglement** as manifestation of the Primordial Holographic Field
 
 #### 🧠 **Informational Consciousness Models**
 - **Application to consciousness theories** based on integrated information (IIT)
 - **Modeling of cognitive processes** emerging from 0↔1 tension
-### Fractal Dimension (Streaming)
-
-- Final fractal dimension for large runs is computed via streaming from the last compressed snapshot (.bin.gz), avoiding RAM pressure.
-- Report JSON includes:
-  - fractal_dimension_streaming and phi_alignment_streaming
-  - per_iteration timing (time_sec) when HSI_ENABLE_TIMING=1 (default)
-- You can replot the fractal dimension chart from report["fractal_plot_data"] when present.
-
 - **Connections with fundamental physics** and theories of everything
 
 #### 🎨 **Advanced Visualization**
@@ -811,17 +826,17 @@ This project is developed by Iban Borràs in collaboration with Augment Agent (C
 
 #### 🔬 **Experimental Validation**
 - **Comparison with real physical data** (fundamental constants, cosmic structures)
-- **Testable predictions** derived from HSI
+- **Testable predictions** derived from ISH
 - **Collaboration with theoretical physicists** for empirical validation
 
 #### 📊 **Advanced Analysis**
-- **Machine Learning** to discover non-obvious HSI patterns
+- **Machine Learning** to discover non-obvious ISH patterns
 - **Neural networks** trained on Φ sequences
 - **Time series analysis** of informational evolution
 
 #### 🌐 **Interdisciplinary Applications**
-- **Biology**: HSI patterns in DNA and evolution
-- **Cosmology**: Large-scale structures and HSI
+- **Biology**: ISH patterns in DNA and evolution
+- **Cosmology**: Large-scale structures and ISH
 - **Mathematics**: Connections with number theory and fractal geometry
 
 ### System Improvements
@@ -842,10 +857,9 @@ This project is developed by Iban Borràs in collaboration with Augment Agent (C
 For problems or questions:
 
 1. **Configuration**: Edit `config.json` - it's self-documenting with built-in help
-2. **Documentation**: Review technical specification documents
+2. **Documentation**: Review files in `Documentation/` folder
 3. **Compression**: Use `estimate_compression_requirements.py` for storage planning
-4. **Logs**: Check `hsi_environment_log.txt` for detailed errors
-5. **Research**: Contact the author for scientific questions about HSI
+4. **Research**: Contact the author for scientific questions about ISH
 
 ### Troubleshooting Tools
 
@@ -860,16 +874,14 @@ python -m hsi_agents_project.level0.generator -v B -i 4 --log-every 1 --compress
 .\Setup-virtual-envelop.ps1
 ```
 
-See also: docs/README_changes.md for a concise summary of recent updates.
-
 ### Additional Resources
 
-- **Issues**: Report technical problems
-- **Discussions**: Scientific debates about HSI
+- **Issues**: Report technical problems on GitHub
+- **Discussions**: Scientific debates about ISH
 - **Wiki**: Extensive documentation (future)
 - **Papers**: Publications derived from the project
 - **Config Help**: All parameters documented in `config.json`
 
 ---
 
-**Note**: This system is under active development as part of pioneering scientific research. HSI represents a new frontier in understanding informational reality. Results may open unexpected paths towards fundamental discoveries about the nature of existence.
+**Note**: This system is under active development as part of pioneering scientific research. ISH represents a new frontier in understanding informational reality. Results may open unexpected paths towards fundamental discoveries about the nature of existence.
