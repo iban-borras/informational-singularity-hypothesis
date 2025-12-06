@@ -37,14 +37,16 @@
     }
   },
 
-  "rule_inference": {
+  "rule_inferer": {
     "_comment": "Rule Inferer Configuration ωₖ",
-    "context_window": 5,
-    "min_rule_confidence": 0.7,
+    "context_window": 10,
+    "min_context_length": 10,
+    "min_confidence": 0.7,
     "max_rule_complexity": 10,
     "_help": {
-      "context_window": "Context window for rule inference",
-      "min_rule_confidence": "Minimum confidence to accept a rule (0.0-1.0)",
+      "context_window": "Maximum context window for Markov rule inference",
+      "min_context_length": "Minimum context length for Markov rules (defaults to min_pattern_length if not set)",
+      "min_confidence": "Minimum confidence to accept a rule (0.0-1.0)",
       "max_rule_complexity": "Maximum allowed complexity for rules"
     }
   },

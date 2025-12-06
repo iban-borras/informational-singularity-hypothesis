@@ -60,8 +60,12 @@ class Level1Orchestrator:
         self.structural_detector = StructuralPatternDetector()
 
         ri_config = self.config.get('rule_inferer', {})
+        pd_config = self.config.get('pattern_detector', {})
+        # Use min_pattern_length as default for min_context_length (consistency)
+        default_min_context = pd_config.get('min_pattern_length', 3)
         self.rule_inferer = RuleInferer(
             context_window=ri_config.get('context_window', 5),
+            min_context_length=ri_config.get('min_context_length', default_min_context),
             min_rule_confidence=ri_config.get('min_confidence', 0.7),
             max_rule_complexity=ri_config.get('max_rule_complexity', 10)
         )
@@ -379,6 +383,8 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", help="Output JSON file path")
     parser.add_argument("--no-cache", action="store_true",
                        help="Disable cache (force recalculation of all phases)")
+    parser.add_argument("--report", "-r", action="store_true",
+                       help="Generate Markdown analysis report after execution")
 
     args = parser.parse_args()
 
@@ -392,15 +398,27 @@ if __name__ == "__main__":
         orchestrator.config['pattern_detector']['max_pattern_length'] = args.max_len
         print(f"📏 Using max_pattern_length = {args.max_len}")
 
-    # Re-initialize pattern detector with new config
+    # Re-initialize pattern detector and rule inferer with new config
     if args.min_len > 0 or args.max_len > 0:
         pd_config = orchestrator.config.get('pattern_detector', {})
+        ri_config = orchestrator.config.get('rule_inferer', {})
+
         orchestrator.pattern_detector = PatternDetector(
             min_pattern_length=pd_config.get('min_pattern_length', 3),
             max_pattern_length=pd_config.get('max_pattern_length', 50),
             min_occurrences=pd_config.get('min_occurrences', 2),
             similarity_threshold=pd_config.get('similarity_threshold', 0.8)
         )
+
+        # Re-initialize rule inferer to use same min_context_length as min_pattern_length
+        min_ctx = pd_config.get('min_pattern_length', 3)
+        orchestrator.rule_inferer = RuleInferer(
+            context_window=ri_config.get('context_window', 5),
+            min_context_length=min_ctx,
+            min_rule_confidence=ri_config.get('min_confidence', 0.7),
+            max_rule_complexity=ri_config.get('max_rule_complexity', 10)
+        )
+        print(f"📏 Using min_context_length = {min_ctx} for rule inference")
 
     # Find latest iteration if not specified
     iterations = orchestrator.get_available_iterations(args.variant)
@@ -423,11 +441,29 @@ if __name__ == "__main__":
     # Print summary
     orchestrator.print_summary()
 
-    # Save if requested
+    # Save results
     if args.output:
-        orchestrator.save_results(args.output)
+        output_path = args.output
     else:
         # Default output path (relative to cwd which should be hsi_agents_project/)
-        output = f"results/level1_analysis_var{args.variant}_iter{iteration}.json"
-        orchestrator.save_results(output)
+        output_path = f"results/level1_analysis_var{args.variant}_iter{iteration}.json"
+
+    orchestrator.save_results(output_path)
+
+    # Generate analysis report if requested
+    if args.report:
+        try:
+            # Import here to avoid circular dependency
+            from analyze_results import ResultsReporter
+            reporter = ResultsReporter(output_path)
+            md_path = reporter.save_markdown_report()
+            print(f"\n📝 Analysis report saved to: {md_path}")
+        except ImportError:
+            print("\n⚠️ Could not import ResultsReporter. Run analyze_results.py manually.")
+        except Exception as e:
+            print(f"\n⚠️ Error generating report: {e}")
+
+    # Reminder about analysis tool
+    print(f"\n💡 Tip: Analyze these results with:")
+    print(f"   python analyze_results.py {output_path}")
 

@@ -43,20 +43,23 @@ class RuleInferer:
 
     def __init__(self,
                  context_window: int = 5,
+                 min_context_length: int = 3,
                  min_rule_confidence: float = 0.7,
                  max_rule_complexity: int = 10):
         """
         Initialize the rule inferer.
 
         Args:
-            context_window: Context window size for pattern analysis
+            context_window: Maximum context window size for pattern analysis
+            min_context_length: Minimum context length for Markov rules (should match min_pattern_length)
             min_rule_confidence: Minimum confidence to accept a rule
             max_rule_complexity: Maximum allowed rule complexity
         """
         self.context_window = context_window
+        self.min_context_length = min_context_length
         self.min_rule_confidence = min_rule_confidence
         self.max_rule_complexity = max_rule_complexity
-        
+
         self.inferred_rules = []
         self.rule_stats = {}
     
@@ -124,12 +127,13 @@ class RuleInferer:
         """Infer transition rules based on Markov chains."""
         rules = []
 
-        # Use Numba-optimized version for large sequences
-        if NUMBA_AVAILABLE and len(phi_sequence) > 10000:
+        # Use Numba-optimized version for large sequences (only if min_context_length <= 3)
+        if NUMBA_AVAILABLE and len(phi_sequence) > 10000 and self.min_context_length <= 3:
             return self._infer_markov_rules_numba(phi_sequence)
 
-        # Fallback: Pure Python version
-        for order in range(1, min(4, self.context_window)):
+        # Pure Python version - respects min_context_length
+        max_order = min(self.context_window + 1, 20)  # Cap at 20 to avoid memory issues
+        for order in range(self.min_context_length, max_order):
             transitions = defaultdict(Counter)
 
             for i in range(len(phi_sequence) - order):

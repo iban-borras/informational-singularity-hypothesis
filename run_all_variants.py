@@ -1772,3 +1772,16 @@ if __name__ == "__main__":
         _run_plot_only()
     else:
         main()
+
+    # =========================================================================
+    # 💡 POST-EXECUTION ANALYSIS
+    # =========================================================================
+    # After running experiments, analyze the generated results with:
+    #
+    #   python analyze_results.py                     # Analyze latest results
+    #   python analyze_results.py --variant B -i 18  # Specific variant/iteration
+    #   python analyze_results.py --output report.md # Save Markdown report
+    #
+    # The analyze_results.py tool generates human-readable reports suitable
+    # for scientific documentation and paper enrichment.
+    # =========================================================================
