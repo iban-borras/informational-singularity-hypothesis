@@ -17,49 +17,62 @@ The ISH proposes that all reality emerges from a primordial tension between "Abs
 
 ```
 hsi_agents_project/
-├── main.py                           # Main entry point
-├── run_all_variants.py               # Run all ISH variants (B, D, E, F, G, H)
-├── variant_A_control.py              # Random control for comparison
-├── refresh_variant_from_cache.py     # Regenerate plots from cache
-├── example_complete_level1_analysis.py # Full Level 1 analysis example
-├── estimate_compression_requirements.py # Storage estimation tool
-├── analyze_results.py                # Quick results analysis
+│
+├── ════════════════════════════════════════════════════════════
+│   📌 MAIN SCRIPTS (run from project root)
+├── ════════════════════════════════════════════════════════════
+├── level0_generate.py                # Level 0: Generate Φ for all ISH variants
+├── level0_random_control.py          # Level 0: Random control for comparison
+├── level0_refresh_plots.py           # Level 0: Regenerate plots from cache
+├── level0_estimate_storage.py        # Level 0: Storage estimation tool
+├── level1_analyze_patterns.py        # Level 1: Pattern detection and rule inference
+├── level1_emergence_index.py         # Level 1: Emergence Index (Level 2 potential)
+├── level1_visualize.py               # Level 1: Generate publication figures
+├── level1_view_results.py            # Level 1: View/analyze JSON results
+│
 ├── Setup-virtual-envelop.ps1         # Setup/activation script (Windows)
 ├── config.json                       # Experiment configuration
 ├── requirements.txt                  # Python dependencies
 │
 ├── 📚 Documentation/
 │   ├── level1_analysis_guide.md      # Complete Level 1 technical guide
+│   ├── level1_figures_plan.md        # Figure generation plan
 │   ├── order_metrics_explained.md    # Scientific explanation of metrics
-│   ├── variants_spec.md              # Variant specifications (v33)
+│   ├── variants_spec.md              # Variant specifications
+│   ├── geometric_analysis_plan.md    # Geometric analysis plan
+│   ├── GPU_ACCELERATION_PROPOSAL.md  # Future GPU integration
 │   └── HSI_Variants_Analysis_For_Review.md # Analysis for peer review
 │
-├── level0/                           # Level 0 Generator
+├── level0/                           # Level 0 Generator modules
 │   ├── generator.py                  # Φ sequence simulation
 │   ├── streaming_collapse_engine.py  # Memory-efficient collapse
 │   ├── hybrid_collapse_engine.py     # Hybrid collapse strategies
-│   └── phi_snapshot_manager.py       # Snapshot management
-├── level1/                           # Level 1 Analysis
-│   ├── data_loader.py                # Load v33 structural data
+│   ├── phi_snapshot_manager.py       # Snapshot management
+│   └── accumulation_manager.py       # Accumulation management
+├── level1/                           # Level 1 Analysis modules
+│   ├── data_loader.py                # Load structural data
+│   ├── level1_figures.py             # Figure generation (core)
 │   └── example_usage.py              # Usage examples
 ├── agents/                           # Specialized agents
 │   ├── pattern_detector.py           # Pₖ pattern detector
 │   ├── structural_pattern_detector.py # Structural pattern analysis
 │   ├── rule_inferer.py               # ωₖ rule inference
 │   ├── validator.py                  # Rule validation
-│   └── level1_orchestrator.py        # Level 1 orchestration
+│   └── level1_orchestrator.py        # Level 1 orchestration (core)
 ├── metrics/                          # Validation metrics
 │   ├── pattern_metrics.py            # Pattern metrics
 │   ├── rule_metrics.py               # Rule metrics
-│   └── order_metrics.py              # Order emergence metrics
+│   ├── order_metrics.py              # Order emergence metrics
+│   └── emergence_index.py            # Emergence Index (Level 2 potential)
 ├── utils/                            # Auxiliary utilities
 │   ├── visualization.py              # Visualization functions
 │   ├── streaming_phi_loader.py       # Streaming data loader
-│   └── bitarray_encoder.py           # Binary encoding utilities
-├── data/                             # Generated experiment data
-├── results/                          # Results (excluded from git)
-└── docs/                             # Additional documentation
-    └── GPU_ACCELERATION_PROPOSAL.md  # Future GPU integration
+│   ├── bitarray_encoder.py           # Binary encoding utilities
+│   └── progress.py                   # Progress indicators
+└── results/                          # Results (excluded from git)
+    ├── phi_snapshots/                # Φ snapshots per variant
+    ├── figures/                      # Generated visualizations
+    └── reports/                      # Analysis reports
 ```
 
 ## 🔧 Installation and Dependencies
@@ -109,24 +122,39 @@ seaborn>=0.11.0        # Statistical visualization
 
 ### Main Scripts
 
+All scripts can be run directly from the project root:
+
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `main.py` | Main entry point for complete agent pipeline | `python main.py` |
-| `run_all_variants.py` | Run all ISH variants (B, D, E, F, G, H) with comparison | `python run_all_variants.py` |
-| `variant_A_control.py` | Generate random control data for comparison | `python -m hsi_agents_project.variant_A_control -i 14` |
-| `refresh_variant_from_cache.py` | Regenerate plots from cached data | `python -m hsi_agents_project.refresh_variant_from_cache -v B -i 18` |
-| `example_complete_level1_analysis.py` | Complete Level 1 analysis example | `python example_complete_level1_analysis.py` |
-| `estimate_compression_requirements.py` | Estimate storage needs for high iterations | `python estimate_compression_requirements.py --max-iteration 24` |
-| `analyze_results.py` | Quick analysis of Level 1 results | `python analyze_results.py` |
+| `level0_generate.py` | Generate Φ sequences for all ISH variants | `python level0_generate.py --variant B --iterations 18` |
+| `level0_random_control.py` | Generate random control data | `python level0_random_control.py -i 14` |
+| `level0_refresh_plots.py` | Regenerate plots from cached data | `python level0_refresh_plots.py -v B -i 18` |
+| `level0_estimate_storage.py` | Estimate storage needs for high iterations | `python level0_estimate_storage.py --max-iteration 24` |
+| `level1_analyze_patterns.py` | Pattern detection and rule inference | `python level1_analyze_patterns.py -v B -i 18 --report` |
+| `level1_emergence_index.py` | Calculate Emergence Index (Level 2 potential) | `python level1_emergence_index.py -v B -i 18` |
+| `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
+| `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
 
 ### Basic Execution
 
 ```bash
-# Run with default configuration (creates config.json if it doesn't exist)
-python main.py
+# Level 0: Generate Φ sequences (can take hours/days for high iterations)
+python level0_generate.py --variant B --iterations 18
+
+# Level 1: Analyze patterns and infer rules
+python level1_analyze_patterns.py --variant B --iteration 18 --report
+
+# Level 1: Calculate Emergence Index (potential for Level 2)
+python level1_emergence_index.py --variant B --iteration 18
+
+# Level 1: Generate publication figures
+python level1_visualize.py --variants B A --iterations 18 --format pdf
+
+# Compare emergence potential across variants
+python level1_emergence_index.py --variants A B D E F --iteration 18 --compare
 ```
 
-The system **always uses config.json** for configuration. If the file doesn't exist, it will be created automatically with default values.
+The system uses `config.json` for configuration. If the file doesn't exist, it will be created automatically with default values.
 
 ### Configuration
 
@@ -135,17 +163,14 @@ Note: Current Level‑0 “basal‑pure” generator no longer uses dynamic coll
 ### Command Line Options
 
 ```bash
-# Use different config file
-python main.py --config my_config.json
+# Level 0 options
+python level0_generate.py --variant B --iterations 20 --plot-only
 
-# Specify output directory
-python main.py --output my_results
+# Level 1 options
+python level1_analyze_patterns.py --variant B --iteration 18 --min-len 10 --max-len 50 --report
 
-# Disable visualizations
-python main.py --no-viz
-
-# Silent mode
-python main.py --quiet
+# Level 1 Emergence Index options
+python level1_emergence_index.py --variants A B D E F --iteration 18 --compare
 ```
 
 ### Automatic Compression
@@ -251,17 +276,16 @@ Snapshots and outputs are segregated by variant and ABS:
 - `results/var_{VAR}/phi_final.txt`
 - Visualizations include `_abs{ABS}` in filenames
 
-## 📑 Surviving Variants (v33) — ISH v32 Aligned
+## 📑 Surviving Variants
 
-**Version:** v33 (November 2025)
-**Status:** 6 active variants (A and C eliminated for incompatibility with ISH v32)
+**Status:** 6 active variants (A and C eliminated for incompatibility with ISH principles)
 
 ### ⭐ Core Variants (Tier 1)
 
 **Variant B — Stratified Baseline (Gold Standard)**
 - **Algorithm:** Inside→out collapse + final global simplify
 - **Properties:** Preserves stratified order, accumulates ALL micro-states
-- **Scientific Value:** Fully compatible with v32 principles, validated as ontologically correct
+- **Scientific Value:** Fully compatible with ISH principles, validated as ontologically correct
 - **Why it survives:** Gold standard for order emergence through stratified containment
 
 **Variant D — Minimal Asymmetry**
@@ -296,7 +320,7 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Scientific Value:** Tests whether continuous feedback affects order emergence
 - **Why it survives:** Explores feedback-driven collapse dynamics
 
-### 🎲 Control Variant (v33.1)
+### 🎲 Control Variant
 
 **Variant A — Random Control (PRNG/CSPRNG Baseline)** *(REPURPOSED)*
 - **Algorithm:** Pseudo-random bit generation (Mersenne Twister or cryptographic RNG)
@@ -307,16 +331,16 @@ Snapshots and outputs are segregated by variant and ABS:
 **Usage:**
 ```powershell
 # Generate random control matching size of Variant B at iteration 14
-python -m hsi_agents_project.variant_A_control --iterations 14 --match-variant B
+python level0_random_control.py --iterations 14 --match-variant B
 
 # Generate with fixed seed for reproducibility
-python -m hsi_agents_project.variant_A_control --iterations 14 --bits 5000000 --seed 42
+python level0_random_control.py --iterations 14 --bits 5000000 --seed 42
 
 # Use cryptographic RNG (maximum entropy, no seed)
-python -m hsi_agents_project.variant_A_control --iterations 14 --bits 5000000 --csprng
+python level0_random_control.py --iterations 14 --bits 5000000 --csprng
 
 # Visualize and compare with ISH variants
-python -m hsi_agents_project.refresh_variant_from_cache -v A -i 14
+python level0_refresh_plots.py -v A -i 14
 ```
 
 **Expected Differences (A vs ISH variants):**
@@ -356,7 +380,7 @@ This comparison provides **empirical evidence** that the ISH collapse mechanism 
 
 **Epistemological Note:** True randomness is philosophically problematic — if ISH is correct, even quantum randomness might have underlying structure. The comparison is therefore **relative** (different patterns) rather than **absolute** (structure vs. no-structure).
 
-### ❌ Eliminated Variants (v33)
+### ❌ Eliminated Variants
 
 **~~Variant A — Global Collapse~~** *(ELIMINATED, then REPURPOSED as Random Control)*
 - **Original reason for elimination:** Fundamentally incompatible with stratified order principle
@@ -365,7 +389,7 @@ This comparison provides **empirical evidence** that the ISH collapse mechanism 
 **Variant C — Temporal Cascade** *(ELIMINATED)*
 - **Reason:** Violates micro-state reality principle OR redundant with Variant B
 - **Why eliminated:** Intentionally discards micro-states (incompatible) or identical to B if fixed
-- **v32 conflict:** "Intermediate states are ontologically real" — C discards them
+- **ISH conflict:** "Intermediate states are ontologically real" — C discards them
 
 ### 📖 Full Documentation
 
@@ -373,7 +397,7 @@ See `Documentation/variants_spec.md` for:
 - Complete algorithmic definitions
 - Scientific justification for each variant
 - Implementation cross-reference
-- ISH v32 alignment analysis
+- ISH alignment analysis
 ### Spectral analysis configuration
 
 - Method (config.json → output.spectral_method): `auto` (default), `welch`, `sampling`, `prefix`
@@ -391,25 +415,24 @@ Logs report the decision, e.g.:
 
 Rationale: exposing ABS allows testing whether φ‑alignment and emergent order are robust or depend on boundary orientation.
 
-## 🔬 Level 1 Analysis (v33 Structural Format)
+## 🔬 Level 1 Analysis (Structural Format)
 
-**Version:** v33 (January 2025)
 **Status:** Fully operational with structural pattern detection and order metrics
 
 ### Overview
 
-Level 1 implements advanced analysis of Level 0 data to detect **emergent order** in the informational structure. The v33 format preserves the complete structural information (parentheses marking Absolutes) that is critical for understanding how order emerges from the primordial tension between 0 and 1.
+Level 1 implements advanced analysis of Level 0 data to detect **emergent order** in the informational structure. The structural format preserves the complete structural information (parentheses marking Absolutes) that is critical for understanding how order emerges from the primordial tension between 0 and 1.
 
 ### Key Concepts
 
-**v33 Structural Format:**
+**Structural Format:**
 - Preserves parentheses `()` that mark Absolute boundaries
 - Enables analysis of **stratified containment** (how Absolutes nest within each other)
 - Achieves ~99.7% compression while maintaining full structural information
-- Backward compatible with v32 format (observable bits only)
+- Backward compatible with legacy format (observable bits only)
 
 **Emergent Order (not φ-convergence):**
-- ISH v32 shifted focus from golden ratio convergence to **order as fundamental principle**
+- ISH focuses on **order as fundamental principle**, not golden ratio convergence
 - "Order is the only way Nothingness can contradict itself"
 - Level 1 detects and quantifies this emergent order through multiple metrics
 
@@ -417,7 +440,7 @@ Level 1 implements advanced analysis of Level 0 data to detect **emergent order*
 
 #### 1. Data Loader
 
-Load Level 0 data with automatic v32/v33 format detection:
+Load Level 0 data with automatic format detection:
 
 ```python
 from level1 import load_phi_for_level1
@@ -511,13 +534,17 @@ print(f"Structural Patterns: {len(struct_patterns)}")
 
 ### Example Usage Script
 
-See `example_complete_level1_analysis.py` for a complete end-to-end analysis pipeline that:
-1. Loads v33 data with structural information
-2. Extracts basic structural metrics
-3. Detects observable and structural patterns
-4. Calculates all order metrics
-5. Generates comprehensive JSON report
-6. Displays summary statistics
+For a complete end-to-end analysis pipeline, use:
+```bash
+python level1_analyze_patterns.py --variant B --iteration 18 --report
+```
+
+This will:
+1. Load structural data for the specified variant and iteration
+2. Extract basic structural metrics
+3. Detect observable and structural patterns
+4. Calculate all order metrics
+5. Generate comprehensive JSON report and Markdown summary
 
 ### Documentation
 
@@ -532,7 +559,7 @@ For detailed technical documentation, see:
 Level 1 analysis enables:
 - **Quantification of emergent order** in informational structures
 - **Detection of hierarchical organization** through nesting analysis
-- **Validation of ISH v32 hypothesis** ("order as fundamental principle")
+- **Validation of ISH hypothesis** ("order as fundamental principle")
 - **Comparison between variants** to identify which best exhibits order emergence
 - **Temporal analysis** of how order evolves across iterations
 
@@ -566,10 +593,10 @@ data/
 
 ```bash
 # Estimate storage requirements for high iterations
-python estimate_compression_requirements.py --max-iteration 32
+python level0_estimate_storage.py --max-iteration 32
 
 # Detailed analysis with breakdown
-python estimate_compression_requirements.py --max-iteration 28 --detailed
+python level0_estimate_storage.py --max-iteration 28 --detailed
 ```
 
 ## 📊 Metrics and Validation
@@ -593,6 +620,33 @@ python estimate_compression_requirements.py --max-iteration 28 --detailed
 - **φ-alignment (Golden Tendency)**: Evaluates whether generated structures show fractal dimension or internal proportions close to φ (1.618), indicating emergent order coherent with the hypothesis of convergence towards the golden ratio
 - **Informational Convergence**: Measure of how Φ sequences evolve towards stable patterns
 - **Holographic Field Coherence**: Assessment of consistency of Pₖ patterns as manifestations of the primordial field
+
+### 🌟 Emergence Index (Level 2 Potential)
+
+The **Emergence Index** is a composite metric (0-1) that estimates which variant has the highest potential for generating physics-like emergent behavior (Level 2). It combines three scientifically-grounded indicators:
+
+| Component | Weight | What it measures | Optimal value |
+|-----------|--------|------------------|---------------|
+| **Criticality (1/f)** | 40% | Power spectrum slope ≈ -1 indicates self-organized criticality (Bak et al., 1987) | slope = -1.0 |
+| **Lempel-Ziv Complexity** | 30% | Normalized LZ76 complexity; ~0.5 indicates "edge of chaos" (Langton, 1990) | LZ ≈ 0.5 |
+| **Long-Range Mutual Info** | 30% | Correlation between distant regions; indicates global coherence | High MI ratio |
+
+**Usage:**
+```bash
+# Single variant analysis
+python level1_emergence_index.py --variant B --iteration 18
+
+# Compare multiple variants
+python level1_emergence_index.py --variants A B D E F G H --iteration 18 --compare
+
+# Save results to JSON
+python level1_emergence_index.py --variant B --iteration 18 --output results/emergence_B.json
+```
+
+**Interpretation:**
+- **High Emergence Index (>0.7)**: Strong potential for Level 2 emergence; shows characteristics of complex systems at the edge of chaos
+- **Medium (0.4-0.7)**: Moderate potential; some emergent properties present
+- **Low (<0.4)**: Limited potential; either too ordered or too chaotic
 
 ## 🎨 Visualizations
 ### Spectral Analysis (Welch Streaming)
@@ -674,8 +728,14 @@ hsi_agents_project/reports/
 ### Quick Start
 
 ```bash
-# Run with default configuration (auto-creates config.json)
-python main.py
+# Level 0: Generate Φ sequences
+python level0_generate.py --variant B --iterations 18
+
+# Level 1: Analyze patterns
+python level1_analyze_patterns.py --variant B --iteration 18 --report
+
+# Level 1: Calculate Emergence Index
+python level1_emergence_index.py --variant B --iteration 18
 ```
 
 ### Basic Experiment (Programmatic)
@@ -787,7 +847,7 @@ This project is part of research on the Informational Singularity Hypothesis. Co
 |----------|-------------|
 | `Documentation/level1_analysis_guide.md` | Complete Level 1 technical guide |
 | `Documentation/order_metrics_explained.md` | Scientific explanation of order metrics |
-| `Documentation/variants_spec.md` | Variant specifications (v33) |
+| `Documentation/variants_spec.md` | Variant specifications |
 | `Documentation/HSI_Variants_Analysis_For_Review.md` | Analysis for peer review |
 | `docs/GPU_ACCELERATION_PROPOSAL.md` | Future GPU integration proposal |
 | `level1/README.md` | Quick reference for Level 1 module |
@@ -858,17 +918,17 @@ For problems or questions:
 
 1. **Configuration**: Edit `config.json` - it's self-documenting with built-in help
 2. **Documentation**: Review files in `Documentation/` folder
-3. **Compression**: Use `estimate_compression_requirements.py` for storage planning
+3. **Compression**: Use `level0_estimate_storage.py` for storage planning
 4. **Research**: Contact the author for scientific questions about ISH
 
 ### Troubleshooting Tools
 
 ```bash
 # Check compression requirements
-python estimate_compression_requirements.py --max-iteration 24
+python level0_estimate_storage.py --max-iteration 24
 
 # Test Level 0 generator (with progress and compression level)
-python -m hsi_agents_project.level0.generator -v B -i 4 --log-every 1 --compression-level 5
+python level0_generate.py -v B -i 4 --log-every 1 --compression-level 5
 
 # Verify environment setup
 .\Setup-virtual-envelop.ps1

@@ -2,9 +2,9 @@
 """
 Refresh plots and enriched report for a specific variant/iteration from existing reports/snapshots.
 Usage:
-  python -m hsi_agents_project.refresh_variant_from_cache --variant D --iterations 23 [--hilbert-bits 1000000] [--fft-bits 2000000]
+  python level0_refresh_plots.py --variant D --iterations 23 [--hilbert-bits 1000000] [--fft-bits 2000000]
 
-This is a thin wrapper that drives run_all_variants.py in plot-only mode with explicit arguments,
+This is a thin wrapper that drives level0_generate.py in plot-only mode with explicit arguments,
 so you don't need to set environment variables manually.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ import argparse, os, sys, subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-RUNNER = ROOT / "run_all_variants.py"
+RUNNER = ROOT / "level0_generate.py"
 
 def main():
     p = argparse.ArgumentParser(description="Refresh plots for an existing variant report (plot-only)")

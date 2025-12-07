@@ -1391,24 +1391,6 @@ def _save_results(
         f.flush()
         os.fsync(f.fileno())  # Force write to disk for Windows compatibility
     print(f"[post] 2.3/4 saved phi_metadata.json in {time.perf_counter()-t_meta0:.2f}s")
-    if phi is not None:
-        try:
-            with open(output_path / "phi_final.txt", 'w') as f:
-                f.write(phi)
-        except Exception as _e:
-            print(f"[post] Skipping phi_final.txt save: {_e}")
-        # Also save per-variant final text under results/var_{VAR}/ for clear isolation
-        try:
-            var_code = (metadata.get("variant") or "?").upper()
-            var_dir = output_path / f"var_{var_code}"
-            var_dir.mkdir(parents=True, exist_ok=True)
-
-            with open(var_dir / "phi_final.txt", 'w') as f:
-                f.write(phi)
-        except Exception as _e:
-            print(f"[post] Skipping var-specific phi_final.txt save: {_e}")
-    else:
-        print("[post] Skipping phi_final.txt save: Φ not available in memory (using streaming)")
 
 
 # Funcions auxiliars per a compatibilitat amb altres mòduls

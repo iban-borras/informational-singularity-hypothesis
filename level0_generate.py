@@ -63,7 +63,9 @@ except Exception:
 # Anchor outputs under project root (this file lives in hsi_agents_project/)
 BASE_PATH = Path(__file__).resolve().parent
 ROOT_PATH = BASE_PATH.parent  # repository root; parent of the package dir
-VIS_DIR = BASE_PATH / "results" / "visualizations"
+RESULTS_DIR = BASE_PATH / "results"
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+VIS_DIR = RESULTS_DIR / "visualizations"
 VIS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -161,7 +163,14 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
             if line:
                 live_output_lines.append(line)
                 # Show progress lines and key info
-                if line.lstrip().startswith("[iter") or "Config:" in line or "Compression" in line or "Saved variant" in line:
+                stripped = line.lstrip()
+                if (stripped.startswith("[iter") or
+                    stripped.startswith("[variant_A]") or
+                    "Config:" in line or
+                    "Compression" in line or
+                    "Saved variant" in line or
+                    "Generated" in line or
+                    "%" in line):
                     print(line.rstrip())
         proc.wait(timeout=600)
         execution_time = time.time() - start_time
@@ -188,10 +197,10 @@ def load_variant_results(filename):
         with open(filename, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"⚠️ No s'ha trobat {filename}")
+        print(f"⚠️ File not found: {filename}")
         return None
     except Exception as e:
-        print(f"❌ Error carregant {filename}: {e}")
+        print(f"❌ Error loading {filename}: {e}")
         return None
 
 
@@ -330,12 +339,16 @@ def plot_growth_and_time(results_list):
     if not MATPLOTLIB_OK:
         print("[WARN] Skipping growth/time plots because matplotlib is not available.")
         return
+    # Skip if no valid results
+    valid_results = [r for r in results_list if r]
+    if not valid_results:
+        print("[WARN] Skipping growth/time plots: no valid results.")
+        return
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     ax1, ax2 = axes
     variants = []
-    for r in results_list:
-        if not r: continue
+    for r in valid_results:
         variant = r.get('variant','?')
         variants.append(variant)
         per_iter = r.get('per_iteration', [])
@@ -354,7 +367,7 @@ def plot_growth_and_time(results_list):
         var_tag = (uniq[0] if len(uniq) == 1 else (''.join(uniq) if uniq else 'UNK'))
     except Exception:
         var_tag = 'UNK'
-    max_iter = max((r.get('iterations') or 0) for r in results_list if r) or 0
+    max_iter = max((r.get('iterations') or 0) for r in valid_results) or 0
     out = VIS_DIR / f"growth_time_{var_tag}{_abs_suffix()}_i{max_iter}_{_ts}.png"
     rel = out.relative_to(BASE_PATH)
     plt.tight_layout(); plt.savefig(out); print(f"[INFO] Growth/Time saved: {rel}"); plt.close()
@@ -402,28 +415,7 @@ def _write_enriched_variant_report(r: dict):
         print(f"[WARN] Could not write enriched report: {e}")
 
 
-def _read_phi_prefix_from_final(max_bits: int, var: str | None = None) -> str:
-    """Fallback: read prefix from per-variant final text if available; else global.
-    Looks under results/var_{VAR}/phi_final.txt first to avoid cross-variant contamination.
-    """
-    candidate_paths = []
-    if var:
-        candidate_paths.append(BASE_PATH / "results" / f"var_{var.upper()}" / "phi_final.txt")
-    candidate_paths.append(BASE_PATH / "results" / "phi_final.txt")
-    path = next((p for p in candidate_paths if p.exists()), None)
-    if not path:
-        return ""
-    out = []
-    need = max_bits
-    with open(path, "rt", encoding="utf-8") as f:
-        for chunk in iter(lambda: f.read(min(1_000_000, need)), ""):
-            out.append(chunk)
-            need -= len(chunk)
-            if need <= 0:
-                break
-    return "".join(out)[:max_bits]
 
-    print(f"[INFO] Saved growth/time plots to {out}")
 def _get_abs_mode() -> str | None:
     try:
         v = os.environ.get("HSI_ABSOLUTE_TOKEN")
@@ -560,7 +552,10 @@ def _bits_for_iteration(results: dict, target_iter: int, max_bits: int) -> str:
     # Apply config limit if present
     if raster_bits_limit:
         need = min(need, raster_bits_limit)
-    return _read_phi_prefix_from_final(need, var=(results.get('variant') or None))
+    # Stream from .struct.gz files
+    var = results.get('variant') or None
+    iters = results.get('iterations') or 0
+    return _stream_phi_prefix_from_gz(iters, need, var=var) or ""
 
 
 def plot_raster2d(results_list, max_iter_cap: int | None = None):
@@ -1053,8 +1048,6 @@ def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
             prog.update(message="Reading data...")
             bits = _stream_phi_prefix_from_gz(iters, max_bits_eff, show_progress=True, label="hilbert", var=var)
             if not bits:
-                bits = _read_phi_prefix_from_final(max_bits_eff, var=var)
-            if not bits:
                 print(f"[WARN] Hilbert map skipped for {var}: no data available.", flush=True)
                 continue
             # 1) Convert to array — VECTORIZED (100x faster than fromiter with generator)
@@ -1134,8 +1127,6 @@ def plot_fft(results_list, max_bits: int, skip: bool):
                 prog.update(message="Reading prefix fallback...")
                 bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft", var=var)
                 if not bits:
-                    bits = _read_phi_prefix_from_final(max_bits, var=var)
-                if not bits:
                     print(f"[WARN] FFT skipped for {var}: no data available.", flush=True)
                     continue
                 prog.update(message="Computing FFT...")
@@ -1183,8 +1174,8 @@ def plot_fft_amplitude_linear(results_list, max_bits: int, skip: bool):
         if method_eff == 'welch':
             freqs, psd = _welch_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft-amplitude", var=var)
             if freqs is None:
-                # Fallback B: direct two-sided FFT on prefix if gz missing
-                bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude-fallback", var=var) or _read_phi_prefix_from_final(max_bits, var=var)
+                # Fallback: direct two-sided FFT on prefix if Welch failed
+                bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude-fallback", var=var)
                 if not bits:
                     print(f"[WARN] FFT amplitude skipped for {var}: no data available."); continue
                 a = _bits_to_float64(bits)
@@ -1196,8 +1187,8 @@ def plot_fft_amplitude_linear(results_list, max_bits: int, skip: bool):
         elif method_eff == 'sampling':
             freqs, psd = _sampling_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft-amp-sampling", var=var)
             if freqs is None:
-                # Fallback B: direct two-sided FFT on prefix if gz missing
-                bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude-fallback", var=var) or _read_phi_prefix_from_final(max_bits, var=var)
+                # Fallback: direct two-sided FFT on prefix if sampling failed
+                bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude-fallback", var=var)
                 if not bits:
                     print(f"[WARN] FFT amplitude skipped for {var}: no data available."); continue
                 a = _bits_to_float64(bits)
@@ -1208,8 +1199,6 @@ def plot_fft_amplitude_linear(results_list, max_bits: int, skip: bool):
                 amp = np.sqrt(psd); freq = freqs
         else:
             bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude", var=var)
-            if not bits:
-                bits = _read_phi_prefix_from_final(max_bits, var=var)
             if not bits:
                 print(f"[WARN] FFT amplitude skipped for {var}: no data available.")
                 continue
@@ -1254,8 +1243,6 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
             freqs = power = None
         if freqs is None:
             bits = _stream_phi_prefix_from_gz(iters, max_bits, var=var)
-            if not bits:
-                bits = _read_phi_prefix_from_final(max_bits, var=var)
             if not bits:
                 print(f"[WARN] Spectrum beta skipped for {var}: no data available.")
                 out_metrics.append(None); continue
@@ -1332,8 +1319,8 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
     _load_dotenv_if_present()
 
 def create_comparison_visualization(results_list):
-    """Crea visualitzacions comparatives."""
-    print("\n📊 Creant visualitzacions comparatives...")
+    """Create comparative visualizations."""
+    print("\n📊 Creating comparative visualizations...")
 
     variants = []
     phi_alignments = []
@@ -1369,7 +1356,7 @@ def create_comparison_visualization(results_list):
     ax1.axhline(y=0.1, color='orange', linestyle='--', alpha=0.7, label='Good threshold')
     ax1.legend()
 
-    # 2. Dimensió fractal
+    # 2. Fractal dimension
     ax2.bar(variants, [x if x is not None else 0.0 for x in fractal_dims], color='blue', alpha=0.7)
     ax2.set_title('Fractal Dimension')
     ax2.set_ylabel('Dimension')
@@ -1377,7 +1364,7 @@ def create_comparison_visualization(results_list):
     ax2.axhline(y=1.618, color='gold', linestyle='-', linewidth=2, label='φ = 1.618')
     ax2.legend()
 
-    # 3. Informació total generada
+    # 3. Total information generated
     ax3.bar(variants, [x if x is not None else 0.0 for x in total_bits], color='purple', alpha=0.7)
     ax3.set_title('Total Information Generated')
     ax3.set_ylabel('Bits')
@@ -1392,9 +1379,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run basal‑pure variants and/or generate plots")
     parser.add_argument("--iterations", "-i", type=int, default=None,
                         help="Number of iterations to pass to the generator (env HSI_ITERATIONS otherwise)")
+    # Variant selection
+    parser.add_argument("--variant", "-v", type=str, default=None,
+                        help="Run only this variant (A, B, D, E, F, G, H). A is random control.")
+    parser.add_argument("--include-control", action="store_true",
+                        help="Include Variant A (Random Control) in the run")
     # Plot-only focused flags (prefer CLI over envs)
     parser.add_argument("--plot-only", action="store_true", help="Do not run variants; just load latest report and generate plots")
-    parser.add_argument("--variant", "-v", type=str, default=None, help="Variant code for plot-only, e.g., D")
     parser.add_argument("--report-iter", type=int, default=None, help="Target iteration for plot-only")
     parser.add_argument("--report-path", type=str, default=None, help="Explicit path to a report JSON for plot-only")
     parser.add_argument("--hilbert-bits", type=int, default=None, help="Override config.hilbert.max_bits for plot-only")
@@ -1422,15 +1413,18 @@ def parse_args():
 
 def main():
     """Main entry: run all variants and compare results."""
+    args = parse_args()
+
     print("=" * 60)
     print("*** HSI VARIANTS MASTER RUNNER ***")
     print("*** Exploring convergence toward φ ***")
     print("=" * 60)
     print(f"Start: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Definir variants (v33: A i C eliminades per incompatibilitat amb HSI v32)
-    # Launch generator as a module from project root; module path is importable via PYTHONPATH
-    variants = [
+    # Define all available variants
+    # Variant A is Random Control (separate script), others use the main generator
+    all_variants = [
+        ("-m", "hsi_agents_project.level0_random_control", "Variant A (Random Control)", "variant_A_results.json", "A"),
         ("-m", "hsi_agents_project.level0.generator", "Variant B (Stratified Baseline)", "variant_B_results.json", "B"),
         ("-m", "hsi_agents_project.level0.generator", "Variant D (Minimal Asymmetry)", "variant_D_results.json", "D"),
         ("-m", "hsi_agents_project.level0.generator", "Variant E (Ordered Passes)", "variant_E_results.json", "E"),
@@ -1439,13 +1433,30 @@ def main():
         ("-m", "hsi_agents_project.level0.generator", "Variant H (Continuous Feedback)", "variant_H_results.json", "H")
     ]
 
+    # Filter variants based on CLI args
+    if args.variant:
+        # Run only the specified variant
+        variant_code = args.variant.upper()
+        variants = [v for v in all_variants if v[4] == variant_code]
+        if not variants:
+            print(f"❌ ERROR: Unknown variant '{variant_code}'")
+            print(f"   Available variants: A, B, D, E, F, G, H")
+            return
+        print(f"🎯 Running only Variant {variant_code}")
+    elif args.include_control:
+        # Include all variants (with A)
+        variants = all_variants
+        print("🎯 Running all variants INCLUDING Variant A (Random Control)")
+    else:
+        # Default: exclude A (random control)
+        variants = [v for v in all_variants if v[4] != 'A']
+        print("🎯 Running HSI variants (B, D, E, F, G, H). Use --include-control to add Variant A.")
+
     execution_results = []
     variant_results = []
 
     # Executar totes les variants
     total_start_time = time.time()
-
-    args = parse_args()
 
     for flag, mod, name, results_file, variant_code in variants:
         success, exec_time, output = run_variant_script(flag, mod, name, results_file, variant_code, args.iterations)
@@ -1456,7 +1467,7 @@ def main():
             'output_preview': output[:200] + "..." if len(output) > 200 else output
         })
 
-        # Carregar resultats si l'execució ha estat exitosa
+        # Load results if execution was successful
         if success:
             results_path = find_variant_result_file(variant_code)
             results = load_variant_results(results_path)
@@ -1469,9 +1480,9 @@ def main():
 
     total_execution_time = time.time() - total_start_time
 
-    # Mostrar resum d'execució
-    print(f"\n⏱️ TEMPS TOTAL D'EXECUCIÓ: {total_execution_time:.2f}s")
-    print(f"✅ Variants exitoses: {sum(1 for r in execution_results if r['success'])}/6")
+    # Show execution summary
+    print(f"\n⏱️ TOTAL EXECUTION TIME: {total_execution_time:.2f}s")
+    print(f"✅ Successful variants: {sum(1 for r in execution_results if r['success'])}/{len(variants)}")
 
     # Compare convergence
     best_variant = compare_phi_convergence(variant_results)
@@ -1506,8 +1517,10 @@ def main():
         'spectrum_beta': beta_stats
     }
 
-    with open('hsi_variants_master_results.json', 'w') as f:
+    master_results_path = RESULTS_DIR / 'hsi_variants_master_results.json'
+    with open(master_results_path, 'w') as f:
         json.dump(master_results, f, indent=2)
+    print(f"📄 Master results saved: {master_results_path}")
 
     # Export metadata and compress for Level 1 (if enabled in config)
     try:
@@ -1676,7 +1689,7 @@ def _run_plot_only():
 
 def export_metadata_for_level1(variant_code: str, results: dict):
     """
-    Export metadata.json for Level 1 consumption.
+    Export metadata.json to reports/ directory.
 
     Parameters:
     -----------
@@ -1686,8 +1699,8 @@ def export_metadata_for_level1(variant_code: str, results: dict):
         Results dictionary from variant execution
     """
     try:
-        var_dir = BASE_PATH / "results" / f"var_{variant_code.upper()}"
-        var_dir.mkdir(parents=True, exist_ok=True)
+        reports_dir = RESULTS_DIR / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
 
         metadata = {
             "variant": variant_code.upper(),
@@ -1702,7 +1715,8 @@ def export_metadata_for_level1(variant_code: str, results: dict):
             "execution_time_seconds": results.get('execution_time', 0)
         }
 
-        metadata_path = var_dir / "metadata.json"
+        # Save with variant name in filename for clarity
+        metadata_path = reports_dir / f"metadata_{variant_code.upper()}.json"
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
 
@@ -1727,13 +1741,17 @@ def compress_iterations_to_tar(variant_code: str):
         import tarfile
         import gzip
 
-        var_dir = BASE_PATH / "results" / f"var_{variant_code.upper()}"
+        # v33: snapshots are in phi_snapshots/var_X/
+        var_dir = BASE_PATH / "results" / "phi_snapshots" / f"var_{variant_code.upper()}"
         if not var_dir.exists():
             print(f"[WARN] Variant directory not found: {var_dir}")
             return False
 
-        # Find all phi_iter_*.txt.gz files
-        iter_files = sorted(var_dir.glob("phi_iter_*.txt.gz"))
+        # Find all phi_iter*.struct.gz files (v33 format)
+        iter_files = sorted(var_dir.glob("phi_iter*.struct.gz"))
+        if not iter_files:
+            # Fallback: try legacy format
+            iter_files = sorted(var_dir.glob("phi_iter_*.txt.gz"))
         if not iter_files:
             print(f"[WARN] No iteration files found in {var_dir}")
             return False

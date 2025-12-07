@@ -106,7 +106,7 @@ class PatternDetector:
         LARGE_SEQUENCE_THRESHOLD = 10_000_000  # 10M chars
         is_large = seq_len > LARGE_SEQUENCE_THRESHOLD
 
-        # Mètode 1: Sliding windows amb hashing (works with chunking for large seqs)
+        # Method 1: Sliding windows with hashing (works with chunking for large seqs)
         sliding_patterns = self._detect_sliding_window_patterns(phi_sequence)
         print(f"   ✓ Sliding window: {len(sliding_patterns):,} patterns", flush=True)
 
@@ -148,7 +148,7 @@ class PatternDetector:
 
             del phi_array  # Free memory
 
-        # Combinar i filtrar patrons
+        # Combine and filter patterns
         all_patterns = sliding_patterns + block_patterns + spectral_patterns
         print(f"   ⏳ Filtering & merging {len(all_patterns):,} patterns...", flush=True)
         filtered_patterns = self._filter_and_merge_patterns(all_patterns, phi_sequence)
@@ -162,7 +162,7 @@ class PatternDetector:
             filtered_patterns = sorted(filtered_patterns, key=lambda p: p.get('recurrence', 0), reverse=True)
             filtered_patterns = filtered_patterns[:MAX_PATTERNS_FOR_METRICS]
 
-        # Calcular mètriques detallades per cada patró
+        # Calculate detailed metrics for each pattern
         print(f"   ⏳ Calculating metrics for {len(filtered_patterns):,} patterns...", flush=True)
         enriched_patterns = []
         total = len(filtered_patterns)
@@ -511,13 +511,13 @@ class PatternDetector:
         if len(segments) < self.min_occurrences:
             return patterns
         
-        # Trobar el segment més comú
+        # Find the most common segment
         segment_strings = [''.join(map(str, seg)) for seg in segments]
         segment_counts = Counter(segment_strings)
-        
+
         for pattern_data, count in segment_counts.items():
             if count >= self.min_occurrences:
-                # Trobar totes les posicions d'aquest patró
+                # Find all positions of this pattern
                 pattern_positions = []
                 for i, seg_str in enumerate(segment_strings):
                     if seg_str == pattern_data:
@@ -535,7 +535,7 @@ class PatternDetector:
         return patterns
     
     def _calculate_block_similarities(self, blocks: List[np.ndarray]) -> np.ndarray:
-        """Calcula la matriu de similaritats entre blocs."""
+        """Calculate the similarity matrix between blocks."""
         n_blocks = len(blocks)
 
         # Use Numba if available and enough blocks
@@ -555,7 +555,7 @@ class PatternDetector:
                 if i == j:
                     similarities[i, j] = 1.0
                 else:
-                    # Calcular similaritat com a correlació normalitzada
+                    # Calculate similarity as normalized correlation
                     correlation = np.corrcoef(blocks[i], blocks[j])[0, 1]
                     if np.isnan(correlation):
                         correlation = 0.0
@@ -604,13 +604,13 @@ class PatternDetector:
         # Compressibilitat local
         compressibility = self._calculate_compressibility(pattern_data)
         
-        # Autosimilitud
+        # Autosimilarity
         autosimilarity = self._calculate_autosimilarity(pattern_data)
-        
-        # Signatura espectral
+
+        # Spectral signature
         spectral_signature = self._calculate_spectral_signature(pattern_data)
-        
-        # Enriquir el patró amb les noves mètriques
+
+        # Enrich pattern with new metrics
         enriched_pattern = pattern.copy()
         enriched_pattern.update({
             'density': density,

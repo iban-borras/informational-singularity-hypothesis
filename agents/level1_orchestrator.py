@@ -229,11 +229,18 @@ class Level1Orchestrator:
         
         elapsed = time.time() - start_time
         
-        # Compile results
+        # Compile results (include config for reproducibility)
+        pd_config = self.config.get('pattern_detector', {})
         self.results = {
             'file': str(struct_gz_path),
             'metadata': metadata,
             'analysis_time_seconds': elapsed,
+            'config': {
+                'min_pattern_length': pd_config.get('min_pattern_length', 4),
+                'max_pattern_length': pd_config.get('max_pattern_length', 32),
+                'min_occurrences': pd_config.get('min_occurrences', 3),
+                'similarity_threshold': pd_config.get('similarity_threshold', 0.85)
+            },
             'char_counts': {
                 'structural': len(phi_structural),
                 'observable': len(phi_observable)
@@ -278,7 +285,14 @@ class Level1Orchestrator:
         struct_path = base_path / f"var_{variant}" / f"phi_iter{iteration}.struct.gz"
 
         if not struct_path.exists():
-            raise FileNotFoundError(f"File not found: {struct_path}")
+            available = self.get_available_iterations(variant)
+            print(f"\n❌ ERROR: Level 0 data not found for Variant {variant}, Iteration {iteration}")
+            print(f"   Missing file: {struct_path}")
+            if available:
+                print(f"\n📋 Available iterations for variant {variant}: {available}")
+            print(f"\n💡 Generate Level 0 data first:")
+            print(f"   python run_all_variants.py --variant {variant} --iterations {iteration}")
+            raise FileNotFoundError(f"Level 0 data missing for variant {variant} iter {iteration}")
 
         print(f"🔬 Analyzing Variant {variant}, Iteration {iteration}")
         return self.analyze_file(str(struct_path), use_cache=use_cache)
@@ -371,16 +385,38 @@ class Level1Orchestrator:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="HSI Level 1 Analysis")
+    epilog = """
+IMPORTANT FOR REPRODUCIBILITY:
+  Output filename includes pattern length parameters:
+    level1_analysis_var{X}_iter{N}_min{MIN}_max{MAX}.json
+
+  When comparing iterations for geometric analysis (Γ, 𝓡, 𝓣),
+  use CONSISTENT --min-len and --max-len across ALL iterations.
+
+EXAMPLES:
+  # Analyze iteration 19 with recommended parameters:
+  python agents/level1_orchestrator.py -v B -i 19 --min-len 10 --max-len 50 --report
+
+  # Analyze 3 consecutive iterations for geometric analysis:
+  python agents/level1_orchestrator.py -v B -i 17 --min-len 10 --max-len 50 --no-cache
+  python agents/level1_orchestrator.py -v B -i 18 --min-len 10 --max-len 50 --no-cache
+  python agents/level1_orchestrator.py -v B -i 19 --min-len 10 --max-len 50 --no-cache
+"""
+
+    parser = argparse.ArgumentParser(
+        description="HSI Level 1 Analysis: Pattern detection and rule inference",
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--variant", "-v", default="B", help="Variant to analyze (default: B)")
     parser.add_argument("--iteration", "-i", type=int, help="Iteration number (default: latest)")
     parser.add_argument("--max-chars", "-m", type=int, default=0,
                        help="Max chars to analyze (0 = no limit, analyze full file)")
     parser.add_argument("--min-len", type=int, default=0,
-                       help="Min pattern length (0 = use config default)")
+                       help="Min pattern length (0 = use config default of 4)")
     parser.add_argument("--max-len", type=int, default=0,
-                       help="Max pattern length (0 = use config default)")
-    parser.add_argument("--output", "-o", help="Output JSON file path")
+                       help="Max pattern length (0 = use config default of 32)")
+    parser.add_argument("--output", "-o", help="Output JSON file path (auto-generated if not specified)")
     parser.add_argument("--no-cache", action="store_true",
                        help="Disable cache (force recalculation of all phases)")
     parser.add_argument("--report", "-r", action="store_true",
@@ -445,8 +481,11 @@ if __name__ == "__main__":
     if args.output:
         output_path = args.output
     else:
-        # Default output path (relative to cwd which should be hsi_agents_project/)
-        output_path = f"results/level1_analysis_var{args.variant}_iter{iteration}.json"
+        # Build filename with pattern limits for reproducibility
+        pd_config = orchestrator.config.get('pattern_detector', {})
+        min_len = pd_config.get('min_pattern_length', 4)
+        max_len = pd_config.get('max_pattern_length', 32)
+        output_path = f"results/level1_analysis_var{args.variant}_iter{iteration}_min{min_len}_max{max_len}.json"
 
     orchestrator.save_results(output_path)
 
@@ -454,16 +493,16 @@ if __name__ == "__main__":
     if args.report:
         try:
             # Import here to avoid circular dependency
-            from analyze_results import ResultsReporter
+            from level1_view_results import ResultsReporter
             reporter = ResultsReporter(output_path)
             md_path = reporter.save_markdown_report()
             print(f"\n📝 Analysis report saved to: {md_path}")
         except ImportError:
-            print("\n⚠️ Could not import ResultsReporter. Run analyze_results.py manually.")
+            print("\n⚠️ Could not import ResultsReporter. Run level1_view_results.py manually.")
         except Exception as e:
             print(f"\n⚠️ Error generating report: {e}")
 
     # Reminder about analysis tool
     print(f"\n💡 Tip: Analyze these results with:")
-    print(f"   python analyze_results.py {output_path}")
+    print(f"   python level1_view_results.py {output_path}")
 

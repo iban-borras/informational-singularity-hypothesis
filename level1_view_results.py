@@ -123,10 +123,10 @@ class ResultsReporter:
         # Rule types
         rule_types = Counter(r.get('rule_type', 'unknown') for r in self.rules)
 
-        # Top rules by confidence and context length
+        # Top rules by confidence, then support (to prioritize high-evidence rules)
         sorted_rules = sorted(
             self.rules,
-            key=lambda r: (-r.get('confidence', 0), -len(r.get('context', '')))
+            key=lambda r: (-r.get('confidence', 0), -r.get('support', 0))
         )
 
         return {

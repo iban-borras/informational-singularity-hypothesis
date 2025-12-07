@@ -39,32 +39,39 @@ RESULTS_DIR = ROOT / "results" / "phi_snapshots" / "var_A"  # Same location as o
 def generate_random_bits(num_bits: int, seed: Optional[int] = None, use_csprng: bool = False) -> str:
     """
     Generate pseudo-random bits.
-    
+
     Args:
         num_bits: Number of bits to generate
         seed: Optional seed for reproducibility (PRNG only)
         use_csprng: If True, use cryptographic RNG (secrets module)
-    
+
     Returns:
         String of '0' and '1' characters
     """
-    if use_csprng:
-        # Cryptographically secure - no seed, max entropy
-        # Generate in chunks to avoid memory issues
-        chunk_size = 1_000_000
-        chunks = []
-        remaining = num_bits
-        while remaining > 0:
-            n = min(remaining, chunk_size)
+    # Optimized: generate in chunks using randbits (much faster than bit-by-bit)
+    chunk_size = 10_000_000  # 10M bits per chunk
+    chunks = []
+    remaining = num_bits
+
+    if not use_csprng and seed is not None:
+        random.seed(seed)
+
+    while remaining > 0:
+        n = min(remaining, chunk_size)
+        if use_csprng:
+            # Cryptographically secure
             bits = bin(secrets.randbits(n))[2:].zfill(n)
-            chunks.append(bits)
-            remaining -= n
-        return ''.join(chunks)[:num_bits]
-    else:
-        # Mersenne Twister PRNG - reproducible with seed
-        if seed is not None:
-            random.seed(seed)
-        return ''.join(str(random.randint(0, 1)) for _ in range(num_bits))
+        else:
+            # Fast PRNG using random.getrandbits
+            bits = bin(random.getrandbits(n))[2:].zfill(n)
+        chunks.append(bits)
+        remaining -= n
+        # Progress feedback for large sequences
+        if num_bits > 100_000_000:  # >100M bits
+            pct = 100 * (1 - remaining / num_bits)
+            print(f"[variant_A]   Generated {pct:.0f}%...", flush=True)
+
+    return ''.join(chunks)[:num_bits]
 
 
 def get_variant_size(variant: str, iterations: int) -> Optional[int]:
@@ -122,17 +129,18 @@ def generate_control_variant(
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     t0 = time.perf_counter()
-    print(f"[variant_A] Generating {num_bits:,} random bits...")
+    print(f"[variant_A] Generating {num_bits:,} random bits (~{num_bits/1e6:.1f}M)...", flush=True)
+    print(f"[variant_A] ⏳ This may take a while for large sequences...", flush=True)
 
     # Generate random bits (no parentheses - pure random sequence)
     bits = generate_random_bits(num_bits, seed=seed, use_csprng=use_csprng)
 
     gen_time = time.perf_counter() - t0
-    print(f"[variant_A] Generated in {gen_time:.2f}s")
+    print(f"[variant_A] ✅ Generated in {gen_time:.2f}s", flush=True)
 
     # Save using v33 bitarray encoder (same as other variants)
     struct_path = RESULTS_DIR / f"phi_iter{iterations}.struct.gz"
-    print(f"[variant_A] Saving to {struct_path}...")
+    print(f"[variant_A] 💾 Saving to {struct_path.name}...", flush=True)
 
     t1 = time.perf_counter()
     compressed_size = save_phi_structural_gz(bits, str(struct_path))
@@ -207,8 +215,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate random control data (Variant A) for HSI comparison"
     )
-    parser.add_argument("--iterations", "-i", type=int, required=True,
-                       help="Iteration number (for filename and size matching)")
+    parser.add_argument("--iterations", "-i", type=int, default=None,
+                       help="Iteration number (for filename and size matching). "
+                            "Can also be set via HSI_ITERATIONS env var.")
     parser.add_argument("--bits", "-b", type=int, default=None,
                        help="Number of bits to generate (overrides --match-variant)")
     parser.add_argument("--match-variant", "-m", type=str, default="B",
@@ -220,14 +229,23 @@ def main():
 
     args = parser.parse_args()
 
+    # Support HSI_ITERATIONS env var (for run_all_variants.py integration)
+    if args.iterations is None:
+        env_iter = os.environ.get("HSI_ITERATIONS")
+        if env_iter:
+            args.iterations = int(env_iter)
+        else:
+            parser.error("--iterations/-i is required (or set HSI_ITERATIONS env var)")
+
     # Determine number of bits
     if args.bits:
         num_bits = args.bits
-        print(f"[variant_A] Using specified size: {num_bits:,} bits")
+        print(f"[variant_A] Using specified size: {num_bits:,} bits", flush=True)
     else:
+        print(f"[variant_A] Looking up size from variant {args.match_variant} i={args.iterations}...", flush=True)
         num_bits = get_variant_size(args.match_variant, args.iterations)
         if num_bits:
-            print(f"[variant_A] Matching variant {args.match_variant} i={args.iterations}: {num_bits:,} bits")
+            print(f"[variant_A] Matching variant {args.match_variant}: {num_bits:,} bits ({num_bits/1e6:.1f}M)", flush=True)
         else:
             print(f"[ERROR] Could not find size for variant {args.match_variant} i={args.iterations}")
             print(f"[INFO] Use --bits to specify size manually")

@@ -1,13 +1,12 @@
 # 📊 Level 1 — Pattern Analysis & Order Flow
 
-**Version:** HSI v33  
 **Purpose:** Load and analyze Level 0 data with structural information preservation
 
 ---
 
 ## 🎯 Overview
 
-Level 1 implements pattern detection and order analysis for the Informational Singularity Hypothesis (HSI). With v33, Level 1 can now analyze **structural order** encoded in parentheses, enabling detection of emergent patterns that were invisible in v32.
+Level 1 implements pattern detection and order analysis for the Informational Singularity Hypothesis (HSI). Level 1 can analyze **structural order** encoded in parentheses, enabling detection of emergent patterns.
 
 ---
 
@@ -15,7 +14,7 @@ Level 1 implements pattern detection and order analysis for the Informational Si
 
 ### **1. Data Loader** (`data_loader.py`)
 
-Loads Level 0 data with automatic format detection (v32/v33).
+Loads Level 0 data with automatic format detection.
 
 **Key functions:**
 - `load_phi_for_level1()`: Load Φ with both structural and observable versions
@@ -47,12 +46,12 @@ print(f"Number of Absolutes: {info['num_absolutes']}")
 
 ## 📁 Data Format Support
 
-### **v32 Format (Legacy)**
+### **Legacy Format**
 - **File:** `phi_iter{N}.bin.gz` (text gzip)
 - **Content:** Clean binary string "010101..."
 - **Limitation:** No structural information
 
-### **v33 Format (Current)**
+### **Structural Format (Current)**
 - **File:** `phi_iter{N}.struct.gz` (bitarray gzip)
 - **Content:** 2-bit encoded structure with parentheses
 - **Encoding:**
@@ -68,7 +67,7 @@ print(f"Number of Absolutes: {info['num_absolutes']}")
 
 ### **What is Structural Information?**
 
-In HSI v32, we discovered that **order is the fundamental principle**, not φ-convergence. The parentheses in Φ encode the **stratified containment structure** of Absolutes, which is critical for understanding emergent order.
+In ISH, **order is the fundamental principle**, not φ-convergence. The parentheses in Φ encode the **stratified containment structure** of Absolutes, which is critical for understanding emergent order.
 
 **Example:**
 ```
@@ -99,7 +98,7 @@ Observable Φ: 011
 ```python
 from level1.data_loader import load_phi_for_level1
 
-# Load v33 data with structure
+# Load data with structure
 phi_s, phi_o, meta = load_phi_for_level1("results/var_B", 10)
 
 print(f"Format: {meta['format']}")
@@ -139,7 +138,6 @@ See `example_usage.py` for comprehensive examples:
 - Analyzing structural information
 - Fast loading (observable only)
 - Loading ranges
-- Comparing v32 and v33 formats
 
 ---
 
