@@ -286,13 +286,31 @@ class Level1Orchestrator:
 
         if not struct_path.exists():
             available = self.get_available_iterations(variant)
-            print(f"\n❌ ERROR: Level 0 data not found for Variant {variant}, Iteration {iteration}")
-            print(f"   Missing file: {struct_path}")
-            if available:
-                print(f"\n📋 Available iterations for variant {variant}: {available}")
-            print(f"\n💡 Generate Level 0 data first:")
-            print(f"   python run_all_variants.py --variant {variant} --iterations {iteration}")
-            raise FileNotFoundError(f"Level 0 data missing for variant {variant} iter {iteration}")
+            max_available = max(available) if available else 0
+
+            print("\n" + "=" * 70)
+            print("❌ LEVEL 0 DATA NOT FOUND")
+            print("=" * 70)
+            print(f"\n📁 Missing file: {struct_path.name}")
+            print(f"   Full path: {struct_path}")
+
+            if iteration > max_available and max_available > 0:
+                print(f"\n📊 Reason: You requested iteration {iteration}, but Level 0 data")
+                print(f"   only exists up to iteration {max_available} for variant {variant}.")
+                print(f"\n   The HSI generator must first compute iterations 1→{iteration}")
+                print(f"   before Level 1 analysis can be performed.")
+            elif max_available == 0:
+                print(f"\n📊 Reason: No Level 0 data exists for variant {variant}.")
+                print(f"   The HSI generator must first compute the Φ sequences.")
+            else:
+                print(f"\n📊 Available iterations for variant {variant}: {available}")
+
+            print(f"\n💡 Solution: Generate Level 0 data first with:")
+            print(f"   python -m level0.generator --variant {variant} --iterations {iteration}")
+            print("\n" + "=" * 70)
+
+            # Raise a custom exception that can be caught cleanly
+            raise SystemExit(1)
 
         print(f"🔬 Analyzing Variant {variant}, Iteration {iteration}")
         return self.analyze_file(str(struct_path), use_cache=use_cache)

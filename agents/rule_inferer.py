@@ -124,16 +124,26 @@ class RuleInferer:
     
     def _infer_markov_rules(self, patterns: List[Dict[str, Any]],
                           phi_sequence: str) -> List[Dict[str, Any]]:
-        """Infer transition rules based on Markov chains."""
+        """Infer transition rules based on Markov chains.
+
+        Always generates order 1-3 Markov rules (needed for heatmaps/visualizations),
+        plus additional higher-order rules if min_context_length > 3.
+        """
         rules = []
 
-        # Use Numba-optimized version for large sequences (only if min_context_length <= 3)
-        if NUMBA_AVAILABLE and len(phi_sequence) > 10000 and self.min_context_length <= 3:
-            return self._infer_markov_rules_numba(phi_sequence)
+        # ALWAYS generate order 1-3 Markov rules with Numba (for heatmaps)
+        if NUMBA_AVAILABLE and len(phi_sequence) > 10000:
+            rules = self._infer_markov_rules_numba(phi_sequence)
 
-        # Pure Python version - respects min_context_length
-        max_order = min(self.context_window + 1, 20)  # Cap at 20 to avoid memory issues
-        for order in range(self.min_context_length, max_order):
+            # If min_context_length > 3, we already have orders 1-3 from Numba
+            # No need to add more with pure Python (too slow for higher orders)
+            return rules
+
+        # Pure Python fallback (small sequences or no Numba)
+        max_order = min(self.context_window + 1, 20)
+        start_order = 1  # Always start from order 1
+
+        for order in range(start_order, max_order):
             transitions = defaultdict(Counter)
 
             for i in range(len(phi_sequence) - order):

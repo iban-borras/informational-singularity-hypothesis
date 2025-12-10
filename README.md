@@ -21,12 +21,13 @@ hsi_agents_project/
 ├── ════════════════════════════════════════════════════════════
 │   📌 MAIN SCRIPTS (run from project root)
 ├── ════════════════════════════════════════════════════════════
-├── level0_generate.py                # Level 0: Generate Φ for all ISH variants
+├── level0_generate.py                # Level 0: Generate Φ for all ISH variants (A-I)
 ├── level0_random_control.py          # Level 0: Random control for comparison
 ├── level0_refresh_plots.py           # Level 0: Regenerate plots from cache
 ├── level0_estimate_storage.py        # Level 0: Storage estimation tool
 ├── level1_analyze_patterns.py        # Level 1: Pattern detection and rule inference
 ├── level1_emergence_index.py         # Level 1: Emergence Index (Level 2 potential)
+├── level1_sci_icc.py                 # Level 1: SCI & ICC metrics calculation
 ├── level1_visualize.py               # Level 1: Generate publication figures
 ├── level1_view_results.py            # Level 1: View/analyze JSON results
 │
@@ -39,6 +40,7 @@ hsi_agents_project/
 │   ├── level1_figures_plan.md        # Figure generation plan
 │   ├── order_metrics_explained.md    # Scientific explanation of metrics
 │   ├── variants_spec.md              # Variant specifications
+│   ├── phi_emergence_mechanism.md    # φ emergence analysis (E vs B vs I)
 │   ├── geometric_analysis_plan.md    # Geometric analysis plan
 │   ├── GPU_ACCELERATION_PROPOSAL.md  # Future GPU integration
 │   └── HSI_Variants_Analysis_For_Review.md # Analysis for peer review
@@ -126,12 +128,13 @@ All scripts can be run directly from the project root:
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `level0_generate.py` | Generate Φ sequences for all ISH variants | `python level0_generate.py --variant B --iterations 18` |
+| `level0_generate.py` | Generate Φ sequences for all ISH variants (A-I) | `python level0_generate.py --variant B --iterations 18` |
 | `level0_random_control.py` | Generate random control data | `python level0_random_control.py -i 14` |
 | `level0_refresh_plots.py` | Regenerate plots from cached data | `python level0_refresh_plots.py -v B -i 18` |
 | `level0_estimate_storage.py` | Estimate storage needs for high iterations | `python level0_estimate_storage.py --max-iteration 24` |
 | `level1_analyze_patterns.py` | Pattern detection and rule inference | `python level1_analyze_patterns.py -v B -i 18 --report` |
 | `level1_emergence_index.py` | Calculate Emergence Index (Level 2 potential) | `python level1_emergence_index.py -v B -i 18` |
+| `level1_sci_icc.py` | Calculate SCI & ICC metrics from emergence data | `python level1_sci_icc.py --from-emergence results/emergence_*.json` |
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
 | `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
 
@@ -141,11 +144,17 @@ All scripts can be run directly from the project root:
 # Level 0: Generate Φ sequences (can take hours/days for high iterations)
 python level0_generate.py --variant B --iterations 18
 
+# Level 0: Generate Variant I (inverse order: 10→01, for φ-asymmetry study)
+python level0_generate.py --variant I --iterations 18
+
 # Level 1: Analyze patterns and infer rules
 python level1_analyze_patterns.py --variant B --iteration 18 --report
 
 # Level 1: Calculate Emergence Index (potential for Level 2)
 python level1_emergence_index.py --variant B --iteration 18
+
+# Level 1: Calculate SCI & ICC metrics from emergence data
+python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_iter18.json
 
 # Level 1: Generate publication figures
 python level1_visualize.py --variants B A --iterations 18 --format pdf
@@ -647,6 +656,60 @@ python level1_emergence_index.py --variant B --iteration 18 --output results/eme
 - **High Emergence Index (>0.7)**: Strong potential for Level 2 emergence; shows characteristics of complex systems at the edge of chaos
 - **Medium (0.4-0.7)**: Moderate potential; some emergent properties present
 - **Low (<0.4)**: Limited potential; either too ordered or too chaotic
+
+### 🧠 Structured Complexity Index (SCI) & Cosmological Coherence Index (ICC)
+
+These are advanced metrics designed to evaluate which HSI variant has the highest potential for generating **universe-like structures with emergent physical laws**.
+
+#### Structured Complexity Index (SCI)
+
+**Purpose:** Distinguishes "meaningful" complexity from empty randomness. A random sequence has high entropy but no structure; a trivial sequence (all 0s) has no complexity. Physical systems need *structured* complexity—order at multiple scales with causal relationships.
+
+**Formula:**
+```
+SCI = α·Hierarchy + β·Causality + γ·NonTriviality
+```
+
+| Component | Weight | What it measures | Optimal |
+|-----------|--------|------------------|---------|
+| **Hierarchy** | 35% | Structure at multiple scales (variance of multi-scale entropy) | High variance |
+| **Causality** | 40% | Transfer Entropy—how much the past predicts the future (physics needs causality!) | High TE |
+| **NonTriviality** | 25% | LZ≈0.5 AND diverse patterns (not trivial, not random) | LZ=0.5, high diversity |
+
+**Interpretation:**
+- **SCI > 0.6**: High structured complexity—strong emergence potential for physical laws
+- **SCI 0.4-0.6**: Good complexity—candidate for emergence
+- **SCI < 0.4**: Low or random—limited potential
+
+#### Cosmological Coherence Index (ICC)
+
+**Purpose:** Evaluates compatibility with **physical universe generation**. A high ICC suggests the variant could generate physics-like structures. Inspired by known properties of our universe.
+
+**Formula:**
+```
+ICC = √(Compressibility × Coherence) × Hierarchy × Criticality × (1 + φ_bonus)
+```
+
+| Component | What it measures | Why it matters |
+|-----------|------------------|----------------|
+| **Compressibility** | 1 - LZ (can information be compressed?) | Physical laws ARE compressible (F=ma, E=mc²) |
+| **Coherence** | Long-range Mutual Information | Non-local correlations (like quantum entanglement) |
+| **Hierarchy** | Multi-scale structure | Quarks → atoms → molecules → cells → galaxies |
+| **Criticality** | Hurst ≈ 0.85, power slope ≈ -1 | Edge of chaos—where complexity emerges |
+| **φ-Tendency** | Golden ratio in ratios (optional bonus) | φ appears throughout nature |
+
+**Interpretation:**
+- **ICC > 0.6**: Excellent cosmological coherence—strong candidate for universe generation
+- **ICC 0.4-0.6**: Good coherence—shows physical-like properties
+- **ICC < 0.4**: Limited coherence—less likely to generate physics
+
+**Usage:**
+```bash
+# Calculate SCI & ICC from pre-computed emergence data
+python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_iter18.json
+```
+
+**Key Discovery (December 2024):** Variant E shows the highest ICC (0.692), suggesting it is the best candidate for generating universe-like structures. This correlates with E being 1.61× (≈φ itself!) closer to the golden ratio than Variant B.
 
 ## 🎨 Visualizations
 ### Spectral Analysis (Welch Streaming)

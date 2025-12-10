@@ -390,6 +390,21 @@ def simulate_phi(
         result = re.sub(r'1+', '1', result)
         return result
 
+    def _simplify_variant_i(seq: str) -> str:
+        """Inverse of E: remove all 10 first, then all 01; then compress runs.
+
+        This variant tests the opposite order of E to determine if:
+        - The phi-proximity effect is symmetric (order doesn't matter which comes first)
+        - Or asymmetric (only 01-first generates phi, 10-first generates something else)
+
+        Hypothesis: If E's phi-generation comes from "emergence before collapse" (01→10),
+        then I's "collapse before emergence" (10→01) might generate different structure.
+        """
+        result = re.sub(r'10', '', seq)      # First remove 10 (collapse)
+        result = re.sub(r'01', '', result)   # Then remove 01 (emergence)
+        result = re.sub(r'0+', '0', result)
+        result = re.sub(r'1+', '1', result)
+        return result
 
 
     # Procés iteratiu principal (basal‑pure)
@@ -452,6 +467,7 @@ def simulate_phi(
                     "F": _simplify_base,
                     "G": _simplify_base,
                     "H": _simplify_base,
+                    "I": _simplify_variant_i,  # Inverse of E: 10 first, then 01
                 }
                 hybrid_simplify_fn = variant_simplify_fns.get(variant, _simplify_base)
                 hybrid_engine = HybridCollapseEngine(max_ram_bytes=max_ram_bytes, simplify_fn=hybrid_simplify_fn)
@@ -649,6 +665,31 @@ def simulate_phi(
                 # Final global simplify for E (like B does)
                 if len(state) > 1:
                     state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e)
+
+        elif variant == "I":
+            # I — Inverse of E: remove 10 first, then 01 (tests order asymmetry)
+            # Hypothesis: if E's phi-proximity comes from "emergence before collapse",
+            # then I's "collapse before emergence" might show different behavior
+            if used_hybrid:
+                # After streaming, apply final global simplify with I's rule
+                if len(state) > 1:
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i)
+            else:
+                while state != previous:
+                    previous = state
+                    if accumulation_manager:
+                        accumulation_manager.append(state)
+                    else:
+                        accumulation += state
+                    # Use _local to preserve outer structure (stratified like B)
+                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_i)
+                    if len(next_state) == 1:
+                        state = next_state
+                        break
+                    state = next_state
+                # Final global simplify for I (like B does)
+                if len(state) > 1:
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i)
 
         elif variant == "F":
             # Hybrid: fully stabilize inside→out, then one global pass

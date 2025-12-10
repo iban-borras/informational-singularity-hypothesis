@@ -156,23 +156,53 @@ class ResultsReporter:
             'alternating_dominance': False,
             'deterministic_structure': False,
             'fibonacci_patterns': [],
-            'phi_indicators': []
+            'phi_indicators': [],
+            'is_chaotic': False,
+            'chaos_indicators': []
         }
 
-        # Check for alternating pattern dominance
         observable = self.patterns.get('observable', [])
+
+        # === CHAOS DETECTION ===
+        # A chaotic/random sequence shows:
+        # 1. Uniform distribution of pattern occurrences (low variance)
+        # 2. No rules with ≥99% confidence
+        # 3. Many patterns but similar occurrence counts
+
+        if observable and len(observable) > 100:
+            recurrences = [p.get('recurrence', 0) for p in observable]
+            mean_rec = sum(recurrences) / len(recurrences)
+            variance = sum((r - mean_rec) ** 2 for r in recurrences) / len(recurrences)
+            std_dev = variance ** 0.5
+            coef_variation = std_dev / mean_rec if mean_rec > 0 else 0
+
+            # Low coefficient of variation = uniform distribution = chaos
+            if coef_variation < 0.05:  # Less than 5% variation
+                insights['is_chaotic'] = True
+                insights['chaos_indicators'].append(
+                    f"Uniform pattern distribution (CV={coef_variation:.3f}, expected >0.1 for order)"
+                )
+
+        # Check for zero deterministic rules
+        if self.rules:
+            high_conf = sum(1 for r in self.rules if r.get('confidence', 0) >= 0.99)
+            high_conf_ratio = high_conf / len(self.rules)
+
+            if high_conf_ratio == 0:
+                insights['is_chaotic'] = True
+                insights['chaos_indicators'].append(
+                    "No deterministic rules (0% with ≥99% confidence)"
+                )
+            elif high_conf_ratio > 0.5:
+                insights['deterministic_structure'] = True
+
+        # Check for alternating pattern dominance
         if observable:
             top_pattern = max(observable, key=lambda p: p.get('recurrence', 0))
             pattern_data = top_pattern.get('pattern_data', '')
             if pattern_data in ['0101010101', '1010101010'] or \
-               all(pattern_data[i] != pattern_data[i+1] for i in range(len(pattern_data)-1)):
+               (len(pattern_data) > 1 and all(pattern_data[i] != pattern_data[i+1] for i in range(len(pattern_data)-1))):
                 insights['alternating_dominance'] = True
-
-        # Check for deterministic structure (high confidence rules)
-        if self.rules:
-            high_conf = sum(1 for r in self.rules if r.get('confidence', 0) >= 0.99)
-            if high_conf / len(self.rules) > 0.5:
-                insights['deterministic_structure'] = True
 
         # Check for Fibonacci-related periods
         fib_numbers = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
@@ -228,12 +258,17 @@ class ResultsReporter:
 
         # Scientific insights
         print(f'\n🔬 SCIENTIFIC INSIGHTS')
-        if insights.get('alternating_dominance'):
-            print('   ✓ Alternating pattern dominance detected (0-1 oscillation)')
-        if insights.get('deterministic_structure'):
-            print('   ✓ Deterministic structure confirmed (>50% rules with ≥99% confidence)')
-        if insights.get('fibonacci_patterns'):
-            print(f'   ✓ Fibonacci periods found: {insights["fibonacci_patterns"]}')
+        if insights.get('is_chaotic'):
+            print('   ⚠️ CHAOTIC/RANDOM SEQUENCE DETECTED')
+            for indicator in insights.get('chaos_indicators', []):
+                print(f'      • {indicator}')
+        else:
+            if insights.get('alternating_dominance'):
+                print('   ✓ Alternating pattern dominance detected (0-1 oscillation)')
+            if insights.get('deterministic_structure'):
+                print('   ✓ Deterministic structure confirmed (>50% rules with ≥99% confidence)')
+            if insights.get('fibonacci_patterns'):
+                print(f'   ✓ Fibonacci periods found: {insights["fibonacci_patterns"]}')
 
         # Interpretation
         print(f'\n📝 INTERPRETATION')
@@ -246,6 +281,25 @@ class ResultsReporter:
     def _print_interpretation(self, pattern_stats, rule_stats, insights):
         """Generate scientific interpretation."""
         lines = []
+
+        # CHAOS WARNING - must come first
+        if insights.get('is_chaotic'):
+            lines.append("⚠️  WARNING: CHAOTIC/RANDOM SEQUENCE DETECTED")
+            lines.append("")
+            for indicator in insights.get('chaos_indicators', []):
+                lines.append(f"   • {indicator}")
+            lines.append("")
+            lines.append("This variant produces PSEUDO-RANDOM output, not structured")
+            lines.append("information. While random sequences can contain ANY pattern")
+            lines.append("by chance, they lack the stable, hierarchical order needed")
+            lines.append("for persistent physical laws.")
+            lines.append("")
+            lines.append("⚠️  NOT CONSISTENT WITH ISH: A universe from this variant")
+            lines.append("would have spontaneous formation/dissolution of structures")
+            lines.append("without stable underlying order.")
+            for line in lines:
+                print(f'   {line}')
+            return
 
         # Pattern interpretation
         if insights.get('alternating_dominance'):
@@ -269,8 +323,8 @@ class ResultsReporter:
             lines.append("tend to be followed by the opposite bit, creating alternation.")
 
         lines.append("")
-        lines.append("This is consistent with the ISH hypothesis: the collapse process")
-        lines.append("creates structured information with emergent regularities.")
+        lines.append("✅ CONSISTENT WITH ISH: The collapse process creates structured")
+        lines.append("information with emergent regularities and stable order.")
 
         for line in lines:
             print(f'   {line}')
@@ -364,19 +418,50 @@ class ResultsReporter:
         md.append("---")
         md.append("## Scientific Interpretation")
         md.append("")
-        md.append("### Consistency with ISH Hypothesis")
-        md.append("")
-        md.append("The results are consistent with the Informational Singularity Hypothesis:")
-        md.append("")
-        md.append("1. **Emergent Order**: The high percentage of deterministic rules confirms")
-        md.append("   that the collapse process generates structured, non-random information.")
-        md.append("")
-        md.append("2. **Anti-Repetition Dynamics**: Rules preventing consecutive identical bits")
-        md.append("   create the observed oscillatory patterns, a signature of ISH collapse.")
-        md.append("")
-        md.append("3. **Scale-Invariant Patterns**: Pattern lengths spanning multiple orders of")
-        md.append("   magnitude suggest fractal-like self-similarity in the generated structures.")
-        md.append("")
+
+        if insights.get('is_chaotic'):
+            # CHAOTIC VARIANT - WARNING
+            md.append("### ⚠️ CHAOTIC/RANDOM SEQUENCE WARNING")
+            md.append("")
+            md.append("**This variant produces PSEUDO-RANDOM output, NOT structured information.**")
+            md.append("")
+            md.append("#### Chaos Indicators Detected:")
+            md.append("")
+            for indicator in insights.get('chaos_indicators', []):
+                md.append(f"- {indicator}")
+            md.append("")
+            md.append("#### Scientific Interpretation:")
+            md.append("")
+            md.append("While a random sequence can contain ANY pattern by statistical chance,")
+            md.append("it lacks the **stable, hierarchical order** required for persistent physical laws.")
+            md.append("")
+            md.append("A universe generated from this variant would exhibit:")
+            md.append("- **Spontaneous formation/dissolution** of structures without cause")
+            md.append("- **No stable physical laws** — constants would fluctuate randomly")
+            md.append("- **No persistent complexity** — organized structures would decay immediately")
+            md.append("")
+            md.append("### ❌ NOT Consistent with ISH")
+            md.append("")
+            md.append("This variant does NOT demonstrate the structured collapse process")
+            md.append("predicted by the Informational Singularity Hypothesis. The absence of")
+            md.append("deterministic rules (0% with ≥99% confidence) indicates pure randomness,")
+            md.append("not emergent order.")
+            md.append("")
+        else:
+            # ORDERED VARIANT - Consistent with ISH
+            md.append("### ✅ Consistency with ISH Hypothesis")
+            md.append("")
+            md.append("The results are consistent with the Informational Singularity Hypothesis:")
+            md.append("")
+            md.append("1. **Emergent Order**: The high percentage of deterministic rules confirms")
+            md.append("   that the collapse process generates structured, non-random information.")
+            md.append("")
+            md.append("2. **Anti-Repetition Dynamics**: Rules preventing consecutive identical bits")
+            md.append("   create the observed oscillatory patterns, a signature of ISH collapse.")
+            md.append("")
+            md.append("3. **Scale-Invariant Patterns**: Pattern lengths spanning multiple orders of")
+            md.append("   magnitude suggest fractal-like self-similarity in the generated structures.")
+            md.append("")
 
         # Data for Paper
         md.append("---")

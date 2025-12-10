@@ -10,6 +10,7 @@ Available modules:
 - rule_metrics: Metrics to evaluate rules ωₖ
 - order_metrics: Metrics to evaluate emergent order (v33 structural)
 - emergence_index: Emergence Index for Level 2 potential estimation
+- structured_complexity: SCI and ICC for universe generation potential
 """
 
 from .pattern_metrics import PatternMetrics, create_pattern_report
@@ -22,11 +23,21 @@ from .emergence_index import (
     calculate_lempel_ziv_complexity,
     calculate_long_range_mutual_info
 )
+from .structured_complexity import (
+    calculate_sci,
+    calculate_icc,
+    calculate_transfer_entropy,
+    calculate_nontriviality,
+    calculate_phi_tendency,
+    analyze_structured_complexity
+)
 
 __all__ = [
     'PatternMetrics', 'RuleMetrics', 'OrderMetrics',
     'create_pattern_report', 'create_rule_report', 'create_order_report',
     'calculate_emergence_index', 'compare_variants_emergence',
     'calculate_power_spectrum_slope', 'calculate_lempel_ziv_complexity',
-    'calculate_long_range_mutual_info'
+    'calculate_long_range_mutual_info',
+    'calculate_sci', 'calculate_icc', 'calculate_transfer_entropy',
+    'calculate_nontriviality', 'calculate_phi_tendency', 'analyze_structured_complexity'
 ]

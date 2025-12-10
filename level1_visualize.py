@@ -11,11 +11,11 @@ Usage:
 """
 
 import sys
-import runpy
+import subprocess
 from pathlib import Path
 
 if __name__ == '__main__':
-    script_path = Path(__file__).parent / "level1" / "level1_figures.py"
-    sys.argv[0] = str(script_path)
-    runpy.run_path(str(script_path), run_name="__main__")
+    # Use subprocess to run as module for proper relative imports
+    args = [sys.executable, '-m', 'level1.level1_figures'] + sys.argv[1:]
+    sys.exit(subprocess.call(args))
 

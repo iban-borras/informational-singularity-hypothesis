@@ -1381,7 +1381,7 @@ def parse_args():
                         help="Number of iterations to pass to the generator (env HSI_ITERATIONS otherwise)")
     # Variant selection
     parser.add_argument("--variant", "-v", type=str, default=None,
-                        help="Run only this variant (A, B, D, E, F, G, H). A is random control.")
+                        help="Run only this variant (A, B, D, E, F, G, H, I). A is random control, I is inverse of E.")
     parser.add_argument("--include-control", action="store_true",
                         help="Include Variant A (Random Control) in the run")
     # Plot-only focused flags (prefer CLI over envs)
@@ -1427,6 +1427,7 @@ def main():
         ("-m", "hsi_agents_project.level0_random_control", "Variant A (Random Control)", "variant_A_results.json", "A"),
         ("-m", "hsi_agents_project.level0.generator", "Variant B (Stratified Baseline)", "variant_B_results.json", "B"),
         ("-m", "hsi_agents_project.level0.generator", "Variant D (Minimal Asymmetry)", "variant_D_results.json", "D"),
+        ("-m", "hsi_agents_project.level0.generator", "Variant I (Inverse Order: 10→01)", "variant_I_results.json", "I"),
         ("-m", "hsi_agents_project.level0.generator", "Variant E (Ordered Passes)", "variant_E_results.json", "E"),
         ("-m", "hsi_agents_project.level0.generator", "Variant F (Hybrid)", "variant_F_results.json", "F"),
         ("-m", "hsi_agents_project.level0.generator", "Variant G (Raw Stratified)", "variant_G_results.json", "G"),
@@ -1440,7 +1441,7 @@ def main():
         variants = [v for v in all_variants if v[4] == variant_code]
         if not variants:
             print(f"❌ ERROR: Unknown variant '{variant_code}'")
-            print(f"   Available variants: A, B, D, E, F, G, H")
+            print(f"   Available variants: A, B, D, E, F, G, H, I")
             return
         print(f"🎯 Running only Variant {variant_code}")
     elif args.include_control:

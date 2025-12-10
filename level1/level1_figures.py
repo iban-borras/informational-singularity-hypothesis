@@ -30,6 +30,17 @@ except ImportError:
     HAS_SEABORN = False
     print("⚠️  seaborn not available, heatmaps will use matplotlib only")
 
+# Import survival analysis module
+try:
+    from . import survival_analysis
+    HAS_SURVIVAL = True
+except ImportError:
+    try:
+        import survival_analysis
+        HAS_SURVIVAL = True
+    except ImportError:
+        HAS_SURVIVAL = False
+
 # =============================================================================
 # STYLE CONFIGURATION
 # =============================================================================
@@ -546,6 +557,12 @@ def generate_all_figures(discovered: Dict[str, Dict[int, dict]],
         if len(discovered[v]) >= 2:
             total_figures += 2
 
+    # Survival analysis figures: 3 per variant with 2+ iterations
+    if HAS_SURVIVAL:
+        for v in variant_list:
+            if len(discovered[v]) >= 2:
+                total_figures += 3  # flow, recurrence, lengths
+
     print(f"\n📊 Generating {total_figures} figures...")
     progress = ProgressBar(total_figures, "Generating")
 
@@ -613,6 +630,19 @@ def generate_all_figures(discovered: Dict[str, Dict[int, dict]],
             if fname:
                 generated.append(fname)
             progress.update()
+
+    # =========================
+    # SURVIVAL ANALYSIS FIGURES
+    # =========================
+    if HAS_SURVIVAL:
+        for variant in variant_list:
+            if len(discovered[variant]) >= 2:
+                # Run survival analysis for variants with multiple iterations
+                fnames = survival_analysis.run_survival_analysis(
+                    discovered, variant, output_dir, fmt, dpi, verbose=True
+                )
+                generated.extend(fnames)
+                progress.update()
 
     return generated
 
