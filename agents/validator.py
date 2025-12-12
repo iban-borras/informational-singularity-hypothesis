@@ -259,19 +259,70 @@ class Validator:
     
     def _validate_composition_rule(self, rule: Dict[str, Any],
                                  phi_sequences: List[str]) -> Dict[str, Any]:
-        """Validate a composition rule."""
+        """
+        Validate a composition rule by checking if component patterns
+        actually appear together and produce the expected pattern.
+        """
         components = rule.get('components', [])
         produces = rule.get('produces', [])
 
         if not components or not produces:
             return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
 
-        # This validation is more complex and requires access to original patterns
-        # For simplicity, we return a basic validation
+        # Build expected pattern from components (simple concatenation model)
+        # e.g., if components=['101', '010'], expected might be '101010'
+        expected_combined = ''.join(components)
+        produced_pattern = produces[0] if produces else ''
+
+        correct_predictions = 0
+        total_predictions = 0
+        sequence_scores = []
+
+        for sequence in phi_sequences:
+            seq_correct = 0
+            seq_total = 0
+
+            # Count co-occurrences: when components appear consecutively
+            pos = 0
+            while pos < len(sequence) - len(expected_combined):
+                idx = sequence.find(expected_combined, pos)
+                if idx == -1:
+                    break
+                seq_total += 1
+                total_predictions += 1
+
+                # Check if the produced pattern also appears nearby (within window)
+                window_start = max(0, idx - 20)
+                window_end = min(len(sequence), idx + len(expected_combined) + 20)
+                window = sequence[window_start:window_end]
+
+                if produced_pattern in window:
+                    seq_correct += 1
+                    correct_predictions += 1
+
+                pos = idx + 1
+
+            if seq_total > 0:
+                sequence_scores.append(seq_correct / seq_total)
+
+        if total_predictions == 0:
+            # No occurrences found - use confidence as fallback
+            return {
+                'accuracy': rule.get('confidence', 0.5) * 0.5,  # Penalize lack of evidence
+                'stability': 0.0,
+                'total_tests': 0,
+                'validation_type': 'composition',
+                'note': 'No component co-occurrences found'
+            }
+
+        overall_accuracy = correct_predictions / total_predictions
+        stability = 1.0 - np.std(sequence_scores) if len(sequence_scores) > 1 else 0.5
+
         return {
-            'accuracy': rule.get('confidence', 0.5),
-            'stability': 0.8,  # Assume high stability for deterministic rules
-            'total_tests': 1,
+            'accuracy': overall_accuracy,
+            'stability': stability,
+            'total_tests': total_predictions,
+            'sequence_scores': sequence_scores,
             'validation_type': 'composition'
         }
 
@@ -346,14 +397,71 @@ class Validator:
     
     def _validate_generic_rule(self, rule: Dict[str, Any],
                              phi_sequences: List[str]) -> Dict[str, Any]:
-        """Generic validation for unknown rules."""
-        # Return original confidence as approximation
+        """
+        Generic validation for unknown rule types.
+
+        Uses a sampling approach: tests the rule's pattern/prediction
+        across multiple segments of the sequence to estimate accuracy.
+        """
         confidence = rule.get('confidence', 0.5)
+        pattern = rule.get('pattern', rule.get('context', ''))
+        prediction = rule.get('prediction', rule.get('produces', [''])[0] if rule.get('produces') else '')
+
+        if not pattern or not prediction:
+            # Cannot validate without pattern/prediction
+            return {
+                'accuracy': confidence * 0.5,  # Penalize lack of testable content
+                'stability': 0.0,
+                'total_tests': 0,
+                'validation_type': 'generic',
+                'note': 'No pattern or prediction to validate'
+            }
+
+        # Test across sequences
+        segment_scores = []
+        total_tests = 0
+
+        for sequence in phi_sequences:
+            if len(sequence) < len(pattern) + len(prediction):
+                continue
+
+            # Count pattern occurrences followed by prediction
+            correct = 0
+            occurrences = 0
+            pos = 0
+            while pos < len(sequence) - len(pattern) - len(prediction):
+                idx = sequence.find(pattern, pos)
+                if idx == -1:
+                    break
+                occurrences += 1
+                total_tests += 1
+
+                # Check if prediction follows
+                after_pattern = sequence[idx + len(pattern):idx + len(pattern) + len(prediction)]
+                if after_pattern == prediction:
+                    correct += 1
+
+                pos = idx + 1
+
+            if occurrences > 0:
+                segment_scores.append(correct / occurrences)
+
+        if total_tests == 0:
+            return {
+                'accuracy': confidence * 0.3,  # Heavy penalty for untestable
+                'stability': 0.0,
+                'total_tests': 0,
+                'validation_type': 'generic',
+                'note': 'Pattern not found in sequences'
+            }
+
+        overall_accuracy = np.mean(segment_scores) if segment_scores else 0.0
+        stability = 1.0 - np.std(segment_scores) if len(segment_scores) > 1 else 0.5
 
         return {
-            'accuracy': confidence,
-            'stability': confidence * 0.8,  # Assume lower stability
-            'total_tests': 1,
+            'accuracy': overall_accuracy,
+            'stability': max(0.0, stability),
+            'total_tests': total_tests,
             'validation_type': 'generic'
         }
 

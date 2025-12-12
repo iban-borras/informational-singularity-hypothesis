@@ -31,6 +31,12 @@ from .structured_complexity import (
     calculate_phi_tendency,
     analyze_structured_complexity
 )
+from .statistical_tests import (
+    generate_null_model,
+    generate_shuffled_null,
+    permutation_test,
+    compare_to_null_model
+)
 
 __all__ = [
     'PatternMetrics', 'RuleMetrics', 'OrderMetrics',
@@ -39,5 +45,6 @@ __all__ = [
     'calculate_power_spectrum_slope', 'calculate_lempel_ziv_complexity',
     'calculate_long_range_mutual_info',
     'calculate_sci', 'calculate_icc', 'calculate_transfer_entropy',
-    'calculate_nontriviality', 'calculate_phi_tendency', 'analyze_structured_complexity'
+    'calculate_nontriviality', 'calculate_phi_tendency', 'analyze_structured_complexity',
+    'generate_null_model', 'generate_shuffled_null', 'permutation_test', 'compare_to_null_model'
 ]

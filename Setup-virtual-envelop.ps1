@@ -151,22 +151,50 @@ if (-not $env:VIRTUAL_ENV -or $needsNewVenv) {
     Write-Log "Virtual environment already activated."
 }
 
-# Install dependencies
-Write-Log "Installing dependencies..."
+# Check for missing dependencies (works for both new and existing venv)
+Write-Log "Checking for missing dependencies..."
 try {
-    # Update pip
-    python -m pip install --upgrade pip
-
-    # Check if requirements file exists
     if (Test-Path -Path $requirementsFile) {
-        # Install dependencies from requirements.txt file
-        python -m pip install -r $requirementsFile
-        Write-Log "Dependencies installed successfully."
+        # Get list of installed packages
+        $installedPackages = python -m pip list --format=freeze 2>$null | ForEach-Object {
+            ($_ -split "==")[0].ToLower()
+        }
+
+        # Parse requirements.txt for required packages
+        $missingPackages = @()
+        Get-Content $requirementsFile | ForEach-Object {
+            $line = $_.Trim()
+            # Skip comments and empty lines
+            if ($line -and -not $line.StartsWith("#")) {
+                # Extract package name (before >=, ==, <, etc.)
+                $packageName = ($line -split "[><=\[\]]")[0].Trim().ToLower()
+                if ($packageName -and -not ($installedPackages -contains $packageName)) {
+                    $missingPackages += $line
+                }
+            }
+        }
+
+        if ($missingPackages.Count -gt 0) {
+            Write-Log "Found $($missingPackages.Count) missing package(s): $($missingPackages -join ', ')"
+            Write-Log "Installing missing dependencies..."
+
+            # Update pip first
+            python -m pip install --upgrade pip
+
+            # Install missing packages
+            foreach ($pkg in $missingPackages) {
+                Write-Host "  Installing: $pkg" -ForegroundColor Yellow
+                python -m pip install $pkg
+            }
+            Write-Log "Missing dependencies installed successfully."
+        } else {
+            Write-Log "All dependencies are already installed."
+        }
     } else {
         throw "Requirements file not found at $requirementsFile"
     }
 } catch {
-    Write-Log "Error installing dependencies: $_" -IsError
+    Write-Log "Error checking/installing dependencies: $_" -IsError
     Exit 1
 }
 # Ensure .env exists (copy from template if missing) and preview HSI_* keys

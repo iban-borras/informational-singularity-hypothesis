@@ -22,6 +22,40 @@ from collections import Counter, defaultdict
 from scipy.stats import entropy, pearsonr
 from scipy.signal import find_peaks
 import json
+from pathlib import Path
+
+
+def _load_oei_weights() -> Dict[str, float]:
+    """
+    Load Order Emergence Index component weights from config.json if available.
+
+    Returns:
+        Dictionary with weights for each component, summing to 1.0
+    """
+    # Defaults with scientific justification (see order_metrics_explained.md)
+    defaults = {
+        'depth_organization': 0.3,     # Core: hierarchical structure
+        'entropy_gradient': 0.3,       # Core: stratification quality
+        'containment_regularity': 0.2, # Support: content regularity
+        'balance_score': 0.2           # Gate: structural sanity
+    }
+
+    try:
+        config_path = Path(__file__).parent.parent / 'config.json'
+        if config_path.exists():
+            with open(config_path) as f:
+                config = json.load(f)
+            metrics_config = config.get('metrics', {})
+            custom_weights = metrics_config.get('oei_weights', {})
+
+            if custom_weights:
+                merged = {**defaults, **custom_weights}
+                total = sum(merged.values())
+                return {k: v/total for k, v in merged.items()}
+    except Exception:
+        pass
+
+    return defaults
 
 
 class OrderMetrics:
@@ -210,12 +244,27 @@ class OrderMetrics:
         balance_score = 1.0 if OrderMetrics._check_balance(phi_structural) else 0.0
 
         # Combine components (weighted average)
-        weights = {
-            'depth_organization': 0.3,
-            'entropy_gradient': 0.3,
-            'containment_regularity': 0.2,
-            'balance_score': 0.2
-        }
+        #
+        # SCIENTIFIC JUSTIFICATION OF WEIGHTS (Dec 2025 review):
+        #
+        # 1. Depth Organization (30%): Core signal - hierarchical structure is
+        #    fundamental to emergent order. Low depth entropy means Absolutes
+        #    concentrate at specific depths, indicating organized hierarchy.
+        #
+        # 2. Entropy Gradient (30%): Core signal - stratification quality shows
+        #    whether entropy changes systematically with depth. A negative trend
+        #    (entropy decreasing inward) indicates order increasing toward the core.
+        #
+        # 3. Containment Regularity (20%): Supporting signal - regular content
+        #    lengths suggest pattern formation, but regularity without hierarchy
+        #    is not true emergent order.
+        #
+        # 4. Balance Score (20%): Structural sanity check - unbalanced parentheses
+        #    indicate corrupted data. This is binary (0 or 1), so it acts as a
+        #    gate rather than a gradient.
+        #
+        # These weights can be customized via config.json → metrics.oei_weights
+        weights = _load_oei_weights()
 
         order_index = (
             weights['depth_organization'] * depth_organization +

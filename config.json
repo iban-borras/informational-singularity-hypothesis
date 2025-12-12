@@ -29,11 +29,15 @@
     "max_pattern_length": 20,
     "min_occurrences": 2,
     "similarity_threshold": 0.8,
+    "large_sequence_threshold": 10000000,
+    "sample_size": 1000000,
     "_help": {
       "min_pattern_length": "Minimum length of patterns to detect",
       "max_pattern_length": "Maximum length of patterns",
       "min_occurrences": "Minimum number of occurrences to consider a pattern",
-      "similarity_threshold": "Similarity threshold (0.0-1.0)"
+      "similarity_threshold": "Similarity threshold (0.0-1.0)",
+      "large_sequence_threshold": "Sequences above this size (bits) trigger sampling mode for memory efficiency. Default 10M bits is suitable for systems with 8-16GB RAM. Reduce to 5M for systems with less RAM, increase to 50M+ for high-memory systems.",
+      "sample_size": "When in sampling mode, analyze this many bits per sample. Default 1M provides good balance between accuracy and speed. Increase to 5M for more thorough analysis, reduce to 500K for faster results."
     }
   },
 
@@ -127,6 +131,44 @@
       "enable_structural_analysis": "Enable v33 structural analysis (nesting, containment, order)",
       "structural_metrics": "List of structural metrics to compute: nesting, containment, stratified_order",
       "max_nesting_depth": "Maximum expected nesting depth for structural analysis"
+    }
+  },
+
+  "metrics": {
+    "_comment": "Weights for composite metrics - see Documentation/order_metrics_explained.md",
+
+    "emergence_weights": {
+      "_comment": "Emergence Index (Level 2 potential) component weights",
+      "dfa": 0.25,
+      "criticality": 0.25,
+      "coherence": 0.20,
+      "hierarchy": 0.15,
+      "complexity": 0.15
+    },
+
+    "oei_weights": {
+      "_comment": "Order Emergence Index (structural order) component weights",
+      "depth_organization": 0.30,
+      "entropy_gradient": 0.30,
+      "containment_regularity": 0.20,
+      "balance_score": 0.20
+    },
+
+    "_help": {
+      "emergence_weights": {
+        "dfa": "DFA/Hurst (0.25): Most robust for long-range correlations (Peng et al., 1994)",
+        "criticality": "1/f spectrum (0.25): Classic SOC signature (Bak et al., 1987)",
+        "coherence": "Mutual Info (0.20): Direct correlation measure, sample-size sensitive",
+        "hierarchy": "HBE (0.15): Multi-scale structure, partially redundant with DFA",
+        "complexity": "Lempel-Ziv (0.15): Cannot distinguish structure from randomness alone"
+      },
+      "oei_weights": {
+        "depth_organization": "Core (0.30): Hierarchical structure is fundamental to order",
+        "entropy_gradient": "Core (0.30): Stratification quality indicates real order",
+        "containment_regularity": "Support (0.20): Regularity without hierarchy is not order",
+        "balance_score": "Gate (0.20): Binary sanity check for structural integrity"
+      },
+      "_note": "Weights are normalized to sum to 1.0. Modify based on your research priorities."
     }
   },
 

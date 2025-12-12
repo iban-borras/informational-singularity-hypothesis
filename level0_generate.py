@@ -65,8 +65,15 @@ BASE_PATH = Path(__file__).resolve().parent
 ROOT_PATH = BASE_PATH.parent  # repository root; parent of the package dir
 RESULTS_DIR = BASE_PATH / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-VIS_DIR = RESULTS_DIR / "visualizations"
+
+# Use unified structure: level0/visualizations
+VIS_DIR = RESULTS_DIR / "level0" / "visualizations"
 VIS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Fallback to old location if it exists and has files (backwards compatibility)
+_old_vis = RESULTS_DIR / "visualizations"
+if _old_vis.exists() and any(_old_vis.iterdir()):
+    VIS_DIR = _old_vis
 
 
 # Optional plotting: guard import for environments without matplotlib
@@ -1507,7 +1514,7 @@ def main():
     plot_fft(variant_results, max_bits=fft_prefix, skip=skip_f)
     plot_fft_amplitude_linear(variant_results, max_bits=fft_prefix, skip=skip_f)
 
-    # Save master summary
+    # Save master summary with variants in filename to avoid overwrites
     master_results = {
         'execution_summary': execution_results,
         'best_variant': best_variant,
@@ -1518,10 +1525,14 @@ def main():
         'spectrum_beta': beta_stats
     }
 
-    master_results_path = RESULTS_DIR / 'hsi_variants_master_results.json'
+    # Build filename with variant codes (e.g., hsi_master_results_B_E_I.json)
+    variant_codes = '_'.join(sorted(variants))
+    master_results_dir = RESULTS_DIR / "level0" / "reports"
+    master_results_dir.mkdir(parents=True, exist_ok=True)
+    master_results_path = master_results_dir / f'hsi_master_results_{variant_codes}.json'
     with open(master_results_path, 'w') as f:
         json.dump(master_results, f, indent=2)
-    print(f"📄 Master results saved: {master_results_path}")
+    print(f"💾 Saved: {master_results_path.relative_to(BASE_PATH)}")
 
     # Export metadata and compress for Level 1 (if enabled in config)
     try:

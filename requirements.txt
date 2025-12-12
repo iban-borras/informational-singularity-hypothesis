@@ -28,5 +28,8 @@ bitarray>=2.8.0
 # JIT Compilation for performance
 numba>=0.58.0
 
-# Opcional: Acceleració amb GPU (si disponible)
+# System monitoring for adaptive parallelism
+psutil>=5.9.0
+
+# Optional: GPU acceleration (NVIDIA CUDA)
 # cupy-cuda11x>=9.0.0  # Per NVIDIA CUDA 11.x

@@ -27,9 +27,20 @@ DEFAULT_MAX_DISK_TB = 1.0  # 1 TB default
 # Base path for outputs (anchored to project root)
 BASE_PATH = Path(__file__).resolve().parent.parent  # hsi_agents_project/
 RESULTS_DIR = BASE_PATH / "results"
-REPORTS_DIR = BASE_PATH / "results" / "reports"
-VISUALIZATIONS_DIR = BASE_PATH / "results" / "visualizations"
-SNAPSHOT_DATA_DIR = BASE_PATH / "results" / "snapshots"
+
+# Use unified structure: level0/ subdirectory
+REPORTS_DIR = BASE_PATH / "results" / "level0" / "reports"
+VISUALIZATIONS_DIR = BASE_PATH / "results" / "level0" / "visualizations"
+SNAPSHOT_DATA_DIR = BASE_PATH / "results" / "level0" / "snapshots"
+
+# Fallback to old locations if they exist (backwards compatibility)
+_old_reports = BASE_PATH / "results" / "reports"
+_old_vis = BASE_PATH / "results" / "visualizations"
+if _old_reports.exists() and any(_old_reports.iterdir()):
+    REPORTS_DIR = _old_reports
+if _old_vis.exists() and any(_old_vis.iterdir()):
+    VISUALIZATIONS_DIR = _old_vis
+
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 VISUALIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -271,7 +282,10 @@ def simulate_phi(
 
                 print(f"✅ Restored state from iteration {last_complete}")
                 print(f"   Current state length: {len(current_state):,}")
-                print(f"   Accumulation length: {len(accumulation):,}")
+                if accumulation_manager:
+                    print(f"   Accumulation length: {accumulation_manager.get_length():,}")
+                else:
+                    print(f"   Accumulation length: {len(accumulation):,}")
                 print(f"   Resuming from iteration {start_iteration + 1}")
                 print(f"{'='*60}\n")
 
@@ -547,6 +561,23 @@ def simulate_phi(
         if state_len > 100_000_000:  # >100MB
             print(f"   [collapse] Starting collapse on {state_len/1e9:.2f} GB...", flush=True)
             collapse_t0 = time.perf_counter()
+
+        # =====================================================================
+        # VARIANT-SPECIFIC COLLAPSE LOGIC
+        # =====================================================================
+        # NOTE ON CODE STRUCTURE (Dec 2025 review):
+        # The following variant blocks contain intentionally similar code.
+        # This repetition is DELIBERATE for scientific auditability:
+        #
+        # 1. Each variant must be independently verifiable against the paper
+        # 2. Reviewers should be able to read each variant in isolation
+        # 3. Changes to one variant must not accidentally affect others
+        # 4. The correspondence between paper description and code is 1:1
+        #
+        # A refactoring to Strategy Pattern was considered but rejected because
+        # it would add abstraction that obscures the exact implementation of
+        # each collapse mechanism, making scientific review more difficult.
+        # =====================================================================
 
         if variant == "B":
             # For streaming path, multi-pass collapse already done with intermediates
@@ -1425,13 +1456,16 @@ def _save_results(
         os.fsync(f.fileno())  # Force write to disk for Windows compatibility
     print(f"[INFO] 2.2/4 report saved to {rel}  (write={time.perf_counter()-t0w:.2f}s)")
 
-    # Save metadata and (optionally) final text sequence
+    # Save metadata with variant in filename to avoid overwrites
     t_meta0 = time.perf_counter()
-    with open(output_path / "phi_metadata.json", 'w') as f:
+    metadata_filename = f"phi_metadata_{variant_code}.json"
+    metadata_path = reports_dir / metadata_filename
+    with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
         f.flush()
         os.fsync(f.fileno())  # Force write to disk for Windows compatibility
-    print(f"[post] 2.3/4 saved phi_metadata.json in {time.perf_counter()-t_meta0:.2f}s")
+    rel_meta = metadata_path.relative_to(BASE_PATH)
+    print(f"[post] 2.3/4 saved {rel_meta} in {time.perf_counter()-t_meta0:.2f}s")
 
 
 # Funcions auxiliars per a compatibilitat amb altres mòduls

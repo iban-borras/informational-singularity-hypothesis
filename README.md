@@ -28,6 +28,7 @@ hsi_agents_project/
 ├── level1_analyze_patterns.py        # Level 1: Pattern detection and rule inference
 ├── level1_emergence_index.py         # Level 1: Emergence Index (Level 2 potential)
 ├── level1_sci_icc.py                 # Level 1: SCI & ICC metrics calculation
+├── level1_trend_analysis.py          # Level 1: Trend analysis + extrapolation
 ├── level1_visualize.py               # Level 1: Generate publication figures
 ├── level1_view_results.py            # Level 1: View/analyze JSON results
 │
@@ -72,9 +73,6 @@ hsi_agents_project/
 │   ├── bitarray_encoder.py           # Binary encoding utilities
 │   └── progress.py                   # Progress indicators
 └── results/                          # Results (excluded from git)
-    ├── phi_snapshots/                # Φ snapshots per variant
-    ├── figures/                      # Generated visualizations
-    └── reports/                      # Analysis reports
 ```
 
 ## 🔧 Installation and Dependencies
@@ -135,6 +133,7 @@ All scripts can be run directly from the project root:
 | `level1_analyze_patterns.py` | Pattern detection and rule inference | `python level1_analyze_patterns.py -v B -i 18 --report` |
 | `level1_emergence_index.py` | Calculate Emergence Index (Level 2 potential) | `python level1_emergence_index.py -v B -i 18` |
 | `level1_sci_icc.py` | Calculate SCI & ICC metrics from emergence data | `python level1_sci_icc.py --from-emergence results/emergence_*.json` |
+| `level1_trend_analysis.py` | Trend analysis across iterations with extrapolation | `python level1_trend_analysis.py --variants B E I --plot` |
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
 | `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
 
@@ -287,7 +286,7 @@ Snapshots and outputs are segregated by variant and ABS:
 
 ## 📑 Surviving Variants
 
-**Status:** 6 active variants (A and C eliminated for incompatibility with ISH principles)
+**Status:** 7 active variants + 1 control (A and C eliminated for incompatibility with ISH principles)
 
 ### ⭐ Core Variants (Tier 1)
 
@@ -329,6 +328,13 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Scientific Value:** Tests whether continuous feedback affects order emergence
 - **Why it survives:** Explores feedback-driven collapse dynamics
 
+**Variant I — Inverse Order (φ-Asymmetry Study)**
+- **Algorithm:** Inverse of E: remove all `10` first, then all `01`, then compress runs
+- **Properties:** Tests whether order of removal affects φ-proximity
+- **Scientific Value:** Tests the hypothesis that E's φ-generation comes from "emergence (01) before collapse (10)". If true, I's "collapse before emergence" should show different behavior (measured as 2.13× LESS close to φ than E)
+- **Why it survives:** Critical for understanding if order has semantic meaning in collapse dynamics
+- **Key Finding:** Confirms asymmetry — the order of removal IS semantically meaningful for φ emergence
+
 ### 🎲 Control Variant
 
 **Variant A — Random Control (PRNG/CSPRNG Baseline)** *(REPURPOSED)*
@@ -362,7 +368,7 @@ python level0_refresh_plots.py -v A -i 14
 
 ---
 
-### 🔬 Experimental Validation: A vs B Comparison (Dec 2024)
+### 🔬 Experimental Validation: A vs B Comparison (Dec 2025)
 
 The following results demonstrate that ISH collapse generates **genuine emergent structure**, not algorithmic artifacts:
 
@@ -423,6 +429,23 @@ Logs report the decision, e.g.:
 - [plot] spectral auto: method=welch, nwin≈8, w=1,048,576 var=B i=15
 
 Rationale: exposing ABS allows testing whether φ‑alignment and emergent order are robust or depend on boundary orientation.
+
+### Pattern Detection Thresholds
+
+For large Φ sequences, the pattern detector uses sampling mode to avoid memory exhaustion. These thresholds are configurable via `config.json → pattern_detection`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `large_sequence_threshold` | 10,000,000 | Sequences above this size (bits) trigger sampling mode |
+| `sample_size` | 1,000,000 | When in sampling mode, analyze this many bits per sample |
+
+**Tuning guidelines:**
+- **Low RAM (8GB)**: Reduce `large_sequence_threshold` to 5,000,000
+- **High RAM (32GB+)**: Increase to 50,000,000 for more thorough analysis
+- **Faster results**: Reduce `sample_size` to 500,000
+- **More accuracy**: Increase `sample_size` to 5,000,000
+
+These values balance memory usage vs. analysis thoroughness. The defaults work well for systems with 8-16GB RAM.
 
 ## 🔬 Level 1 Analysis (Structural Format)
 
@@ -515,6 +538,38 @@ order_index = metrics['order_emergence']['order_index']
 | Depth Entropy | 0-log₂(max_depth) | Depth diversity (low = concentrated) |
 | Depth Gini | 0-1 | Depth inequality (low = uniform) |
 
+### Metric Weights Configuration
+
+Both the **Emergence Index** and **Order Emergence Index (OEI)** are composite metrics with configurable weights. Weights can be adjusted via `config.json → metrics`:
+
+**Emergence Index Weights** (Level 2 potential):
+
+| Component | Default | Scientific Justification |
+|-----------|---------|--------------------------|
+| DFA (Hurst) | 25% | Most robust for long-range correlations (Peng et al., 1994) |
+| Criticality (1/f) | 25% | Classic SOC signature (Bak, Tang & Wiesenfeld, 1987) |
+| Coherence (MI) | 20% | Direct correlation measure, but sample-size sensitive |
+| Hierarchy (HBE) | 15% | Multi-scale structure, partially redundant with DFA |
+| Complexity (LZ) | 15% | Cannot distinguish structure from randomness alone |
+
+**OEI Weights** (Structural order):
+
+| Component | Default | Scientific Justification |
+|-----------|---------|--------------------------|
+| Depth Organization | 30% | Core signal: hierarchical structure is fundamental |
+| Entropy Gradient | 30% | Core signal: stratification indicates real order |
+| Containment Regularity | 20% | Support: regularity without hierarchy is not order |
+| Balance Score | 20% | Gate: binary sanity check (0 or 1) |
+
+To customize, edit `config.json`:
+```json
+"metrics": {
+  "emergence_weights": { "dfa": 0.30, "criticality": 0.20, ... },
+  "oei_weights": { "depth_organization": 0.40, ... }
+}
+```
+Weights are automatically normalized to sum to 1.0.
+
 ### Complete Analysis Pipeline
 
 ```python
@@ -588,15 +643,73 @@ The system implements an intelligent compression strategy based on `level0_data_
 
 ### Storage Structure
 
+The project uses a unified file storage structure organized by processing level:
+
 ```
-data/
-├── phi_snapshots/
-│   ├── phi_iter18.bin.gz      # Compressed sequence
-│   ├── phi_iter18.json        # Metadata
-│   ├── phi_iter20.bin.gz
-│   └── phi_iter20.json
-└── compression_summary.json   # Overall statistics
+results/
+│
+├── level0/                                   # ═══ LEVEL 0: Sequence Generation ═══
+│   │
+│   ├── phi_snapshots/                        # Raw Φ sequences
+│   │   ├── var_A/
+│   │   │   ├── phi_iter18.struct.gz          # Structural format (preserves parentheses)
+│   │   │   └── phi_iter18.json               # Iteration metadata
+│   │   ├── var_B/
+│   │   ├── var_E/
+│   │   ├── var_I/
+│   │   └── ... (var_D, var_F, var_G, var_H)
+│   │
+│   ├── reports/                              # Generator reports
+│   │   ├── variant_B_18_20251207.json
+│   │   ├── variant_B_18_20251207.enriched.json
+│   │   └── metadata_{var}.json
+│   │
+│   └── visualizations/                       # Level 0 visualizations
+│       ├── hilbert_{var}_i{N}_*.png          # Hilbert curve heatmaps
+│       ├── fft_{var}_i{N}_*.png              # FFT spectrum plots
+│       ├── spectrum_beta_{var}_i{N}_*.png    # 1/f spectrum analysis
+│       └── raster2d_{var}_i{N}_*.png         # 2D raster visualizations
+│
+├── level1/                                   # ═══ LEVEL 1: Analysis ═══
+│   │
+│   ├── analysis/                             # Orchestrator results
+│   │   ├── var_B_iter17_min10_max50.json     # Pattern/rule analysis
+│   │   └── var_B_iter17_min10_max50.md       # Markdown reports
+│   │
+│   ├── metrics/                              # Computed metrics
+│   │   ├── emergence_B_iter17.json           # Emergence index
+│   │   ├── emergence_B_E_I_iter20.json       # Multi-variant emergence
+│   │   ├── sci_icc_B_iter17.json             # SCI/ICC metrics
+│   │   └── geometric_B_iter17.json           # Geometric analysis (Γ, 𝓡, 𝓣)
+│   │
+│   ├── trends/                               # Trend analysis
+│   │   ├── trend_analysis.json               # Consolidated results
+│   │   └── plots/                            # Trend visualizations
+│   │       ├── trend_B_E_iter17-23_emergence.png
+│   │       ├── trend_B_E_iter17-23_sci.png
+│   │       └── trend_combined.png
+│   │
+│   └── figures/                              # Level 1 visualizations
+│       ├── confidence_dist_{var}_iter{N}.png
+│       ├── markov_heatmap_{var}_iter{N}.png
+│       ├── top_patterns_{var}_iter{N}.png
+│       ├── patterns_evol_{var}.png
+│       ├── confidence_evol_{var}.png
+│       └── survival/
+│           ├── survival_analysis_{var}.json
+│           ├── survival_flow_{var}.png
+│           └── survival_lengths_{var}.png
+│
+├── cache/                                    # ═══ SHARED: Caches ═══
+│   └── level1_cache_phi_iter*.pkl
+│
+└── temp/                                     # ═══ SHARED: Temporary ═══
+    ├── accumulation_{var}.tmp                # Large data during generation
+    └── checkpoint_{var}_{iter}.json          # Resumable checkpoints (auto-cleaned)
 ```
+
+> **Note**: Checkpoints are stored in `temp/` and auto-cleaned after successful completion.
+> Master results are stored in `level0/reports/hsi_master_results_{variants}.json`.
 
 ### Compression Tools
 
@@ -650,7 +763,24 @@ python level1_emergence_index.py --variants A B D E F G H --iteration 18 --compa
 
 # Save results to JSON
 python level1_emergence_index.py --variant B --iteration 18 --output results/emergence_B.json
+
+# Statistical significance testing (compare against null model)
+python level1_emergence_index.py --variant B --iteration 18 --null-test --null-samples 100
 ```
+
+**Statistical Significance Testing:**
+
+The `--null-test` flag enables comparison against a null model to determine if the observed Emergence Index is statistically significant. This is critical for scientific rigor—it answers: "Is this result meaningful, or could random data produce similar values?"
+
+| Parameter | Description |
+|-----------|-------------|
+| `--null-test` | Enable null model comparison |
+| `--null-samples N` | Number of shuffled sequences to generate (default: 100) |
+
+**Output includes:**
+- **p-value**: Probability of observing this result by chance (p < 0.05 = significant)
+- **z-score**: Standard deviations from null mean (|z| > 2 = significant)
+- **Null mean/std**: Statistics of the null distribution
 
 **Interpretation:**
 - **High Emergence Index (>0.7)**: Strong potential for Level 2 emergence; shows characteristics of complex systems at the edge of chaos
@@ -709,7 +839,45 @@ ICC = √(Compressibility × Coherence) × Hierarchy × Criticality × (1 + φ_b
 python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_iter18.json
 ```
 
-**Key Discovery (December 2024):** Variant E shows the highest ICC (0.692), suggesting it is the best candidate for generating universe-like structures. This correlates with E being 1.61× (≈φ itself!) closer to the golden ratio than Variant B.
+**Key Discovery (December 2025):** Variant E shows the highest ICC (0.692), suggesting it is the best candidate for generating universe-like structures. This correlates with E being 1.61× (≈φ itself!) closer to the golden ratio than Variant B.
+
+### Trend Analysis (`level1_trend_analysis.py`)
+
+Analyzes metric evolution across multiple iterations to identify trends and extrapolate future behavior.
+
+**Features:**
+- 🔍 **Auto-discovery**: Scans `results/phi_snapshots/var_{X}/` to detect available iterations
+- 📊 **Batch analysis**: Runs emergence + SCI/ICC for all discovered/specified iterations
+- 📈 **Trend plots**: Generates PNG plots showing metric evolution over iterations
+- 🔮 **Extrapolation**: Linear regression to predict values at future iterations (default: iter 30)
+- 💾 **Consolidated JSON**: Saves all data to `results/trend_analysis.json`
+
+**Usage:**
+```bash
+# Discover available iterations for all variants
+python level1_trend_analysis.py --variants B E I --discover-only
+
+# Analyze specific iterations with trend plots
+python level1_trend_analysis.py --variants B --iterations 17 18 19 20 --plot
+
+# Full analysis with extrapolation to iteration 30
+python level1_trend_analysis.py --variants B E I --plot --extrapolate 30
+
+# Output saved to:
+#   results/trend_analysis.json
+#   results/trend_plots/trend_*.png
+```
+
+**Extrapolation Output:**
+```
+Variant B:
+Metric               Slope/iter   R²       @iter 30
+----------------------------------------------------
+emergence_index      -0.009384   0.063    0.6102
+sci                  -0.000780   0.068    0.7400
+icc                  -0.006801   0.222    0.5215
+phi_tendency         +0.011082   0.607    0.4045
+```
 
 ## 🎨 Visualizations
 ### Spectral Analysis (Welch Streaming)
@@ -811,9 +979,8 @@ phi, _, metadata = simulate_phi(
     memory_threshold=100000000
 )
 
-# Check compression status
-if metadata.get('compression_activated'):
-    print(f"Compression used: {metadata['compression_summary']['total_size_mb']:.1f} MB saved")
+# Check variant info
+print(f"Variant: {metadata['variant']}, Iterations: {metadata['iterations_completed']}")
 
 # Detect patterns
 detector = PatternDetector()
@@ -890,7 +1057,6 @@ ISH_COMPRESSION_LEVEL=5
 
 # Cleanup snapshots at the end of a run (keeps the last 2 only)
 ISH_CLEANUP_KEEP_LAST=2
-```
 ```
 
 ## 🤝 Contributions

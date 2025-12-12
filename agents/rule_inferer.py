@@ -628,8 +628,85 @@ class RuleInferer:
         return enriched_rule
     
     def _calculate_rule_precision(self, rule: Dict[str, Any], phi_sequence: str) -> float:
-        """Calcula la precisió d'una regla."""
-        # Implementació simplificada - es pot millorar
+        """
+        Calcula la precisió real d'una regla sobre la seqüència.
+
+        La precisió es defineix com: prediccions_correctes / total_prediccions
+        """
+        rule_type = rule.get('rule_type', '')
+
+        if rule_type == 'markov_transition':
+            # Per regles Markov: comptar quantes vegades el context prediu correctament
+            context = rule.get('context', '')
+            prediction = rule.get('prediction', '')
+
+            if not context or not prediction:
+                return rule.get('confidence', 0.5)
+
+            correct = 0
+            total = 0
+            context_len = len(context)
+
+            for i in range(len(phi_sequence) - context_len):
+                if phi_sequence[i:i + context_len] == context:
+                    total += 1
+                    if i + context_len < len(phi_sequence):
+                        actual_next = phi_sequence[i + context_len]
+                        if actual_next == prediction:
+                            correct += 1
+
+            return correct / total if total > 0 else 0.0
+
+        elif rule_type == 'context_before':
+            # Per regles de context: comptar ocurrències del context seguit del patró
+            context = rule.get('context', '')
+            produces = rule.get('produces', [])
+
+            if not context or not produces:
+                return rule.get('confidence', 0.5)
+
+            # Buscar ocurrències del context
+            correct = 0
+            total = 0
+
+            i = 0
+            while i < len(phi_sequence) - len(context):
+                if phi_sequence[i:i + len(context)] == context:
+                    total += 1
+                    # Comprovar si el patró esperat segueix
+                    remaining = phi_sequence[i + len(context):]
+                    for pattern_id in produces:
+                        # Assumim que pattern_id conté info del patró
+                        if remaining.startswith(pattern_id) or context in remaining[:20]:
+                            correct += 1
+                            break
+                i += 1
+
+            return correct / total if total > 0 else 0.0
+
+        elif rule_type == 'context_after':
+            # Similar però mirant el context després del patró
+            pattern = rule.get('pattern', '')
+            prediction = rule.get('prediction', '')
+
+            if not pattern or not prediction:
+                return rule.get('confidence', 0.5)
+
+            correct = 0
+            total = 0
+
+            i = 0
+            while i < len(phi_sequence) - len(pattern):
+                if phi_sequence[i:i + len(pattern)] == pattern:
+                    total += 1
+                    remaining = phi_sequence[i + len(pattern):i + len(pattern) + len(prediction)]
+                    if remaining == prediction:
+                        correct += 1
+                i += 1
+
+            return correct / total if total > 0 else 0.0
+
+        # Per altres tipus de regles, retornar la confiança original
         return rule.get('confidence', 0.5)
     
     def _calculate_rule_stability(self, rule: Dict[str, Any], phi_sequence: str) -> float:
@@ -663,9 +740,13 @@ class RuleInferer:
         return stability
     
     def _test_rule_on_segment(self, rule: Dict[str, Any], segment: str) -> float:
-        """Prova una regla en un segment de la seqüència."""
-        # Implementació simplificada - retorna la confiança de la regla
-        return rule.get('confidence', 0.5)
+        """
+        Prova una regla en un segment de la seqüència.
+
+        Retorna la precisió de la regla en aquest segment específic.
+        """
+        # Reutilitzem la lògica de _calculate_rule_precision
+        return self._calculate_rule_precision(rule, segment)
     
     def save_rules(self, output_path: str) -> None:
         """Save inferred rules in JSON format."""

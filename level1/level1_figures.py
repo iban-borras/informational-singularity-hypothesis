@@ -674,18 +674,36 @@ Examples:
 
     args = parser.parse_args()
 
-    # Determine paths
+    # Determine paths using unified structure
     script_dir = Path(__file__).parent
     results_dir = script_dir.parent / "results"
-    output_dir = script_dir.parent / args.output_dir
+
+    # Use unified output path
+    if args.output_dir == 'results/figures':
+        # Default - use new structure
+        from utils.file_saver import get_output_path, relative_path
+        output_dir = get_output_path(1, "figures", "")
+    else:
+        # Custom path specified
+        output_dir = script_dir.parent / args.output_dir
 
     print("=" * 60)
     print("📊 ISH Level 1 Figure Generator")
     print("=" * 60)
 
-    # Discover data
+    # Discover data - check both old and new locations
     print("\n🔍 Scanning for available data...")
     discovered = discover_data(results_dir)
+
+    # Also check new structure
+    new_analysis_dir = results_dir / "level1" / "analysis"
+    if new_analysis_dir.exists():
+        discovered_new = discover_data(new_analysis_dir)
+        for v, data in discovered_new.items():
+            if v not in discovered:
+                discovered[v] = data
+            else:
+                discovered[v].update(data)
 
     if not discovered:
         print("❌ No Level 1 analysis files found in results/")
@@ -700,7 +718,11 @@ Examples:
 
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\n💾 Output directory: {output_dir}")
+    try:
+        from utils.file_saver import relative_path
+        print(f"\n💾 Output directory: {relative_path(output_dir)}")
+    except ImportError:
+        print(f"\n💾 Output directory: {output_dir}")
     print(f"📐 Format: {args.format.upper()} @ {args.dpi} DPI")
 
     # Generate figures

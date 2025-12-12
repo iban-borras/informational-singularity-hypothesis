@@ -368,7 +368,7 @@ class GeometricAnalyzer:
         return self.results
 
     def save_results(self, output_path: Optional[str] = None) -> str:
-        """Save results to JSON file."""
+        """Save results to JSON file using unified structure."""
         if not self.results:
             raise ValueError("No results to save. Run analyze() first.")
 
@@ -376,16 +376,27 @@ class GeometricAnalyzer:
         iteration = self.results.get("iteration", 0)
 
         if output_path is None:
-            output_dir = self.base_path / "level1"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"geometric_{variant}_iter{iteration}.json"
+            # Use unified structure
+            try:
+                from utils.file_saver import get_output_path, relative_path
+                filename = f"geometric_{variant}_iter{iteration}.json"
+                output_path = get_output_path(1, "metrics", filename)
+            except ImportError:
+                output_dir = self.base_path / "level1"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                output_path = output_dir / f"geometric_{variant}_iter{iteration}.json"
         else:
             output_path = Path(output_path)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(self.results, f, indent=2, default=str)
 
-        print(f"📝 Results saved to: {output_path}")
+        # Log with relative path
+        try:
+            from utils.file_saver import relative_path
+            print(f"💾 Saved: {relative_path(output_path)}")
+        except ImportError:
+            print(f"📝 Results saved to: {output_path}")
         return str(output_path)
 
     def print_summary(self) -> None:

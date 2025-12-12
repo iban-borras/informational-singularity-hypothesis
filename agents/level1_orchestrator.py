@@ -278,7 +278,7 @@ class Level1Orchestrator:
             Analysis results
         """
         if base_path is None:
-            base_path = Path(__file__).parent.parent / "results" / "phi_snapshots"
+            base_path = Path(__file__).parent.parent / "results" / "level0" / "phi_snapshots"
         else:
             base_path = Path(base_path)
 
@@ -317,7 +317,7 @@ class Level1Orchestrator:
 
     def get_available_iterations(self, variant: str) -> List[int]:
         """Get list of available iterations for a variant."""
-        base_path = Path(__file__).parent.parent / "results" / "phi_snapshots" / f"var_{variant}"
+        base_path = Path(__file__).parent.parent / "results" / "level0" / "phi_snapshots" / f"var_{variant}"
 
         if not base_path.exists():
             return []
@@ -495,7 +495,7 @@ EXAMPLES:
     # Print summary
     orchestrator.print_summary()
 
-    # Save results
+    # Save results using unified structure
     if args.output:
         output_path = args.output
     else:
@@ -503,7 +503,9 @@ EXAMPLES:
         pd_config = orchestrator.config.get('pattern_detector', {})
         min_len = pd_config.get('min_pattern_length', 4)
         max_len = pd_config.get('max_pattern_length', 32)
-        output_path = f"results/level1_analysis_var{args.variant}_iter{iteration}_min{min_len}_max{max_len}.json"
+        from utils.file_saver import get_output_path
+        filename = f"var_{args.variant}_iter{iteration}_min{min_len}_max{max_len}.json"
+        output_path = str(get_output_path(1, "analysis", filename))
 
     orchestrator.save_results(output_path)
 

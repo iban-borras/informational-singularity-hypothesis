@@ -8,10 +8,13 @@ the basis of the Primordial Holographic Field.
 Version v33: Now supports structural pattern detection (parentheses analysis)
 for emergent order detection.
 
+Version v34: Added RAM-aware parallel processing to prevent resource exhaustion.
+
 Autor: Iban Borràs amb col·laboració d'Augment Agent
 Data: Gener 2025
 """
 
+import os
 import numpy as np
 import json
 from typing import List, Dict, Any, Tuple, Optional
@@ -20,6 +23,14 @@ from collections import defaultdict, Counter
 import hashlib
 from scipy import signal
 from sklearn.cluster import DBSCAN
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+# RAM monitoring for adaptive parallelism
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 
 # Import structural pattern detector
 try:
@@ -41,6 +52,142 @@ except ImportError:
     print("⚠️ Numba not available, using pure Python (slower)")
 
 
+# =============================================================================
+# RAM-AWARE PARALLEL PROCESSING HELPERS
+# =============================================================================
+
+def _get_adaptive_workers(base_workers: int, ram_threshold: float = 75.0,
+                          min_workers: int = 2, verbose: bool = False) -> int:
+    """
+    Dynamically reduce workers based on RAM pressure.
+    More aggressive reduction: halves workers for every 10% above threshold.
+    """
+    if not HAS_PSUTIL:
+        return base_workers
+
+    ram_percent = psutil.virtual_memory().percent
+
+    if ram_percent < ram_threshold:
+        return base_workers
+
+    # Aggressive reduction: halve for every 10% above threshold
+    reduction_steps = int((ram_percent - ram_threshold) / 10) + 1
+    new_workers = max(min_workers, base_workers // (2 ** reduction_steps))
+
+    if verbose and new_workers < base_workers:
+        print(f"   ⚠️ RAM at {ram_percent:.1f}% - reducing workers: {base_workers} → {new_workers}", flush=True)
+
+    return new_workers
+
+
+def _wait_for_ram(target_percent: float = 70.0, max_wait: int = 120,
+                  check_interval: int = 5, verbose: bool = False) -> bool:
+    """
+    Wait until RAM usage drops below target percentage.
+    """
+    if not HAS_PSUTIL:
+        return True  # Can't check, assume OK
+
+    import time
+    waited = 0
+    initial_ram = psutil.virtual_memory().percent
+
+    if initial_ram <= target_percent:
+        return True
+
+    if verbose:
+        print(f"   ⏳ RAM at {initial_ram:.1f}% - waiting for <{target_percent}%...", flush=True)
+
+    while waited < max_wait:
+        time.sleep(check_interval)
+        waited += check_interval
+        current_ram = psutil.virtual_memory().percent
+
+        if current_ram <= target_percent:
+            if verbose:
+                print(f"   ✅ RAM dropped to {current_ram:.1f}% after {waited}s", flush=True)
+            return True
+
+    if verbose:
+        print(f"   ⚠️ RAM still at {psutil.virtual_memory().percent:.1f}% after {max_wait}s timeout", flush=True)
+    return False
+
+
+# =============================================================================
+# PARALLEL CHUNK PROCESSING HELPER (module-level for pickling)
+# =============================================================================
+
+def _process_pattern_chunk(args: tuple) -> dict:
+    """
+    Process a single chunk for pattern detection.
+    Must be at module level for multiprocessing.
+
+    Args:
+        args: (chunk_str, chunk_idx, start_offset, min_len, max_len, overlap, is_first_chunk)
+
+    Returns:
+        dict with patterns found in this chunk
+    """
+    chunk, chunk_idx, start_offset, min_len, max_len, overlap, is_first = args
+
+    if not NUMBA_AVAILABLE:
+        return {'chunk_idx': chunk_idx, 'patterns': {}}
+
+    chunk_bytes = str_to_bytes(chunk)
+
+    # Get hashes for this chunk
+    hashes, starts, lengths = sliding_window_hashes(chunk_bytes, min_len, max_len)
+
+    # Aggregate patterns from this chunk
+    chunk_patterns = {}  # hash -> {'pattern': str, 'count': int, 'positions': list}
+    MAX_POSITIONS = 100  # Fewer positions per chunk to save memory
+
+    for i in range(len(hashes)):
+        h = int(hashes[i])
+        pos = int(starts[i])
+        length = int(lengths[i])
+
+        # Avoid counting patterns in overlap region twice (except first chunk)
+        if not is_first and pos < overlap:
+            continue
+
+        global_pos = start_offset + pos
+
+        if h in chunk_patterns:
+            chunk_patterns[h]['count'] += 1
+            if len(chunk_patterns[h]['positions']) < MAX_POSITIONS:
+                chunk_patterns[h]['positions'].append(global_pos)
+        else:
+            chunk_patterns[h] = {
+                'pattern': chunk[pos:pos + length],
+                'count': 1,
+                'positions': [global_pos]
+            }
+
+    return {'chunk_idx': chunk_idx, 'patterns': chunk_patterns}
+
+
+def _load_pattern_config() -> Dict[str, Any]:
+    """Load pattern detection thresholds from config.json if available."""
+    config_path = Path(__file__).parent.parent / 'config.json'
+    defaults = {
+        'large_sequence_threshold': 10_000_000,  # 10M bits
+        'sample_size': 1_000_000  # 1M bits
+    }
+    try:
+        if config_path.exists():
+            with open(config_path) as f:
+                config = json.load(f)
+            pd_config = config.get('pattern_detection', {})
+            return {
+                'large_sequence_threshold': pd_config.get('large_sequence_threshold', defaults['large_sequence_threshold']),
+                'sample_size': pd_config.get('sample_size', defaults['sample_size'])
+            }
+    except Exception:
+        pass
+    return defaults
+
+
 class PatternDetector:
     """
     Agent for detecting recurrent patterns Pₖ in binary sequences Φ.
@@ -57,7 +204,9 @@ class PatternDetector:
                  max_pattern_length: int = 50,
                  min_occurrences: int = 2,
                  similarity_threshold: float = 0.8,
-                 enable_structural_analysis: bool = True):
+                 enable_structural_analysis: bool = True,
+                 large_sequence_threshold: Optional[int] = None,
+                 sample_size: Optional[int] = None):
         """
         Initialize the pattern detector.
 
@@ -67,12 +216,21 @@ class PatternDetector:
             min_occurrences: Minimum occurrences to consider a pattern
             similarity_threshold: Similarity threshold for grouping patterns
             enable_structural_analysis: Enable v33 structural pattern detection
+            large_sequence_threshold: Sequences above this size trigger sampling mode.
+                                      If None, loads from config.json (default: 10M bits)
+            sample_size: When in sampling mode, analyze this many bits per sample.
+                         If None, loads from config.json (default: 1M bits)
         """
         self.min_pattern_length = min_pattern_length
         self.max_pattern_length = max_pattern_length
         self.min_occurrences = min_occurrences
         self.similarity_threshold = similarity_threshold
         self.enable_structural_analysis = enable_structural_analysis
+
+        # Load thresholds from config if not provided
+        config = _load_pattern_config()
+        self.large_sequence_threshold = large_sequence_threshold or config['large_sequence_threshold']
+        self.sample_size = sample_size or config['sample_size']
 
         self.detected_patterns = []
         self.structural_patterns = []
@@ -102,9 +260,8 @@ class PatternDetector:
         seq_len = len(phi_sequence)
         print(f"🔍 Detecting patterns in sequence of length {seq_len:,}")
 
-        # For very large sequences, skip memory-intensive methods
-        LARGE_SEQUENCE_THRESHOLD = 10_000_000  # 10M chars
-        is_large = seq_len > LARGE_SEQUENCE_THRESHOLD
+        # Use configurable thresholds (from config.json or constructor)
+        is_large = seq_len > self.large_sequence_threshold
 
         # Method 1: Sliding windows with hashing (works with chunking for large seqs)
         sliding_patterns = self._detect_sliding_window_patterns(phi_sequence)
@@ -115,8 +272,8 @@ class PatternDetector:
 
         if is_large:
             # For large sequences, use sampling for block/spectral analysis
-            print(f"   ⏳ Block patterns (sampling mode for large sequence)...", flush=True)
-            sample_size = 1_000_000  # Analyze 1M sample
+            sample_size = self.sample_size
+            print(f"   ⏳ Block patterns (sampling mode: {sample_size:,} bits)...", flush=True)
             sample_start = seq_len // 2 - sample_size // 2  # Middle sample
             sample = phi_sequence[sample_start:sample_start + sample_size]
             phi_array_sample = np.array([int(bit) for bit in sample], dtype=np.uint8)
@@ -124,14 +281,14 @@ class PatternDetector:
             # Adjust positions to global coordinates
             for p in block_patterns:
                 p['positions'] = [pos + sample_start for pos in p['positions']]
-            print(f"   ✓ Block patterns: {len(block_patterns):,} patterns (from 1M sample)", flush=True)
+            print(f"   ✓ Block patterns: {len(block_patterns):,} patterns (from {sample_size:,} sample)", flush=True)
 
             print(f"   ⏳ Spectral analysis (sampling mode)...", flush=True)
             spectral_patterns = self._detect_spectral_patterns(phi_array_sample)
             for p in spectral_patterns:
                 if 'positions' in p:
                     p['positions'] = [pos + sample_start for pos in p['positions']]
-            print(f"   ✓ Spectral patterns: {len(spectral_patterns):,} patterns (from 1M sample)", flush=True)
+            print(f"   ✓ Spectral patterns: {len(spectral_patterns):,} patterns (from {sample_size:,} sample)", flush=True)
 
             del phi_array_sample  # Free memory
         else:
@@ -237,8 +394,16 @@ class PatternDetector:
 
         return patterns
 
-    def _detect_sliding_window_numba(self, sequence: str, max_len: int) -> List[Dict[str, Any]]:
-        """Numba-optimized sliding window pattern detection with chunking for large sequences."""
+    def _detect_sliding_window_numba(self, sequence: str, max_len: int,
+                                      max_cpu_percent: int = 50) -> List[Dict[str, Any]]:
+        """
+        Numba-optimized sliding window pattern detection with PARALLEL chunking.
+
+        Args:
+            sequence: Binary sequence string
+            max_len: Maximum pattern length
+            max_cpu_percent: Maximum CPU usage (default 50%)
+        """
         seq_len = len(sequence)
 
         # For very large sequences, limit max pattern length to reduce memory
@@ -256,73 +421,101 @@ class PatternDetector:
         if seq_len <= CHUNK_SIZE:
             return self._detect_sliding_window_numba_direct(sequence, max_len)
 
-        # Chunked processing for large sequences
-        print(f"   [sliding] Using Numba with chunking (seq={seq_len:,}, chunk={CHUNK_SIZE:,})...")
+        # Parallel chunked processing for large sequences with RAM-aware batching
+        total_cores = os.cpu_count() or 4
+        base_workers = max(1, int(total_cores * max_cpu_percent / 100))
 
-        # Global pattern aggregation: hash -> (pattern_str, total_count, sample_positions)
-        global_patterns = {}  # hash -> {'pattern': str, 'count': int, 'positions': list}
-        MAX_POSITIONS_PER_PATTERN = 1000  # Limit stored positions to save memory
+        print(f"   [sliding] Using Numba + PARALLEL (up to {base_workers} workers, RAM-adaptive)")
+        print(f"   [sliding] seq={seq_len:,}, chunk={CHUNK_SIZE:,}...")
 
         num_chunks = (seq_len + CHUNK_SIZE - 1) // CHUNK_SIZE
 
+        # Prepare chunk arguments
+        chunk_args = []
         for chunk_idx in range(num_chunks):
             start = chunk_idx * CHUNK_SIZE
-            # Include overlap except for last chunk
             end = min(start + CHUNK_SIZE + OVERLAP, seq_len)
-
             chunk = sequence[start:end]
-            chunk_bytes = str_to_bytes(chunk)
+            is_first = (chunk_idx == 0)
+            chunk_args.append((chunk, chunk_idx, start, self.min_pattern_length,
+                              max_len, OVERLAP, is_first))
 
-            print(f"   [sliding] Chunk {chunk_idx + 1}/{num_chunks}: chars {start:,}-{end:,} ({len(chunk):,} chars)...", flush=True)
+        # Process chunks in batches with pool recreation (prevents resource exhaustion)
+        global_patterns = {}  # hash -> {'pattern': str, 'count': int, 'positions': list}
+        MAX_POSITIONS_PER_PATTERN = 1000
+        completed = 0
+        failed_chunks = []
+        BATCH_SIZE = 50  # Process 50 chunks per batch, then recreate pool
+        MAX_RETRIES = 2
 
-            # Get hashes for this chunk
-            hashes, starts, lengths = sliding_window_hashes(
-                chunk_bytes, self.min_pattern_length, max_len
-            )
+        for batch_start in range(0, num_chunks, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, num_chunks)
+            batch_args = chunk_args[batch_start:batch_end]
 
-            # Aggregate patterns from this chunk
-            chunk_patterns = defaultdict(int)  # hash -> count in this chunk
-            hash_to_pattern = {}
-            hash_to_sample_pos = {}  # Store a few sample positions
+            # Adaptive worker count based on RAM
+            n_workers = _get_adaptive_workers(base_workers, ram_threshold=75.0,
+                                               min_workers=2, verbose=True)
 
-            for i in range(len(hashes)):
-                h = int(hashes[i])
-                pos = int(starts[i])
-                length = int(lengths[i])
+            # Wait for RAM if needed before starting batch
+            _wait_for_ram(target_percent=70.0, max_wait=60, verbose=True)
 
-                # Avoid counting patterns in overlap region twice (except first chunk)
-                if chunk_idx > 0 and pos < OVERLAP:
-                    continue
+            batch_failed = []
 
-                chunk_patterns[h] += 1
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                futures = {executor.submit(_process_pattern_chunk, args): args[1]
+                          for args in batch_args}
 
-                if h not in hash_to_pattern:
-                    hash_to_pattern[h] = chunk[pos:pos + length]
-                    hash_to_sample_pos[h] = []
+                for future in as_completed(futures):
+                    completed += 1
+                    chunk_idx = futures[future]
+                    try:
+                        result = future.result(timeout=300)  # 5 min timeout
+                        chunk_patterns = result['patterns']
 
-                # Store sample positions (global position)
-                if len(hash_to_sample_pos[h]) < MAX_POSITIONS_PER_PATTERN:
-                    hash_to_sample_pos[h].append(start + pos)
+                        # Merge into global patterns
+                        for h, data in chunk_patterns.items():
+                            if h in global_patterns:
+                                global_patterns[h]['count'] += data['count']
+                                remaining = MAX_POSITIONS_PER_PATTERN - len(global_patterns[h]['positions'])
+                                if remaining > 0:
+                                    global_patterns[h]['positions'].extend(data['positions'][:remaining])
+                            else:
+                                global_patterns[h] = data
 
-            # Merge into global patterns
-            for h, count in chunk_patterns.items():
-                if h in global_patterns:
-                    global_patterns[h]['count'] += count
-                    # Add some positions if we have room
-                    remaining = MAX_POSITIONS_PER_PATTERN - len(global_patterns[h]['positions'])
-                    if remaining > 0:
-                        global_patterns[h]['positions'].extend(hash_to_sample_pos[h][:remaining])
-                else:
-                    global_patterns[h] = {
-                        'pattern': hash_to_pattern[h],
-                        'count': count,
-                        'positions': hash_to_sample_pos[h]
-                    }
+                    except Exception as e:
+                        error_msg = str(e)
+                        if 'handle is closed' in error_msg or 'BrokenProcessPool' in error_msg:
+                            batch_failed.append(batch_args[chunk_idx - batch_start])
+                        print(f"   [sliding] Chunk {chunk_idx} error: {error_msg[:80]}", flush=True)
 
-            # Free memory from this chunk
-            del hashes, starts, lengths, chunk_patterns, hash_to_pattern, hash_to_sample_pos
+            # Retry failed chunks sequentially
+            if batch_failed:
+                print(f"   [sliding] Retrying {len(batch_failed)} failed chunks...", flush=True)
+                _wait_for_ram(target_percent=70.0, max_wait=120, verbose=True)
 
-            print(f"   [sliding] Chunk {chunk_idx + 1} done. Total unique patterns so far: {len(global_patterns):,}")
+                for args in batch_failed:
+                    for retry in range(MAX_RETRIES):
+                        try:
+                            result = _process_pattern_chunk(args)
+                            chunk_patterns = result['patterns']
+                            for h, data in chunk_patterns.items():
+                                if h in global_patterns:
+                                    global_patterns[h]['count'] += data['count']
+                                else:
+                                    global_patterns[h] = data
+                            break
+                        except Exception as e:
+                            if retry == MAX_RETRIES - 1:
+                                failed_chunks.append(args[1])
+                                print(f"   [sliding] Chunk {args[1]} failed permanently", flush=True)
+
+            # Progress log
+            pct = completed / num_chunks * 100
+            print(f"   [sliding] Progress: {completed}/{num_chunks} ({pct:.0f}%), "
+                  f"{len(global_patterns):,} unique patterns", flush=True)
+
+        if failed_chunks:
+            print(f"   [sliding] ⚠️ {len(failed_chunks)} chunks failed permanently", flush=True)
 
         # Filter patterns with enough occurrences
         print(f"   [sliding] Filtering {len(global_patterns):,} unique patterns...")
@@ -333,9 +526,9 @@ class PatternDetector:
                 patterns.append({
                     'pattern_id': f'sw_{hashlib.md5(pattern_str.encode()).hexdigest()[:8]}',
                     'pattern_data': pattern_str,
-                    'positions': data['positions'],  # Sample positions only
-                    'method': 'sliding_window_numba_chunked',
-                    'recurrence': data['count']  # True count from all chunks
+                    'positions': data['positions'],
+                    'method': 'sliding_window_numba_parallel',
+                    'recurrence': data['count']
                 })
 
         print(f"   [sliding] Done. {len(patterns):,} patterns after filtering.")
