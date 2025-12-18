@@ -23,12 +23,12 @@ from agents.pattern_detector import PatternDetector
 from agents.structural_pattern_detector import StructuralPatternDetector
 
 
-def analyze_iteration(data_dir: str, iteration: int, output_dir: str = "results/analysis"):
+def analyze_iteration(data_dir: str, iteration: int, output_dir: str = "results/level1/analysis"):
     """
     Complete structural analysis of a single iteration.
-    
+
     Args:
-        data_dir: Path to Level 0 results (e.g., "results/var_B")
+        data_dir: Path to Level 0 results (e.g., "results/level0/phi_snapshots/var_B")
         iteration: Iteration number to analyze
         output_dir: Directory to save analysis results
     """

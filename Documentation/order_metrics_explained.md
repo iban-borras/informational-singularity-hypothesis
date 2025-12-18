@@ -1,8 +1,7 @@
 # 📊 Order Metrics — Scientific Explanation
 
-**Project:** Informational Singularity Hypothesis (HSI)  
-**Version:** v33 (January 2025)  
-**Authors:** Iban Borràs with Augment Agent (Sophia)  
+**Project:** Informational Singularity Hypothesis (HSI)
+**Authors:** Iban Borràs with Augment Agent (Sophia)
 **Purpose:** Scientific explanation of order emergence metrics
 
 ---
@@ -22,7 +21,7 @@
 
 ### The Central Question
 
-**HSI v32 Hypothesis:** "Order is the only way Nothingness can contradict itself"
+**HSI Hypothesis:** "Order is the only way Nothingness can contradict itself"
 
 This raises a fundamental scientific question:
 
@@ -33,7 +32,7 @@ Level 1's order metrics provide **quantitative, falsifiable answers** to this qu
 ### Why Metrics Matter
 
 Without quantitative metrics, we cannot:
-- **Validate** the HSI v32 hypothesis experimentally
+- **Validate** the HSI hypothesis experimentally
 - **Compare** different collapse variants objectively
 - **Track** how order evolves over iterations
 - **Publish** reproducible scientific results
@@ -46,11 +45,8 @@ Order metrics transform HSI from **philosophical speculation** into **testable s
 
 ### From φ-Convergence to Order Emergence
 
-**HSI v30 (old):** Searched for convergence toward φ (golden ratio, 1.618)
-- **Problem:** φ-convergence is a **specific manifestation** of order, not order itself
-- **Limitation:** Focuses on one particular pattern (fractal dimension)
 
-**HSI v32 (new):** Detects **emergent order** as fundamental property
+**HSI:** Detects **emergent order** as fundamental property
 - **Advantage:** Order is more general than φ-convergence
 - **Insight:** φ-convergence may be a **consequence** of order, not the cause
 
@@ -229,9 +225,9 @@ Where:
 
 **Physical interpretation:**
 
-- **OEI > 0.7:** Strong emergent order (HSI v32 validated!)
+- **OEI > 0.7:** Strong emergent order (HSI validated!)
 - **OEI 0.4-0.7:** Moderate emergent order
-- **OEI < 0.4:** Weak emergent order (HSI v32 not validated)
+- **OEI < 0.4:** Weak emergent order (HSI not validated)
 
 **Why composite?**
 
@@ -244,7 +240,7 @@ Order is **multidimensional** — no single metric captures it fully. The compos
 **Scientific value:**
 - **Single number** summarizing emergent order
 - **Comparable** across variants and iterations
-- **Falsifiable** (can validate or refute HSI v32)
+- **Falsifiable** (can validate or refute HSI)
 
 ---
 
@@ -378,7 +374,7 @@ Balance Score:           20%  (structural stability)
 
 ### Interpretation Scale
 
-| OEI Range | Interpretation | HSI v32 Status |
+| OEI Range | Interpretation | HSI Status |
 |-----------|----------------|----------------|
 | 0.9 - 1.0 | **Exceptional order** | Strongly validated |
 | 0.7 - 0.9 | **Strong order** | Validated |
@@ -397,9 +393,9 @@ Iteration 10-20: OEI ≈ 0.5-0.7  (order strengthening)
 Iteration 20+:   OEI ≈ 0.7-0.9  (strong order established)
 ```
 
-**If this pattern holds:** HSI v32 validated!
+**If this pattern holds:** HSI validated!
 
-**If OEI stays low:** HSI v32 refuted (order doesn't emerge)
+**If OEI stays low:** HSI refuted (order doesn't emerge)
 
 ---
 
@@ -425,7 +421,7 @@ Iteration 20+:   OEI ≈ 0.7-0.9  (strong order established)
    - Parentheses balanced
    - No structural corruption
 
-**Scientific conclusion:** Order has emerged from primordial tension → **HSI v32 validated**
+**Scientific conclusion:** Order has emerged from primordial tension → **HSI validated**
 
 ### What Low OEI Means
 
@@ -446,7 +442,7 @@ Iteration 20+:   OEI ≈ 0.7-0.9  (strong order established)
 4. **Structure may be unstable**
    - Parentheses unbalanced (if B_score = 0)
 
-**Scientific conclusion:** Order has NOT emerged → **HSI v32 not validated**
+**Scientific conclusion:** Order has NOT emerged → **HSI not validated**
 
 ### Variant Comparison
 
@@ -486,8 +482,8 @@ OEI(t) ≈ a × log(t) + b
 Where `a > 0` (increasing trend)
 
 **Validation:**
-- If trend is positive → HSI v32 validated
-- If trend is flat/negative → HSI v32 refuted
+- If trend is positive → HSI validated
+- If trend is flat/negative → HSI refuted
 
 ### Experiment 2: Variant Comparison
 
@@ -550,14 +546,11 @@ OEI jumps from ~0.3 to ~0.6
 ### Related Documentation
 
 - **`level1_analysis_guide.md`** - Complete technical guide
-- **`v33_structural_format.md`** - Format specification
 - **`../README.md`** - Main project README
 
 ### Key Papers
 
 - Original HSI paper: `paper Latex/main_cat.tex`
-- Technical audit: `docs/HSI_Technical_Audit_v30.md`
-- Implementation roadmap: `docs/HSI_Implementation_Roadmap_v32.md`
 
 ### Mathematical Background
 
@@ -570,13 +563,12 @@ OEI jumps from ~0.3 to ~0.6
 
 **Last Updated:** January 2025
 **Authors:** Iban Borràs with Augment Agent (Sophia)
-**Version:** v33
 
 ---
 
 **This is cutting-edge science!** 🔬✨
 
-These metrics enable **quantitative, falsifiable validation** of the HSI v32 hypothesis.
+These metrics enable **quantitative, falsifiable validation** of the HSI hypothesis.
 
 **Results will be published** in peer-reviewed journals once experiments are complete.
 

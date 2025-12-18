@@ -1,16 +1,20 @@
-# HSI Level 0 — Variant Degradation Models (v33)
+# HSI Level 0 — Variant Degradation Models
 
-**Version:** v33 (HSI v32 Aligned)
-**Date:** 2025-11-22
-**Status:** 6 active variants (B, D, E, F, G, H)
+**Date:** 2025-12-13
+**Status:** 7 active variants (B, D, E, F, G, H, I)
 
-## v33 Update: Variant Elimination
+## Update: Algorithm Corrections & Variant I
+
+**Key changes (Dec 2025):**
+- **ADDED Variant I** — Inverse of E (tests pass-order asymmetry)
+- **FIXED all simplification rules** — Degradation to No-Res (`→0`), never deletion (`→∅`)
+- **FIXED Variants E and I** — Two-phase degradation with accumulation between phases
 
 **Eliminated variants:**
-- **Variant A** — Incompatible with stratified order principle (fundamental to HSI v32)
-- **Variant C** — Incompatible with micro-state reality principle (ontological commitment of v32)
+- **Variant A** — Incompatible with stratified order principle (fundamental to HSI)
+- **Variant C** — Incompatible with micro-state reality principle (ontological commitment of HSI)
 
-**Surviving variants:** B, D, E, F, G, H (all scientifically aligned with v32 paradigm)
+**Active variants:** B, D, E, F, G, H, I (all scientifically aligned with the HSI paradigm)
 
 ---
 
@@ -18,7 +22,7 @@
 
 All variants operate on the same Level 0 framework: an **ordered cascade degradation** where each Absolute (symbol `1`) encapsulates all previous states and degrades them sequentially. Parentheses denote stratified containment. The observable for iteration α is produced from a decay frame built from the accumulation of all prior observables.
 
-**HSI v32 Core Principle:**
+**HSI Core Principle:**
 > "Order is the only way Nothingness can contradict itself. Reality emerges from primordial order through stratified containment of the Absolute."
 
 ## Markwon-ready figure (Absolute integration sequence)
@@ -62,7 +66,7 @@ The Absolute token appended to the outer decay frame controls how prior content 
 - ABS = "10" (directional 1→0): introduces asymmetry likely to bias cancellations at the boundary.
 - ABS = "01" (directional 0→1): the dual of 10, used to test symmetry.
 
-In our streaming collapse, the base simplification (delete 01/10, compress runs) may partially consume these boundary tokens depending on the frontier of the accumulated state. This is precisely what can seed or suppress emergent order. Exposing ABS lets us test whether φ‑alignment emerges robustly or depends on a specific boundary orientation.
+In our streaming collapse, the base simplification (degrade 01→0, 10→0, compress runs) may partially consume these boundary tokens depending on the frontier of the accumulated state. This is precisely what can seed or suppress emergent order. Exposing ABS lets us test whether φ‑alignment emerges robustly or depends on a specific boundary orientation.
 
 
 ## Common framework (applies to all variants)
@@ -82,9 +86,20 @@ Per iteration α ≥ 1:
    - Return the resulting string as `Φα`; variants may apply a final global simplify to enforce Level‑0 observability
 
 Base simplification (used unless a variant overrides it):
-- Remove alternating pairs: delete every occurrence of `01` and `10` (balanced cancellation)
+- Degrade alternating pairs to No-Res: replace every `01` and `10` with `0` (not empty!)
 - Compress runs: replace `0+ → 0` and `1+ → 1`
+- Iterate until stable (no more patterns to degrade)
+- Always return at least `0` (No-Res) — never empty string
 - These operations are pure string rules; they do not depend on frequency or time.
+
+**IMPORTANT (Dec 2025 fix):** According to HSI ontology, No-Res (`0`) is the fundamental state.
+Nothing ever truly disappears — it degrades to No-Res. The simplification result is never empty.
+
+**Philosophical note on `1+ → 1`:** One might argue that each Absolute (`1`) contains unique history
+and compressing `111 → 1` loses information, unlike `000 → 0` (merging identical No-Res). However,
+in HSI's real execution flow, No-Res is always present (we start from R₀ = `0`) and absorbs all
+adjacent Absolutes. Thus, `1+ → 1` compression never affects the final result — the primordial `0`
+guarantees eventual collapse to No-Res regardless. We keep the simpler symmetric rule for pragmatic reasons.
 
 Implementation anchors:
 - Main driver: `level0/generator.py`
@@ -92,7 +107,7 @@ Implementation anchors:
 
 ## Variant B — Stratified inside→out (local‑only) + global finalize ⭐ GOLD STANDARD
 
-**Scientific Value:** Gold standard for HSI v32. Fully compatible with all core principles.
+**Scientific Value:** Gold standard for HSI. Fully compatible with all core principles.
 
 **Goal:** Preserve structural order during degradation; only the innermost contents are simplified at each pass.
 
@@ -107,62 +122,65 @@ Implementation anchors:
 - ✅ Preserves stratified order (inside→out collapse)
 - ✅ Accumulates ALL micro-states (ontologically real)
 - ✅ Produces clean Level 0 observable
-- ✅ **Validated as ontologically correct** (HSI v32)
+- ✅ **Validated as ontologically correct**
 
-**Why it survives:** Fully aligned with v32 principle that "order emerges through stratified containment."
+**Why it survives:** Fully aligned with principle that "order emerges through stratified containment."
 
 ---
 
-## Variant D — Minimal asymmetry (10→∅, 01→0) with stratified passes
+## Variant D — Minimal asymmetry (simultaneous 10→0, 01→0) with stratified passes
 
 **Scientific Value:** Tests whether symmetry-breaking affects order emergence.
 
 **Goal:** Introduce a minimal, directional asymmetry in the local rule and study its global effect.
 
 **Custom simplify `E_d`:**
-- Delete `10`
-- Replace `01 → 0`
+- Degrade `10 → 0` and `01 → 0` simultaneously (both to No-Res)
 - Then compress runs `0+→0`, `1+→1`
+- Iterate until stable
 
 **Algorithm (per iteration):**
 1) Build `Dα = (Accα)1`
 2) Repeat until stabilization or 1‑symbol state:
    - Collapse innermost parentheses using `E_d`
    - **Accumulate intermediate states**
-3) Output the stabilized state as `Φα` (no extra finalization beyond the stratified passes)
+3) Final global simplify with `E_d`
+4) Output the stabilized state as `Φα`
 
 **Properties:**
 - ✅ Preserves stratified order
 - ✅ Accumulates ALL micro-states
-- ✅ Introduces directional asymmetry (breaks 0↔1 symmetry)
+- ✅ Both patterns degrade to No-Res (HSI ontology: nothing disappears)
 - ✅ Tests robustness of order emergence to asymmetric rules
 
 **Why it survives:** Tests legitimate scientific hypothesis: "Is order emergence robust to symmetry-breaking?"
 
 ---
 
-## Variant E — Ordered two‑pass removal: all `01`, then all `10` (then runs)
+## Variant E — Ordered two‑phase degradation: all `01→0`, then all `10→0`
 
 **Scientific Value:** Tests whether pass order affects order emergence.
 
-**Goal:** Explore the effect of fixed ordered passes across the contents before run compression.
+**Goal:** Explore the effect of fixed ordered phases across the contents before run compression.
 
-**Custom simplify `E_e` per pass:**
-- Pass 1: delete all `01`
-- Pass 2: delete all `10`
-- Then compress runs `0+→0`, `1+→1`
+**Custom simplify `E_e` (two phases with accumulation between them):**
+- Phase 1: Degrade all `01 → 0`, compress runs, iterate until stable, **accumulate**
+- Phase 2: Degrade all `10 → 0`, compress runs, iterate until stable, **accumulate**
 
 **Algorithm (per iteration):**
 1) Build `Dα = (Accα)1`
-2) Repeat until stabilization or 1‑symbol state:
-   - Collapse innermost parentheses using `E_e`
+2) **Phase 1** - Repeat until stabilization:
+   - Collapse innermost parentheses using only `01→0` rule
    - **Accumulate intermediate states**
-3) Output the stabilized state as `Φα`
+3) **Phase 2** - Repeat until stabilization:
+   - Collapse innermost parentheses using only `10→0` rule
+   - **Accumulate intermediate states**
+4) Output the stabilized state as `Φα`
 
 **Properties:**
 - ✅ Preserves stratified order
-- ✅ Accumulates ALL micro-states
-- ✅ Enforces deterministic pass order (more aggressive than base)
+- ✅ Accumulates ALL micro-states (including between phases)
+- ✅ Enforces deterministic phase order (emergence before collapse)
 - ✅ Tests whether sequence of simplifications matters
 
 **Why it survives:** Tests legitimate scientific hypothesis: "Does pass order affect emergent structure?"
@@ -241,7 +259,7 @@ Implementation anchors:
 
 ---
 
-## Invariants and guarantees (v33)
+## Invariants and guarantees
 
 **All surviving variants (B, D, E, F, G, H) satisfy:**
 - ✅ **Ordered cascade:** every `1` encapsulates all prior states in stratified order `(Accα)1`
@@ -251,16 +269,45 @@ Implementation anchors:
 - ✅ **Stratified order preservation:** All variants collapse inside→out (respecting nesting depth)
 - ⚠️ **Level 0 observability:** Most variants produce clean observable; Variant G may contain parentheses
 
-**HSI v32 Alignment:**
-All surviving variants are **scientifically compatible** with the v32 core principle:
+**HSI Alignment:**
+All surviving variants are **scientifically compatible** with the core principle:
 > "Order is the only way Nothingness can contradict itself."
 
 ---
 
-## Future candidates (I–Z, not implemented yet)
+## Variant I — Inverse of E: all `10→0`, then all `01→0`
+
+**Scientific Value:** Tests whether pass order asymmetry affects order emergence (inverse of E).
+
+**Goal:** Explore the inverse effect of E: collapse before emergence.
+
+**Custom simplify `E_i` (two phases with accumulation between them):**
+- Phase 1: Degrade all `10 → 0`, compress runs, iterate until stable, **accumulate**
+- Phase 2: Degrade all `01 → 0`, compress runs, iterate until stable, **accumulate**
+
+**Algorithm (per iteration):**
+1) Build `Dα = (Accα)1`
+2) **Phase 1** - Repeat until stabilization:
+   - Collapse innermost parentheses using only `10→0` rule
+   - **Accumulate intermediate states**
+3) **Phase 2** - Repeat until stabilization:
+   - Collapse innermost parentheses using only `01→0` rule
+   - **Accumulate intermediate states**
+4) Output the stabilized state as `Φα`
+
+**Properties:**
+- ✅ Preserves stratified order
+- ✅ Accumulates ALL micro-states (including between phases)
+- ✅ Enforces deterministic phase order (collapse before emergence)
+- ✅ Tests whether sequence of simplifications matters (inverse of E)
+
+**Why it survives:** Tests legitimate scientific hypothesis: "Is the effect of pass order symmetric or asymmetric?"
+
+---
+
+## Future candidates (J–Z, not implemented yet)
 
 These are design sketches to help plan extensions; they are not active in the codebase.
-- I — Stack‑accurate innermost in O(n): replace regex with an explicit stack machine; same semantics, higher throughput
 - J — Windowed finalize: global simplify applied only to a sliding window over the outermost structure
 - K — Asymmetric runs: compress `0+` and `1+` with different policies (e.g., thresholds) without adding randomness
 - L — Multi‑Absolute frame: `Dα = (Accα)11` to test double‑encapsulation pressure
@@ -271,11 +318,17 @@ These are design sketches to help plan extensions; they are not active in the co
 
 ## Change log (relevant to this spec)
 
-### v33 (2025-11-22)
-- **ELIMINATED Variant A:** Incompatible with stratified order principle (fundamental to HSI v32)
-- **ELIMINATED Variant C:** Incompatible with micro-state reality principle (ontological commitment of v32)
+### 2025-12-13
+- **ADDED Variant I:** Inverse of E (10→0 first, then 01→0) for pass-order asymmetry testing
+- **FIXED E and I algorithms:** Two-phase degradation with accumulation between phases (not simultaneous)
+- **FIXED all variants:** Degradation to No-Res (`→0`), never deletion (`→∅`). HSI ontology: nothing disappears.
+- **7 active variants:** B, D, E, F, G, H, I
+
+### 2025-11-22
+- **ELIMINATED Variant A:** Incompatible with stratified order principle (fundamental to HSI)
+- **ELIMINATED Variant C:** Incompatible with micro-state reality principle (ontological commitment)
 - **ADDED Variants G & H:** Experimental variants for testing raw structure preservation and continuous feedback
-- **UPDATED all descriptions:** Added scientific value, "why it survives" rationale, and v32 alignment notes
+- **UPDATED all descriptions:** Added scientific value, "why it survives" rationale, and alignment notes
 - **6 surviving variants:** B (gold standard), D (asymmetry), E (pass-order), F (hybrid), G (raw structure), H (feedback)
 
 ### 2025‑08‑21
@@ -283,15 +336,16 @@ These are design sketches to help plan extensions; they are not active in the co
 
 ## Cross‑reference (implementation hints)
 
-**Active variants (v33):**
+**Active variants:**
 - **B:** `_collapse_inside_parentheses_local` + final `_collapse_global_ignore_parentheses`
-- **D:** `_collapse_inside_parentheses(..., simplify_fn=_simplify_variant_d)`
-- **E:** `_collapse_inside_parentheses(..., simplify_fn=_simplify_variant_e)`
+- **D:** `_collapse_inside_parentheses_local(..., simplify_fn=_simplify_variant_d)` + final global
+- **E:** Two-phase: `_simplify_variant_e_phase1` (01→0), then `_simplify_variant_e_phase2` (10→0)
 - **F:** `_collapse_inside_parentheses` until steady, then `_collapse_global_ignore_parentheses`
 - **G:** `_collapse_inside_parentheses_local` (no final global)
 - **H:** `_collapse_inside_parentheses_one_local` + per-tick `_collapse_global_ignore_parentheses`
+- **I:** Two-phase: `_simplify_variant_i_phase1` (10→0), then `_simplify_variant_i_phase2` (01→0)
 
 **Eliminated variants:**
-- ~~**A:**~~ `_collapse_global_ignore_parentheses` (removed in v33)
-- ~~**C:**~~ `_collapse_inside_parentheses_one_local` + final global (removed in v33)
+- ~~**A:**~~ `_collapse_global_ignore_parentheses`
+- ~~**C:**~~ `_collapse_inside_parentheses_one_local` + final global
 

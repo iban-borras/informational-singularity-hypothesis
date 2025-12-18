@@ -100,20 +100,21 @@ The golden ratio φ = 1.618... is the limit of consecutive Fibonacci ratios:
 
 Example with `01100110`:
 
-**Variant B:**
+**Variant B (Dec 2025 fix: degrade to No-Res):**
 ```
-01100110 → (remove 01,10 simultaneously) → ∅
-Ratios: [∞] — undefined, no intermediate structure
-```
-
-**Variant E:**
-```
-01100110 → (remove 01) → 1010 → (remove 01 again) → 10 → (remove 10) → ∅
-Lengths: 8 → 4 → 2 → 0
-Ratios: 2.0, 2.0 — close to φ!
+01100110 → (degrade 01→0, 10→0 simultaneously) → 0000 → (compress runs) → 0
+Ratios: [8:1] — rapid collapse to No-Res
 ```
 
-The ordered passes create a **chain of transformations** where each step produces intermediate states that maintain φ-like proportions.
+**Variant E (two-phase degradation):**
+```
+Phase 1 (01→0): 01100110 → 0010 → 000 → 0
+Phase 2 (10→0): 0 (already stable)
+Lengths: 8 → 4 → 3 → 1
+Ratios: 2.0, 1.33, 3.0 — more intermediate structure!
+```
+
+The two-phase degradation creates a **chain of transformations** where each phase produces intermediate states that are accumulated, generating more information than simultaneous degradation.
 
 ## Ontological Implications
 
@@ -294,30 +295,46 @@ This finding supports the HSI hypothesis that complex structure (including funda
 If Variant E's φ-proximity comes from "emergence before collapse" (removing `01` before `10`),
 then **Variant I** (removing `10` before `01` — "collapse before emergence") should show different behavior.
 
-### Variant I Definition
+### Variant I Definition (Dec 2025 two-phase fix)
 
-**Source:** `level0/generator.py`, function `_simplify_variant_i()` (lines 393-407)
+**Source:** `level0/generator.py`, functions `_simplify_variant_i_phase1()` and `_simplify_variant_i_phase2()`
 
 ```python
-def _simplify_variant_i(seq: str) -> str:
-    """Inverse of E: remove all 10 first, then all 01; then compress runs."""
-    result = re.sub(r'10', '', seq)      # First remove 10 (collapse)
-    result = re.sub(r'01', '', result)   # Then remove 01 (emergence)
+def _simplify_variant_i_phase1(seq: str) -> str:
+    """I Phase 1: Only 10→0 (collapse first); compress runs."""
+    result = re.sub(r'10', '0', seq)  # Degrade to No-Res
     result = re.sub(r'0+', '0', result)
     result = re.sub(r'1+', '1', result)
-    return result
+    return result if result else '0'
+
+def _simplify_variant_i_phase2(seq: str) -> str:
+    """I Phase 2: Only 01→0 (emergence after); compress runs."""
+    result = re.sub(r'01', '0', seq)  # Degrade to No-Res
+    result = re.sub(r'0+', '0', result)
+    result = re.sub(r'1+', '1', result)
+    return result if result else '0'
 ```
+
+**Algorithm:** Two separate phases with accumulation between them:
+1. **Phase 1:** Apply 10→0 (collapse) until stable, accumulate intermediate states
+2. **Phase 2:** Apply 01→0 (emergence) until stable, accumulate intermediate states
 
 ### Statistical Comparison: E vs I
 
-**Source:** `analysis/phi_emergence_analysis.py`, function `compare_E_vs_I()`, executed 2025-12-09
-**Validated with:** Real HSI Variant I generation (18 iterations, 2025-12-09)
+**Status (Dec 2025):** Previous comparison showed identical results for E and I due to TWO bugs:
+1. Patterns were deleted (`→ ''`) instead of degraded to No-Res (`→ '0'`)
+2. Both phases were applied in the same loop (no separate accumulation between phases)
 
-| Metric | Variant E | Variant I | Difference |
-|--------|-----------|-----------|------------|
-| Avg steps | **9.49** | 5.20 | E has 83% more steps |
-| Total ratios | **8,488** | 3,699 | E generates 2.3× more |
-| **φ-proximity** | **0.677** | 1.442 | **E is 2.13× closer to φ** |
+After the Dec 2025 fix, E and I now:
+- Correctly degrade patterns to `'0'` (HSI ontology compliant)
+- Have **two separate phases** with accumulation between them
+- Generate **different amounts of information** due to inter-phase accumulation
+
+New experiments needed to determine if the two-phase separation produces different φ-proximity values.
+
+| Metric | Variant E | Variant I | Status |
+|--------|-----------|-----------|--------|
+| φ-proximity | TBD | TBD | **Needs re-run after Dec 2025 fix** |
 
 #### Real File Comparison (Iteration 18)
 

@@ -31,16 +31,9 @@ RESULTS_DIR = BASE_PATH / "results"
 # Use unified structure: level0/ subdirectory
 REPORTS_DIR = BASE_PATH / "results" / "level0" / "reports"
 VISUALIZATIONS_DIR = BASE_PATH / "results" / "level0" / "visualizations"
-SNAPSHOT_DATA_DIR = BASE_PATH / "results" / "level0" / "snapshots"
+SNAPSHOT_DATA_DIR = BASE_PATH / "results" / "level0" / "phi_snapshots"
 
-# Fallback to old locations if they exist (backwards compatibility)
-_old_reports = BASE_PATH / "results" / "reports"
-_old_vis = BASE_PATH / "results" / "visualizations"
-if _old_reports.exists() and any(_old_reports.iterdir()):
-    REPORTS_DIR = _old_reports
-if _old_vis.exists() and any(_old_vis.iterdir()):
-    VISUALIZATIONS_DIR = _old_vis
-
+# No fallbacks - always use new structure
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 VISUALIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -62,7 +55,7 @@ def find_last_completed_iteration(output_dir: str, variant: str) -> int:
     import json
     from pathlib import Path
 
-    snapshot_dir = Path(output_dir) / "phi_snapshots" / f"var_{variant}_abs1"
+    snapshot_dir = Path(output_dir) / "level0" / "phi_snapshots" / f"var_{variant}_abs1"
 
     if not snapshot_dir.exists():
         return 0
@@ -112,7 +105,7 @@ def cleanup_incomplete_iteration(output_dir: str, variant: str, iteration: int):
     """
     from pathlib import Path
 
-    snapshot_dir = Path(output_dir) / "phi_snapshots" / f"var_{variant}_abs1"
+    snapshot_dir = Path(output_dir) / "level0" / "phi_snapshots" / f"var_{variant}_abs1"
 
     if not snapshot_dir.exists():
         return
@@ -202,8 +195,8 @@ def simulate_phi(
     # Configurar gestor de snapshots si cal
     snapshot_manager = None
     if use_compression and output_dir:
-        # Save under results/phi_snapshots/var_{VARIANT}
-        snapshot_dir = Path(output_dir) / "phi_snapshots" / f"var_{variant}"
+        # Save under results/level0/phi_snapshots/var_{VARIANT}
+        snapshot_dir = Path(output_dir) / "level0" / "phi_snapshots" / f"var_{variant}"
         snapshot_manager = PhiSnapshotManager(
             data_dir=str(snapshot_dir),
             memory_threshold=memory_threshold
@@ -296,15 +289,31 @@ def simulate_phi(
 
     # Nota: collapse_rule/collapse_depth/simplify_fn are ignored in basal‑pure mode
     def _simplify_base(seq: str) -> str:
-        """Basal AND-rule simplification: 01 and 10 annihilate; compress runs.
-        This matches the original v0 behavior and enforces decay to No‑Res.
+        """Basal AND-rule simplification: 01 and 10 → 0; compress runs.
+
+        IMPORTANT (Dec 2025 fix): Substitutions produce '0' (No-Res), not '' (empty).
+        According to HSI, No-Res ('0') is the fundamental state - nothing ever
+        truly disappears, it degrades to No-Res. The result is never empty.
+
+        Iterates until stable to handle cascading patterns.
+
+        NOTE on 1+ → 1 compression: Philosophically, each Absolute ('1') contains
+        unique history and merging them loses information. However, in HSI context,
+        No-Res ('0') is always present (we start from R0='0') and absorbs all
+        adjacent Absolutes. Thus 1+ → 1 never affects the final result in practice,
+        as the primordial '0' guarantees eventual collapse to No-Res.
         """
-        # Annihilate opposing pairs
-        result = re.sub(r'(01|10)', '', seq)
-        # Compress runs
-        result = re.sub(r'0+', '0', result)
-        result = re.sub(r'1+', '1', result)
-        return result
+        prev = None
+        result = seq
+        while prev != result:
+            prev = result
+            # Degrade opposing pairs → No-Res (not empty!)
+            result = re.sub(r'(01|10)', '0', result)
+            # Compress runs (see NOTE above re: 1+ → 1 philosophical consideration)
+            result = re.sub(r'0+', '0', result)
+            result = re.sub(r'1+', '1', result)
+        # Ensure we never return empty - always at least No-Res
+        return result if result else '0'
 
     def _clean_sequence(seq: str, chunk_size: int = 10_000_000) -> str:
         """
@@ -389,35 +398,85 @@ def simulate_phi(
         return re.sub(r'\([01]+\)', _collapse_match, state, count=1)
 
     def _simplify_variant_d(seq: str) -> str:
-        """Minimal asymmetry: 10→∅, 01→0; then compress runs."""
-        result = re.sub(r'10', '', seq)
-        result = re.sub(r'01', '0', result)
+        """Minimal asymmetry: 10→0, 01→0; then compress runs.
+
+        IMPORTANT (Dec 2025 fix): Both patterns degrade to '0' (No-Res), not ''.
+        Iterates until stable to handle cascading patterns.
+        """
+        prev = None
+        result = seq
+        while prev != result:
+            prev = result
+            result = re.sub(r'10', '0', result)
+            result = re.sub(r'01', '0', result)
+            result = re.sub(r'0+', '0', result)
+            result = re.sub(r'1+', '1', result)
+        return result if result else '0'
+
+    def _simplify_variant_e_phase1(seq: str) -> str:
+        """E Phase 1: Only 01→0 (emergence); compress runs.
+
+        Single-pass substitution - the outer loop handles iteration.
+        """
+        result = re.sub(r'01', '0', seq)
         result = re.sub(r'0+', '0', result)
         result = re.sub(r'1+', '1', result)
-        return result
+        return result if result else '0'
+
+    def _simplify_variant_e_phase2(seq: str) -> str:
+        """E Phase 2: Only 10→0 (collapse); compress runs.
+
+        Single-pass substitution - the outer loop handles iteration.
+        """
+        result = re.sub(r'10', '0', seq)
+        result = re.sub(r'0+', '0', result)
+        result = re.sub(r'1+', '1', result)
+        return result if result else '0'
+
+    def _simplify_variant_i_phase1(seq: str) -> str:
+        """I Phase 1: Only 10→0 (collapse first); compress runs.
+
+        Single-pass substitution - the outer loop handles iteration.
+        Inverse of E: collapse before emergence.
+        """
+        result = re.sub(r'10', '0', seq)
+        result = re.sub(r'0+', '0', result)
+        result = re.sub(r'1+', '1', result)
+        return result if result else '0'
+
+    def _simplify_variant_i_phase2(seq: str) -> str:
+        """I Phase 2: Only 01→0 (emergence after); compress runs.
+
+        Single-pass substitution - the outer loop handles iteration.
+        Inverse of E: emergence after collapse.
+        """
+        result = re.sub(r'01', '0', seq)
+        result = re.sub(r'0+', '0', result)
+        result = re.sub(r'1+', '1', result)
+        return result if result else '0'
 
     def _simplify_variant_e(seq: str) -> str:
-        """Ordered passes: remove all 01, then all 10; then compress runs."""
-        result = re.sub(r'01', '', seq)
-        result = re.sub(r'10', '', result)
-        result = re.sub(r'0+', '0', result)
-        result = re.sub(r'1+', '1', result)
+        """E combined: Phase 1 (01→0) then Phase 2 (10→0).
+
+        Used by hybrid engine for streaming collapse.
+        Applies both phases in sequence for each block.
+        """
+        # Phase 1: 01→0 (emergence)
+        result = _simplify_variant_e_phase1(seq)
+        # Phase 2: 10→0 (collapse)
+        result = _simplify_variant_e_phase2(result)
         return result
 
     def _simplify_variant_i(seq: str) -> str:
-        """Inverse of E: remove all 10 first, then all 01; then compress runs.
+        """I combined: Phase 1 (10→0) then Phase 2 (01→0).
 
-        This variant tests the opposite order of E to determine if:
-        - The phi-proximity effect is symmetric (order doesn't matter which comes first)
-        - Or asymmetric (only 01-first generates phi, 10-first generates something else)
-
-        Hypothesis: If E's phi-generation comes from "emergence before collapse" (01→10),
-        then I's "collapse before emergence" (10→01) might generate different structure.
+        Used by hybrid engine for streaming collapse.
+        Inverse of E: collapse before emergence.
         """
-        result = re.sub(r'10', '', seq)      # First remove 10 (collapse)
-        result = re.sub(r'01', '', result)   # Then remove 01 (emergence)
-        result = re.sub(r'0+', '0', result)
-        result = re.sub(r'1+', '1', result)
+        # Phase 1: 10→0 (collapse first)
+        result = _simplify_variant_i_phase1(seq)
+        # Phase 2: 01→0 (emergence after)
+        result = _simplify_variant_i_phase2(result)
         return result
 
 
@@ -675,52 +734,92 @@ def simulate_phi(
                     state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_d)
 
         elif variant == "E":
-            # Ordered passes using stratified passes (like B, but with E's simplify rule)
+            # Ordered passes: Phase 1 (01→0) then Phase 2 (10→0)
+            # Each phase iterates until stable, accumulating intermediate states
             if used_hybrid:
-                # After streaming, apply final global simplify with E's rule
+                # After streaming: Phase 1 then Phase 2
                 if len(state) > 1:
-                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e)
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e_phase1)
+                if len(state) > 1:
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e_phase2)
             else:
+                # Phase 1: 01→0 (emergence first)
+                previous = ""
                 while state != previous:
                     previous = state
                     if accumulation_manager:
                         accumulation_manager.append(state)
                     else:
                         accumulation += state
-                    # Use _local to preserve outer structure (stratified like B)
-                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_e)
+                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_e_phase1)
                     if len(next_state) == 1:
                         state = next_state
                         break
                     state = next_state
-                # Final global simplify for E (like B does)
+                # Phase 1 global
                 if len(state) > 1:
-                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e)
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e_phase1)
+
+                # Phase 2: 10→0 (collapse after)
+                previous = ""
+                while state != previous:
+                    previous = state
+                    if accumulation_manager:
+                        accumulation_manager.append(state)
+                    else:
+                        accumulation += state
+                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_e_phase2)
+                    if len(next_state) == 1:
+                        state = next_state
+                        break
+                    state = next_state
+                # Phase 2 global
+                if len(state) > 1:
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_e_phase2)
 
         elif variant == "I":
-            # I — Inverse of E: remove 10 first, then 01 (tests order asymmetry)
-            # Hypothesis: if E's phi-proximity comes from "emergence before collapse",
-            # then I's "collapse before emergence" might show different behavior
+            # Inverse of E: Phase 1 (10→0) then Phase 2 (01→0)
+            # Each phase iterates until stable, accumulating intermediate states
             if used_hybrid:
-                # After streaming, apply final global simplify with I's rule
+                # After streaming: Phase 1 then Phase 2
                 if len(state) > 1:
-                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i)
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i_phase1)
+                if len(state) > 1:
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i_phase2)
             else:
+                # Phase 1: 10→0 (collapse first)
+                previous = ""
                 while state != previous:
                     previous = state
                     if accumulation_manager:
                         accumulation_manager.append(state)
                     else:
                         accumulation += state
-                    # Use _local to preserve outer structure (stratified like B)
-                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_i)
+                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_i_phase1)
                     if len(next_state) == 1:
                         state = next_state
                         break
                     state = next_state
-                # Final global simplify for I (like B does)
+                # Phase 1 global
                 if len(state) > 1:
-                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i)
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i_phase1)
+
+                # Phase 2: 01→0 (emergence after)
+                previous = ""
+                while state != previous:
+                    previous = state
+                    if accumulation_manager:
+                        accumulation_manager.append(state)
+                    else:
+                        accumulation += state
+                    next_state = _collapse_inside_parentheses_local(state, simplify_fn=_simplify_variant_i_phase2)
+                    if len(next_state) == 1:
+                        state = next_state
+                        break
+                    state = next_state
+                # Phase 2 global
+                if len(state) > 1:
+                    state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_i_phase2)
 
         elif variant == "F":
             # Hybrid: fully stabilize inside→out, then one global pass
@@ -841,6 +940,28 @@ def simulate_phi(
             if phi_observable is None:
                 phi_observable = _clean_sequence(accumulation)
             snapshots.append(phi_observable)
+        elif snapshot_manager and save_snapshots:
+            # FIX: Save small sequences that don't reach compression threshold
+            # This ensures variants like H (compact) always save their data
+            if phi_to_save is None:
+                if accumulation_manager:
+                    phi_to_save = accumulation_manager.read_all()
+                else:
+                    phi_to_save = accumulation
+            t_snap = time.perf_counter()
+            if storage_format == "v33":
+                save_info = snapshot_manager.save_phi_state_structural(
+                    phi_to_save,
+                    iteration + 1,
+                    {}
+                )
+            else:
+                save_info = snapshot_manager.save_phi_state(
+                    _clean_sequence(phi_to_save),
+                    iteration + 1,
+                    {}
+                )
+            metadata["snapshots_saved"].append(save_info)
 
         # Optional per-iteration logging (with flush for subprocess visibility)
         if LOG_EVERY and ((iteration + 1) % LOG_EVERY == 0 or iteration == 0):

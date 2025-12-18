@@ -199,23 +199,82 @@ def save_phi_structural_gz_from_file(
 def load_phi_structural_gz(filepath: str) -> str:
     """
     Load and decode Φ with structural information from gzip file.
-    
+
     Args:
         filepath: Input file path (should end with .gz)
-        
+
     Returns:
         String containing '0', '1', '(', ')' characters
-        
+
     Example:
         >>> load_phi_structural_gz("phi_iter1.struct.gz")
         '(01)1'
     """
     bits = bitarray()
-    
+
     with gzip.open(filepath, "rb") as f:
         bits.fromfile(f)
-    
+
     return decode_phi_with_structure(bits)
+
+
+def stream_phi_prefix_gz(filepath: str, max_chars: int, clean: bool = True) -> str:
+    """
+    Stream and decode only a prefix of Φ from gzip file.
+
+    Memory-efficient: reads only the bytes needed for max_chars characters.
+    Each character uses 2 bits, so we need (max_chars * 2) / 8 = max_chars / 4 bytes.
+
+    Args:
+        filepath: Input file path (should end with .gz)
+        max_chars: Maximum number of output characters to read
+        clean: If True, remove structural characters '(' and ')' from output
+
+    Returns:
+        String containing decoded characters (length <= max_chars)
+
+    Example:
+        >>> stream_phi_prefix_gz("phi_iter23.struct.gz", 1000000, clean=True)
+        '0110101...'  # only 0s and 1s
+    """
+    # Calculate bytes needed: 2 bits per char, 8 bits per byte
+    # Add extra margin for clean mode (we need more input to get enough clean output)
+    if clean:
+        # Estimate: parentheses are ~10% of structural data, so read 20% more
+        bytes_needed = (int(max_chars * 1.25) + 3) // 4
+    else:
+        bytes_needed = (max_chars + 3) // 4  # Round up
+
+    # Read in chunks for memory efficiency (1MB at a time)
+    chunk_size = 1_048_576
+    result_chars = []
+    bytes_read = 0
+
+    with gzip.open(filepath, "rb") as f:
+        while bytes_read < bytes_needed and len(result_chars) < max_chars:
+            read_amount = min(chunk_size, bytes_needed - bytes_read)
+            raw = f.read(read_amount)
+            if not raw:
+                break
+            bytes_read += len(raw)
+
+            # Decode this chunk
+            bits = bitarray()
+            bits.frombytes(raw)
+
+            # Process 2 bits at a time
+            bit_str = bits.to01()
+            for i in range(0, len(bit_str) - 1, 2):
+                two_bits = bit_str[i:i+2]
+                char = DECODING_MAP.get(two_bits)
+                if char:
+                    if clean and char in '()':
+                        continue  # Skip structural chars
+                    result_chars.append(char)
+                    if len(result_chars) >= max_chars:
+                        break
+
+    return ''.join(result_chars[:max_chars])
 
 
 def get_format_info(phi_str: str) -> dict:

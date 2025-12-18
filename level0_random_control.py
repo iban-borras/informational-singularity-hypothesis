@@ -33,7 +33,7 @@ from typing import Optional
 
 # Project paths
 ROOT = Path(__file__).resolve().parent
-RESULTS_DIR = ROOT / "results" / "phi_snapshots" / "var_A"  # Same location as other variants
+RESULTS_DIR = ROOT / "results" / "level0" / "phi_snapshots" / "var_A"  # Same location as other variants
 
 
 def generate_random_bits(num_bits: int, seed: Optional[int] = None, use_csprng: bool = False) -> str:
@@ -76,28 +76,26 @@ def generate_random_bits(num_bits: int, seed: Optional[int] = None, use_csprng: 
 
 def get_variant_size(variant: str, iterations: int) -> Optional[int]:
     """Get the size of a variant at a given iteration from its metadata."""
-    # Try phi_snapshots first (current structure), then snapshots (legacy)
-    for subdir in ["phi_snapshots", "snapshots"]:
-        var_dir = ROOT / "results" / subdir / f"var_{variant}"
-        meta_path = var_dir / f"phi_iter{iterations}.json"
+    # Standard structure: level0/phi_snapshots/var_{X}/
+    var_dir = ROOT / "results" / "level0" / "phi_snapshots" / f"var_{variant}"
+    meta_path = var_dir / f"phi_iter{iterations}.json"
 
-        if meta_path.exists():
-            try:
-                with open(meta_path, 'r') as f:
-                    meta = json.load(f)
-                    # Try multiple possible field names for size
-                    size = (
-                        meta.get('sequence_length') or  # v33 format
-                        meta.get('clean_length') or
-                        meta.get('total_length') or
-                        (meta.get('format_info', {}).get('length')) or  # nested in format_info
-                        0
-                    )
-                    if size:
-                        return size
-            except Exception as e:
-                print(f"[DEBUG] Error reading metadata: {e}")
-                pass
+    if meta_path.exists():
+        try:
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+                # Try multiple possible field names for size
+                size = (
+                    meta.get('sequence_length') or  # v33 format
+                    meta.get('clean_length') or
+                    meta.get('total_length') or
+                    (meta.get('format_info', {}).get('length')) or  # nested in format_info
+                    0
+                )
+                if size:
+                    return size
+        except Exception as e:
+            print(f"[DEBUG] Error reading metadata: {e}")
 
     return None
 

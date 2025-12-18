@@ -137,29 +137,47 @@ All scripts can be run directly from the project root:
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
 | `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
 
-### Basic Execution
+### Usage Examples
 
 ```bash
-# Level 0: Generate Φ sequences (can take hours/days for high iterations)
+# ═══════════════════════════════════════════════════════════════════════════
+# LEVEL 0: Φ Sequence Generation
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Generate Φ sequences (can take hours/days for high iterations)
 python level0_generate.py --variant B --iterations 18
 
-# Level 0: Generate Variant I (inverse order: 10→01, for φ-asymmetry study)
+# Generate with plot-only mode (regenerate visualizations from existing data)
+python level0_generate.py --variant B --iterations 20 --plot-only
+
+# Generate Variant I (inverse order: 10→01, for φ-asymmetry study)
 python level0_generate.py --variant I --iterations 18
 
-# Level 1: Analyze patterns and infer rules
+# Refresh plots for existing variant data (without regenerating sequences)
+python level0_refresh_plots.py -v B --hilbert-bits 1048576 --fft-bits 2000000
+
+# Refresh plots for all variants (recommended Hilbert bits: 1M-4M)
+python level0_refresh_plots.py -v D --hilbert-bits 1048576
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LEVEL 1: Pattern Analysis & Emergence
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Analyze patterns and infer rules
 python level1_analyze_patterns.py --variant B --iteration 18 --report
+python level1_analyze_patterns.py --variant B --iteration 18 --min-len 10 --max-len 50 --report
 
-# Level 1: Calculate Emergence Index (potential for Level 2)
+# Calculate Emergence Index (potential for Level 2)
 python level1_emergence_index.py --variant B --iteration 18
-
-# Level 1: Calculate SCI & ICC metrics from emergence data
-python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_iter18.json
-
-# Level 1: Generate publication figures
-python level1_visualize.py --variants B A --iterations 18 --format pdf
 
 # Compare emergence potential across variants
 python level1_emergence_index.py --variants A B D E F --iteration 18 --compare
+
+# Calculate SCI & ICC metrics from emergence data
+python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_iter18.json
+
+# Generate publication figures
+python level1_visualize.py --variants B A --iterations 18 --format pdf
 ```
 
 The system uses `config.json` for configuration. If the file doesn't exist, it will be created automatically with default values.
@@ -167,19 +185,6 @@ The system uses `config.json` for configuration. If the file doesn't exist, it w
 ### Configuration
 
 Note: Current Level‑0 “basal‑pure” generator no longer uses dynamic collapse parameters (no masks, no seeds). Configuration remains for operational aspects (iterations, HW limits, outputs).
-
-### Command Line Options
-
-```bash
-# Level 0 options
-python level0_generate.py --variant B --iterations 20 --plot-only
-
-# Level 1 options
-python level1_analyze_patterns.py --variant B --iteration 18 --min-len 10 --max-len 50 --report
-
-# Level 1 Emergence Index options
-python level1_emergence_index.py --variants A B D E F --iteration 18 --compare
-```
 
 ### Automatic Compression
 
@@ -296,19 +301,25 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Scientific Value:** Fully compatible with ISH principles, validated as ontologically correct
 - **Why it survives:** Gold standard for order emergence through stratified containment
 
-**Variant D — Minimal Asymmetry**
-- **Algorithm:** Asymmetric rule (10→∅, 01→0) in stratified passes
-- **Properties:** Breaks 0↔1 symmetry, tests robustness of order emergence
-- **Scientific Value:** Tests whether order is robust to symmetry-breaking
-- **Why it survives:** Legitimate hypothesis about asymmetric collapse effects
+**Variant D — Simultaneous Degradation**
+- **Algorithm:** Degrade 10→0 and 01→0 simultaneously, then compress runs
+- **Properties:** Both patterns degrade to No-Res (HSI ontology compliant)
+- **Scientific Value:** Baseline comparison with B using dedicated simplify function
+- **Why it survives:** Tests robustness of order emergence
 
 ### 🧪 Experimental Variants (Tier 2)
 
-**Variant E — Ordered Two-Pass Removal**
-- **Algorithm:** Remove all 01, then all 10, then compress runs
-- **Properties:** Enforces deterministic pass order (more aggressive than base)
-- **Scientific Value:** Tests whether pass order affects emergent structure
-- **Why it survives:** Explores sequence-dependent collapse dynamics
+**Variant E — Two-Phase Degradation**
+- **Algorithm:** Phase 1: 01→0 (iterate until stable), Phase 2: 10→0 (iterate until stable)
+- **Properties:** Two separate phases with accumulation between them
+- **Scientific Value:** Tests whether phase order affects emergent structure
+- **Why it survives:** Explores sequence-dependent collapse dynamics with inter-phase accumulation
+
+**Variant I — Inverse of E**
+- **Algorithm:** Phase 1: 10→0 (iterate until stable), Phase 2: 01→0 (iterate until stable)
+- **Properties:** Inverse phase order of E (collapse before emergence)
+- **Scientific Value:** Tests whether the effect of phase order is symmetric or asymmetric
+- **Why it survives:** Complements E by testing the opposite ordering
 
 **Variant F — Hybrid Stabilization**
 - **Algorithm:** Stabilize inside→out, then single global pass

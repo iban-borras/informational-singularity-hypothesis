@@ -500,13 +500,13 @@ def main():
     parser = argparse.ArgumentParser(description='Pattern Survival Analysis for HSI')
     parser.add_argument('--variant', default='B', help='Variant to analyze (default: B)')
     parser.add_argument('--results-dir', default='results', help='Results directory')
-    parser.add_argument('--output-dir', default='results/figures', help='Output directory')
+    parser.add_argument('--output-dir', default='results/level1/figures', help='Output directory')
     parser.add_argument('--format', default='png', choices=['png', 'pdf', 'svg'])
     parser.add_argument('--dpi', type=int, default=300)
 
     args = parser.parse_args()
 
-    results_dir = Path(args.results_dir)
+    results_dir = Path(args.results_dir) / "level1" / "analysis"
     output_dir = Path(args.output_dir)
 
     print("="*70)
@@ -517,6 +517,7 @@ def main():
     import glob
     import re
 
+    results_dir.mkdir(parents=True, exist_ok=True)
     pattern = str(results_dir / f"level1_analysis_var{args.variant}_iter*_min*_max*.json")
     files = glob.glob(pattern)
 

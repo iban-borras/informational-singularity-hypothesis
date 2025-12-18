@@ -3,7 +3,6 @@
 **Autors:** Iban Barroso, amb assistència de Sophia (AI)
 **Revisora:** Ariadna (anàlisi filosòfica i estructural)
 **Data:** 2025-11-28
-**Versió:** v33 (HSI v32 Aligned)
 **Propòsit:** Document de guia per a revisió externa i preparació d'un apèndix formal al paper
 
 ---
@@ -87,18 +86,32 @@ Implementació comuna per defecte:
 
 ```python
 def _simplify_base(seq: str) -> str:
-    """Basal AND-rule simplification: 01 and 10 annihilate; compress runs."""
-    # Aniquilar parells oposats (tensió 0-1)
-    result = re.sub(r'(01|10)', '', seq)
-    # Comprimir repeticions
-    result = re.sub(r'0+', '0', result)
-    result = re.sub(r'1+', '1', result)
-    return result
+    """Basal AND-rule simplification: 01 and 10 → 0; compress runs.
+
+    IMPORTANT (Dec 2025 fix): Patterns degrade to '0' (No-Res), not '' (empty).
+    Iterates until stable. Always returns at least '0'.
+    """
+    prev = None
+    result = seq
+    while prev != result:
+        prev = result
+        result = re.sub(r'(01|10)', '0', result)  # Degrade to No-Res
+        result = re.sub(r'0+', '0', result)
+        result = re.sub(r'1+', '1', result)
+    return result if result else '0'
 ```
 
 **Interpretació ontològica:**
-- `01 → ∅` i `10 → ∅`: La tensió entre No-Res i Absolut s'aniquila
-- `00...0 → 0` i `11...1 → 1`: Estats idèntics es col·lapsen
+- `01 → 0` i `10 → 0`: La tensió entre No-Res i Absolut degrada al No-Res (mai desapareix)
+- `00...0 → 0`: No-Res idèntics es fusionen (ontològicament coherent)
+- `11...1 → 1`: Absoluts es comprimeixen (nota filosòfica a continuació)
+
+**Nota filosòfica sobre `1+ → 1`:** Es podria argumentar que cada Absolut (`1`) conté
+una història única i que comprimir `111 → 1` perd informació, a diferència de `000 → 0`.
+No obstant això, en el flux real de HSI, el No-Res sempre és present (comencem amb R₀ = `0`)
+i absorbeix tots els Absoluts adjacents. Per tant, la compressió `1+ → 1` mai afecta el
+resultat final — el `0` primordial garanteix el col·lapse eventual a No-Res. Mantenim la
+regla simètrica per raons pragmàtiques.
 
 ---
 
@@ -164,30 +177,39 @@ def _collapse_inside_parentheses_local(state: str, simplify_fn=None) -> str:
 
 La Variant D introdueix una asimetria direccional mínima per testar si l'ordre emergent depèn de la simetria perfecta 0↔1.
 
-### 4.2 Funció de Simplificació Asimètrica
+### 4.2 Funció de Simplificació (Variant D)
 
 ```python
 def _simplify_variant_d(seq: str) -> str:
-    """Minimal asymmetry: 10→∅, 01→0; then compress runs."""
-    result = re.sub(r'10', '', seq)      # 10 s'aniquila
-    result = re.sub(r'01', '0', result)  # 01 deixa residu 0
-    result = re.sub(r'0+', '0', result)  # comprimir 0s
-    result = re.sub(r'1+', '1', result)  # comprimir 1s
-    return result
+    """Minimal asymmetry: 10→0, 01→0 simultaneously; then compress runs.
+
+    IMPORTANT (Dec 2025 fix): Both patterns degrade to '0' (No-Res), not ''.
+    HSI ontology: nothing ever truly disappears — it degrades to No-Res.
+    """
+    prev = None
+    result = seq
+    while prev != result:
+        prev = result
+        result = re.sub(r'10', '0', result)  # 10 degrada a No-Res
+        result = re.sub(r'01', '0', result)  # 01 degrada a No-Res
+        result = re.sub(r'0+', '0', result)  # comprimir 0s
+        result = re.sub(r'1+', '1', result)  # comprimir 1s
+    return result if result else '0'
 ```
 
-### 4.3 Diferència Clau amb Variant B
+### 4.3 Diferència Clau entre Variants
 
-| Aspecte | Variant B | Variant D |
-|---------|-----------|-----------|
-| `10` | `→ ∅` (aniquilació) | `→ ∅` (aniquilació) |
-| `01` | `→ ∅` (aniquilació) | `→ 0` (residu!) |
-| Simetria | Perfecta | Trencada |
+| Aspecte | Variant B | Variant D | Variant E |
+|---------|-----------|-----------|-----------|
+| `10` | `→ 0` | `→ 0` (simultani) | `→ 0` (fase 2) |
+| `01` | `→ 0` | `→ 0` (simultani) | `→ 0` (fase 1) |
+| Ordre | Simultani | Simultani | Seqüencial (2 fases) |
+| Acumulació | Entre iteracions | Entre iteracions | Entre fases i iteracions |
 
-**Interpretació ontològica de l'asimetria:**
-- A la Variant B, tant `01` com `10` representen tensions que s'aniquilen completament
-- A la Variant D, `01` (No-Res seguit d'Absolut) deixa un residu de No-Res
-- Això modela una "direccionalitat" en la degradació: l'Absolut que ve després del No-Res té un efecte diferent
+**Interpretació ontològica (Dec 2025 fix):**
+- Segons l'ontologia HSI, **res desapareix mai** — tot degrada a No-Res (`0`)
+- La diferència entre variants és l'**ordre** i **moment** de la degradació, no el resultat
+- E i I fan dues fases separades amb acumulació entre elles (més informació generada)
 
 ### 4.4 Algorisme Variant D
 
@@ -196,13 +218,15 @@ elif variant == "D":
     while state != previous:
         previous = state
         accumulation += state  # Acumula micro-estats
-        next_state = _collapse_inside_parentheses(state,
+        next_state = _collapse_inside_parentheses_local(state,
                         simplify_fn=_simplify_variant_d)
         if len(next_state) == 1:
             state = next_state
             break
         state = next_state
-    # Nota: NO aplica simplificació global final (diferència amb B)
+    # Aplica simplificació global final (com B)
+    if len(state) > 1:
+        state = _collapse_global_ignore_parentheses(state, simplify_fn=_simplify_variant_d)
 ```
 
 ---
@@ -213,14 +237,15 @@ elif variant == "D":
 
 | Variant | Simplificació | Final Global | Hipòtesi que Prova |
 |---------|--------------|--------------|-------------------|
-| **B** ⭐ | Base (simètrica) | Sí | Gold standard HSI |
-| **D** | Asimètrica (01→0) | No | Robustesa a asimetria |
-| **E** | Ordenada (01→∅, després 10→∅) | No | Efecte de l'ordre de passes |
+| **B** ⭐ | Base (01→0, 10→0 simultani) | Sí | Gold standard HSI |
+| **D** | Com B però amb funció pròpia | Sí | Robustesa a asimetria |
+| **E** | Dues fases: 01→0, després 10→0 | Sí (per fase) | Efecte de l'ordre de passes |
 | **F** | Base | Sí (una sola) | Híbrid B/sense-final |
 | **G** | Base | No | Estructura crua preservada |
 | **H** | Base + global per tick | Sí (cada pas) | Feedback continu |
+| **I** | Dues fases: 10→0, després 01→0 | Sí (per fase) | Invers de E |
 
-### 5.2 Variants Eliminades (v33)
+### 5.2 Variants Eliminades
 
 | Variant | Raó d'Eliminació |
 |---------|-----------------|
@@ -278,7 +303,7 @@ Les propietats a estudiar inclouen:
 
 1. **A.1 Introducció**
    - Justificació de l'exploració de variants
-   - Criteri de selecció (compatibilitat amb HSI v32)
+   - Criteri de selecció (compatibilitat amb HSI)
 
 2. **A.2 Framework Comú**
    - Decay frame: `(Accα)ABS`

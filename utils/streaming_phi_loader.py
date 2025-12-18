@@ -241,7 +241,7 @@ def iter_phi_from_variant(
         StreamingPhiLoader instance
     """
     if base_path is None:
-        base_path = Path(__file__).parent.parent / "results" / "phi_snapshots"
+        base_path = Path(__file__).parent.parent / "results" / "level0" / "phi_snapshots"
     else:
         base_path = Path(base_path)
 
@@ -275,5 +275,5 @@ if __name__ == "__main__":
     else:
         print("Usage: python streaming_phi_loader.py <path_to_struct.gz>")
         print("\nExample:")
-        print("  python streaming_phi_loader.py results/phi_snapshots/var_B/phi_iter23.struct.gz")
+        print("  python streaming_phi_loader.py results/level0/phi_snapshots/var_B/phi_iter23.struct.gz")
 

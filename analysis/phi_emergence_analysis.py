@@ -471,7 +471,7 @@ def analyze_real_hsi_data():
     print("=" * 80)
 
     # Load real data
-    reports_dir = "results/reports"
+    reports_dir = "results/level0/reports"
 
     # Find latest reports for B and E
     b_report = None

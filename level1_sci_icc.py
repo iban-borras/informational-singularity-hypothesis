@@ -282,7 +282,7 @@ def load_from_trend_analysis(variants: List[str], iterations: List[int]) -> Opti
 
     Returns dict with data for requested variants/iterations, or None if not available.
     """
-    trend_path = Path(__file__).parent / "results" / "trend_analysis.json"
+    trend_path = Path(__file__).parent / "results" / "level1" / "trends" / "trend_analysis.json"
 
     if not trend_path.exists():
         return None

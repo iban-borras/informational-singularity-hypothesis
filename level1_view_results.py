@@ -494,7 +494,7 @@ class ResultsReporter:
         return str(output_path)
 
 
-def find_latest_results(results_dir: str = "results") -> Optional[Path]:
+def find_latest_results(results_dir: str = "results/level1/analysis") -> Optional[Path]:
     """Find the most recent Level 1 analysis results file."""
     results_path = Path(results_dir)
     if not results_path.exists():
@@ -508,7 +508,7 @@ def find_latest_results(results_dir: str = "results") -> Optional[Path]:
 
 
 def find_results_by_variant(variant: str, iteration: int,
-                           results_dir: str = "results") -> Optional[Path]:
+                           results_dir: str = "results/level1/analysis") -> Optional[Path]:
     """Find results file for a specific variant and iteration."""
     pattern = f"level1_analysis_var{variant}_iter{iteration}.json"
     results_path = Path(results_dir) / pattern
@@ -550,7 +550,7 @@ Examples:
     else:
         results_file = find_latest_results()
         if not results_file:
-            print("❌ No results files found in results/ directory")
+            print("❌ No results files found in results/level1/analysis/ directory")
             return 1
         print(f"📂 Using latest results: {results_file.name}")
 

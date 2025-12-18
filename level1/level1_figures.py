@@ -665,8 +665,8 @@ Examples:
                         help='Variants to include (default: all found)')
     parser.add_argument('--iterations', nargs='+', type=int, metavar='N',
                         help='Iterations to include (default: all found)')
-    parser.add_argument('--output-dir', type=str, default='results/figures',
-                        help='Output directory (default: results/figures)')
+    parser.add_argument('--output-dir', type=str, default='results/level1/figures',
+                        help='Output directory (default: results/level1/figures)')
     parser.add_argument('--format', choices=['png', 'pdf', 'svg'], default='png',
                         help='Image format (default: png)')
     parser.add_argument('--dpi', type=int, default=300,
@@ -679,7 +679,7 @@ Examples:
     results_dir = script_dir.parent / "results"
 
     # Use unified output path
-    if args.output_dir == 'results/figures':
+    if args.output_dir == 'results/level1/figures':
         # Default - use new structure
         from utils.file_saver import get_output_path, relative_path
         output_dir = get_output_path(1, "figures", "")
@@ -691,22 +691,14 @@ Examples:
     print("📊 ISH Level 1 Figure Generator")
     print("=" * 60)
 
-    # Discover data - check both old and new locations
+    # Discover data from Level 1 analysis directory
     print("\n🔍 Scanning for available data...")
-    discovered = discover_data(results_dir)
-
-    # Also check new structure
-    new_analysis_dir = results_dir / "level1" / "analysis"
-    if new_analysis_dir.exists():
-        discovered_new = discover_data(new_analysis_dir)
-        for v, data in discovered_new.items():
-            if v not in discovered:
-                discovered[v] = data
-            else:
-                discovered[v].update(data)
+    analysis_dir = results_dir / "level1" / "analysis"
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    discovered = discover_data(analysis_dir)
 
     if not discovered:
-        print("❌ No Level 1 analysis files found in results/")
+        print("❌ No Level 1 analysis files found in results/level1/analysis/")
         print("   Run level1_orchestrator.py first to generate analysis data.")
         return 1
 

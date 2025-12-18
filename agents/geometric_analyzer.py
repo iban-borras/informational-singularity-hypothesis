@@ -26,12 +26,12 @@ class GeometricAnalyzer:
     Implements operators Γ, 𝓡, 𝓣 from the ISH paper.
     """
     
-    def __init__(self, base_path: str = "results"):
+    def __init__(self, base_path: str = "results/level1/analysis"):
         """
         Initialize the geometric analyzer.
-        
+
         Args:
-            base_path: Base path for results directory
+            base_path: Base path for Level 1 analysis results directory
         """
         self.base_path = Path(base_path)
         self.results: Dict[str, Any] = {}

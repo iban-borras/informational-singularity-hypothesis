@@ -1,8 +1,7 @@
 # 📘 Level 1 Analysis — Complete Technical Guide
 
-**Project:** Informational Singularity Hypothesis (HSI)  
-**Version:** v33 (January 2025)  
-**Authors:** Iban Borràs with Augment Agent (Sophia)  
+**Project:** Informational Singularity Hypothesis (HSI)
+**Authors:** Iban Borràs with Augment Agent (Sophia)
 **Status:** Fully operational
 
 ---
@@ -32,31 +31,28 @@ Level 1 is the **pattern analysis and order detection layer** of the HSI system.
 
 ### Why Level 1 Exists
 
-The HSI v32 hypothesis states: **"Order is the only way Nothingness can contradict itself"**
+The HSI hypothesis states: **"Order is the only way Nothingness can contradict itself"**
 
 Level 0 generates raw informational structures through the tension between 0 (Nothingness) and 1 (Absolute). Level 1's role is to:
 
 - **Detect** if order actually emerges from this tension
 - **Quantify** how much order emerges
 - **Characterize** what kind of order emerges
-- **Validate** the HSI v32 hypothesis experimentally
+- **Validate** the HSI hypothesis experimentally
 
-### v33 Structural Format
+### Structural Format
 
-**Critical Innovation:** The v33 format preserves the complete structural information that v32 destroyed.
+**Critical Innovation:** The structural format preserves the complete structural information.
 
-**Problem with v32:**
+**Problem with old format:**
 - Saved only observable bits: `01101001`
 - Lost parentheses marking Absolutes: `(((01)1)0((10)0)1)`
 - **Destroyed the intrinsic order information** needed for Level 1 analysis
 
-**Solution with v33:**
+**Solution with structural format:**
 - 2-bit encoding: `00`=0, `01`=1, `10`=(, `11`=)
 - Preserves complete structure with ~99.7% compression
 - Enables stratified containment analysis
-- Backward compatible with v32
-
-See `v33_structural_format.md` for complete technical details.
 
 ---
 
@@ -67,14 +63,14 @@ See `v33_structural_format.md` for complete technical details.
 ```
 Level 0 (Generator)
     ↓
-[v33 .struct.gz files]
+[.struct.gz files]
     ↓
 Level 1 Data Loader
     ↓
 ┌─────────────────┬──────────────────┐
 │                 │                  │
 Φ Structural      Φ Observable       Metadata
-"(((01)1)...)"    "01101001..."      {format: "v33", ...}
+"(((01)1)...)"    "01101001..."      {format: "structural", ...}
 │                 │                  │
 ↓                 ↓                  ↓
 Structural        Pattern            Basic Stats
@@ -103,7 +99,7 @@ Patterns          Patterns
 hsi_agents_project/
 ├── level1/                    # Level 1 core module
 │   ├── __init__.py
-│   ├── data_loader.py         # Load v32/v33 data
+│   ├── data_loader.py         # Load Level 0 data
 │   ├── example_usage.py       # Usage examples
 │   └── README.md              # Quick reference
 │
@@ -119,7 +115,7 @@ hsi_agents_project/
 │   └── rule_metrics.py        # Rule quality metrics
 │
 └── utils/                     # Utilities
-    ├── bitarray_encoder.py    # v33 encoding/decoding
+    ├── bitarray_encoder.py    # Structural encoding/decoding
     └── visualization.py       # Plotting functions
 ```
 
@@ -131,7 +127,7 @@ hsi_agents_project/
 
 **File:** `level1/data_loader.py`
 
-**Purpose:** Load Level 0 data with automatic format detection (v32/v33)
+**Purpose:** Load Level 0 data with automatic format detection
 
 #### Key Functions
 
@@ -153,7 +149,7 @@ def load_phi_for_level1(
 **Parameters:**
 - `data_dir`: Path to Level 0 results (e.g., `"results/var_B"`)
 - `iteration`: Iteration number to load
-- `return_structural`: Return Φ with parentheses (v33 only)
+- `return_structural`: Return Φ with parentheses
 - `return_observable`: Return clean binary Φ
 - `return_metadata`: Return metadata dictionary
 
@@ -174,7 +170,7 @@ phi_s, phi_o, meta = load_phi_for_level1(
     return_metadata=True
 )
 
-print(f"Format: {meta['format']}")  # "v33_structural"
+print(f"Format: {meta['format']}")  # "structural"
 print(f"Structural length: {len(phi_s)}")
 print(f"Observable length: {len(phi_o)}")
 ```
@@ -355,7 +351,7 @@ detector = PatternDetector(
     min_pattern_length=3,
     max_pattern_length=20,
     min_occurrences=2,
-    enable_structural_analysis=True  # NEW in v33
+    enable_structural_analysis=True
 )
 
 # Detect both types of patterns
@@ -440,7 +436,7 @@ This is the **core scientific contribution** of Level 1 — quantifying order em
 
 **What it measures:** **Overall measure of emergent order** (composite metric)
 
-**This is the KEY metric for validating HSI v32!**
+**This is the KEY metric for validating the HSI hypothesis!**
 
 **Returns:**
 ```python
@@ -468,7 +464,7 @@ order_index = 0.3 × depth_organization +
 ```
 
 **Interpretation:**
-- **order_index > 0.7** → Strong emergent order (HSI v32 validated!)
+- **order_index > 0.7** → Strong emergent order (HSI validated!)
 - **order_index 0.4-0.7** → Moderate emergent order
 - **order_index < 0.4** → Weak emergent order
 
@@ -586,7 +582,7 @@ report = create_order_report(
 **Script:** `example_complete_level1_analysis.py`
 
 **Steps:**
-1. Load v33 data (structural + observable)
+1. Load structural data (structural + observable)
 2. Extract basic structural info
 3. Detect patterns (observable + structural)
 4. Calculate order metrics
@@ -610,12 +606,12 @@ print(f"Order Index: {report['summary']['order_index']:.3f}")
 **Expected output:**
 ```
 ============================================================
-COMPLETE LEVEL 1 ANALYSIS — HSI v33
+COMPLETE LEVEL 1 ANALYSIS — HSI
 Data: results/var_B | Iteration: 10
 ============================================================
 
-📂 STEP 1: Loading v33 data...
-   ✅ Format: v33_structural
+📂 STEP 1: Loading structural data...
+   ✅ Format: structural
    ✅ Structural length: 200,000 chars
    ✅ Observable length: 100,000 bits
 
@@ -797,24 +793,21 @@ FileNotFoundError: phi_iter10.struct.gz not found
 ```
 
 **Causes:**
-- Data was generated with v32 format (no `.struct.gz` files)
+- Data was generated with old format (no `.struct.gz` files)
 - Wrong data directory path
 - Iteration doesn't exist
 
 **Solutions:**
-1. Check if data was generated with v33:
+1. Check if data was generated with structural format:
    ```python
    import json
    with open("results/var_B/phi_iter10.json") as f:
        meta = json.load(f)
-   print(meta.get('format'))  # Should be "v33_structural"
+   print(meta.get('format'))  # Should be "structural"
    ```
 
-2. Regenerate data with v33:
+2. Regenerate data with structural format:
    ```bash
-   # Set environment variable
-   $env:HSI_STORAGE_FORMAT="v33"
-
    # Run generator
    python -m hsi_agents_project.level0.generator -v B -i 10
    ```
@@ -918,7 +911,7 @@ is_balanced: False
 
 ### Understanding Order Emergence
 
-**HSI v32 Hypothesis:** "Order is the only way Nothingness can contradict itself"
+**HSI Hypothesis:** "Order is the only way Nothingness can contradict itself"
 
 **What this means:**
 - The tension between 0 (Nothingness) and 1 (Absolute) is primordial
@@ -927,7 +920,7 @@ is_balanced: False
 - Order manifests as hierarchical structure (nesting of Absolutes)
 
 **Level 1's role:**
-- **Detect** if order actually emerges (it should, according to HSI v32)
+- **Detect** if order actually emerges (it should, according to HSI)
 - **Quantify** how much order emerges (Order Emergence Index)
 - **Characterize** what kind of order emerges (nesting patterns, entropy gradients)
 
@@ -937,7 +930,7 @@ is_balanced: False
 
 **High values (>0.7):**
 - Strong emergent order
-- HSI v32 hypothesis validated
+- HSI hypothesis validated
 - Structure is highly organized
 - Entropy decreases with depth (order increases inward)
 - Contents are regular and balanced
@@ -946,12 +939,12 @@ is_balanced: False
 - Moderate emergent order
 - Some organization present
 - Mixed signals (some components high, others low)
-- Partial validation of HSI v32
+- Partial validation of HSI
 
 **Low values (<0.4):**
 - Weak emergent order
 - Structure is chaotic or random
-- HSI v32 hypothesis not validated
+- HSI hypothesis not validated
 - May indicate wrong variant or early iteration
 
 #### Depth Organization
@@ -993,14 +986,14 @@ is_balanced: False
 **Variant B (Gold Standard):**
 - **Expected Order Index:** 0.6-0.8 (high)
 - **Characteristics:** Strong stratified order, balanced structure
-- **Scientific value:** Validates HSI v32 hypothesis
+- **Scientific value:** Validates the HSI hypothesis
 
-**Variant D (Asymmetric):**
+**Variant D (Simultaneous):**
 - **Expected Order Index:** 0.4-0.6 (medium)
-- **Characteristics:** Asymmetric patterns, may break some order
-- **Scientific value:** Tests robustness of order to symmetry-breaking
+- **Characteristics:** Simultaneous degradation patterns
+- **Scientific value:** Tests robustness of order emergence
 
-**Variants E, F, G, H:**
+**Variants E, F, G, H, I:**
 - **Expected Order Index:** Variable (0.3-0.7)
 - **Characteristics:** Different order patterns
 - **Scientific value:** Explore different collapse dynamics
@@ -1021,7 +1014,7 @@ is_balanced: False
 - High order index (>0.7)
 - Strong emergent order
 - Low entropy, high organization
-- HSI v32 validated
+- HSI hypothesis validated
 
 ### Comparing Variants
 
@@ -1057,7 +1050,6 @@ for i, (variant, metrics) in enumerate(ranked):
 ### Related Documentation
 
 - **`order_metrics_explained.md`** - Detailed scientific explanation of each metric
-- **`v33_structural_format.md`** - Technical specification of v33 format
 - **`level1/README.md`** - Quick reference for Level 1 module
 - **`../README.md`** - Main project README
 
@@ -1066,19 +1058,16 @@ for i, (variant, metrics) in enumerate(ranked):
 - **Stratified Containment:** How Absolutes nest within each other
 - **Emergent Order:** Order that arises spontaneously from primordial tension
 - **Order Emergence Index:** Composite metric quantifying emergent order
-- **HSI v32:** "Order is the only way Nothingness can contradict itself"
+- **HSI:** "Order is the only way Nothingness can contradict itself"
 
 ### Further Reading
 
-- Original HSI paper: `paper Latex/main_cat.tex`
-- Technical audit: `docs/HSI_Technical_Audit_v30.md`
-- Implementation roadmap: `docs/HSI_Implementation_Roadmap_v32.md`
+- Original HSI paper: `Paper_Latex/main_cat.tex`
 
 ---
 
 **Last Updated:** January 2025
 **Authors:** Iban Borràs with Augment Agent (Sophia)
-**Version:** v33
 
 ---
 

@@ -31,14 +31,13 @@ BASE_PATH = Path(__file__).resolve().parent
 SNAPSHOTS_DIR = BASE_PATH / "results" / "level0" / "phi_snapshots"
 RESULTS_DIR = BASE_PATH / "results"
 
-# Fallback to old path if new structure doesn't exist yet
-if not SNAPSHOTS_DIR.exists():
-    SNAPSHOTS_DIR = BASE_PATH / "results" / "phi_snapshots"
+# Ensure the directory exists
+SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def discover_available_iterations(variant: str) -> List[int]:
     """
-    Scan phi_snapshots/var_{X}/ to find which iterations exist.
+    Scan level0/phi_snapshots/var_{X}/ to find which iterations exist.
     
     Returns sorted list of available iteration numbers.
     """
@@ -439,7 +438,7 @@ def run_batch_analysis(discoveries: Dict[str, List[int]],
         'variants': {}
     }
 
-    output_dir = RESULTS_DIR / "trend_analysis"
+    output_dir = RESULTS_DIR / "level1" / "trend_analysis"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for variant, available_iters in discoveries.items():

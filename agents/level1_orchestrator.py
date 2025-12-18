@@ -105,7 +105,7 @@ class Level1Orchestrator:
         """Generate cache file path based on input file and parameters."""
         path_hash = hashlib.md5(f"{struct_gz_path}_{max_chars}".encode()).hexdigest()[:12]
         filename = Path(struct_gz_path).stem.replace('.struct', '')
-        cache_dir = Path("results/cache")
+        cache_dir = Path(__file__).parent.parent / "results" / "level1" / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / f"level1_cache_{filename}_{path_hash}.pkl"
 

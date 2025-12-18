@@ -1492,16 +1492,10 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
     # Find the data file - check both new and old structure
     results_dir = Path(__file__).parent.parent / "results"
 
-    # Try new structure first: level0/phi_snapshots/var_{X}/
+    # Standard structure: level0/phi_snapshots/var_{X}/
     base_path = results_dir / "level0" / "phi_snapshots" / f"var_{variant}"
     struct_path = base_path / f"phi_iter{iteration}.struct.gz"
     bin_path = base_path / f"phi_iter{iteration}.bin.gz"
-
-    # Fallback to old structure: phi_snapshots/var_{X}/
-    if not struct_path.exists() and not bin_path.exists():
-        base_path = results_dir / "phi_snapshots" / f"var_{variant}"
-        struct_path = base_path / f"phi_iter{iteration}.struct.gz"
-        bin_path = base_path / f"phi_iter{iteration}.bin.gz"
 
     data_path = struct_path if struct_path.exists() else (bin_path if bin_path.exists() else None)
 
@@ -1953,17 +1947,12 @@ def load_phi_sequence(variant: str, iteration: int,
     import gzip
     from pathlib import Path
 
-    # Try v33 format first (bitarray in .struct.gz) - check both structures
+    # Try v33 format first (bitarray in .struct.gz)
     results_dir = Path(__file__).parent.parent / "results"
 
-    # Try new structure first
+    # Standard structure: level0/phi_snapshots/var_{X}/
     base_path = results_dir / "level0" / "phi_snapshots" / f"var_{variant}"
     struct_path = base_path / f"phi_iter{iteration}.struct.gz"
-
-    # Fallback to old structure
-    if not struct_path.exists():
-        base_path = results_dir / "phi_snapshots" / f"var_{variant}"
-        struct_path = base_path / f"phi_iter{iteration}.struct.gz"
 
     if struct_path.exists():
         try:

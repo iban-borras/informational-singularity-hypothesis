@@ -144,6 +144,8 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
         # Force UTF-8 I/O on Windows consoles to avoid UnicodeEncodeError
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = env.get("PYTHONIOENCODING", "utf-8")
+        # Disable Python output buffering for real-time progress display
+        env["PYTHONUNBUFFERED"] = "1"
 
         # Stream output live for progress (no capture_output)
         # Resolve correct Python executable inside our venv when available
@@ -172,11 +174,16 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
                 # Show progress lines and key info
                 stripped = line.lstrip()
                 if (stripped.startswith("[iter") or
+                    stripped.startswith("[loop]") or
+                    stripped.startswith("[post]") or
+                    stripped.startswith("[snapshot]") or
+                    stripped.startswith("[INFO]") or
                     stripped.startswith("[variant_A]") or
                     "Config:" in line or
                     "Compression" in line or
                     "Saved variant" in line or
                     "Generated" in line or
+                    "✅" in line or
                     "%" in line):
                     print(line.rstrip())
         proc.wait(timeout=600)
@@ -216,7 +223,7 @@ def find_variant_result_file(variant_code: str, iterations: int | None = None) -
     If 'iterations' is provided, try to find a report matching that iteration;
     if not found, fall back to the latest report for the variant.
     """
-    reports_dir = BASE_PATH / "results" / "reports"
+    reports_dir = BASE_PATH / "results" / "level0" / "reports"
     try:
         if iterations is not None:
             # First try exact iteration match
@@ -437,7 +444,7 @@ def _abs_suffix() -> str:
 def _project_snapshots_dir(var: str | None = None) -> str:
     # Match Level0 generator snapshot dir structure, include ABS if provided
     # Fallback to var_{VARIANT} if var_{VARIANT}_abs{mode} doesn't exist
-    base = BASE_PATH / "results" / "phi_snapshots"
+    base = BASE_PATH / "results" / "level0" / "phi_snapshots"
     if var:
         abs_m = _get_abs_mode()
         if abs_m:
@@ -976,7 +983,9 @@ def _stream_phi_prefix_from_gz(iterations: int, max_bits: int, data_dir: str | N
         try:
             with open(json_path, "r") as f:
                 meta = json.load(f)
-                is_v33 = meta.get("format") == "v33_structural"
+                fmt = meta.get("format", "")
+                # Accept both v33_structural and v33_structural_streaming
+                is_v33 = fmt.startswith("v33_structural")
         except Exception:
             pass
 
@@ -997,43 +1006,84 @@ def _stream_phi_prefix_from_gz(iterations: int, max_bits: int, data_dir: str | N
             rel = gz_path
         print(f"[plot] Reading prefix from: {rel} (format={format_label}, target {max_bits:,} bits) {label}")
 
-    # For v33 structural format, use bitarray decoder
-    if is_v33 and return_structural:
-        from hsi_agents_project.utils.bitarray_encoder import load_phi_structural_gz
-        phi_full = load_phi_structural_gz(gz_path)
-        return phi_full[:max_bits]
+    # For v33 structural format, use efficient streaming decoder
+    if is_v33:
+        from hsi_agents_project.utils.bitarray_encoder import stream_phi_prefix_gz
+        # stream_phi_prefix_gz reads only the bytes needed, not the entire file
+        return stream_phi_prefix_gz(gz_path, max_bits, clean=(not return_structural))
 
-    # For v33 but want clean bits, or v32 format
+    # For v32 format: read as text
     out = []
     need = max_bits
     t0 = time.perf_counter()
     next_mark = 0.10
     total = max_bits
+    with gzip.open(gz_path, "rt", encoding="utf-8") as f:
+        for chunk in iter(lambda: f.read(min(1_000_000, need)), ""):
+            out.append(chunk)
+            need -= len(chunk)
+            if show_progress and total > 0:
+                done = total - need
+                pct = max(0.0, min(1.0, done/total))
+                if pct >= next_mark:
+                    elapsed = time.perf_counter() - t0
+                    eta = (elapsed/pct - elapsed) if pct > 0 else 0.0
+                    print(f"[plot] {label} progress: {pct*100:5.1f}% ({done:,}/{total:,}) ETA ~{eta:.1f}s")
+                    next_mark += 0.10
+            if need <= 0:
+                break
+    return "".join(out)[:max_bits]
 
-    if is_v33 and not return_structural:
-        # Load structural and clean it
-        from hsi_agents_project.utils.bitarray_encoder import load_phi_structural_gz
-        phi_structural = load_phi_structural_gz(gz_path)
-        # Clean: remove parentheses
-        phi_clean = phi_structural.replace('(', '').replace(')', '')
-        return phi_clean[:max_bits]
-    else:
-        # v32 format: read as text
-        with gzip.open(gz_path, "rt", encoding="utf-8") as f:
-            for chunk in iter(lambda: f.read(min(1_000_000, need)), ""):
-                out.append(chunk)
-                need -= len(chunk)
-                if show_progress and total > 0:
-                    done = total - need
-                    pct = max(0.0, min(1.0, done/total))
-                    if pct >= next_mark:
-                        elapsed = time.perf_counter() - t0
-                        eta = (elapsed/pct - elapsed) if pct > 0 else 0.0
-                        print(f"[plot] {label} progress: {pct*100:5.1f}% ({done:,}/{total:,}) ETA ~{eta:.1f}s")
-                        next_mark += 0.10
-                if need <= 0:
-                    break
-        return "".join(out)[:max_bits]
+
+def _compute_local_entropy(counts: "np.ndarray", window: int = 3) -> "np.ndarray":
+    """Compute local Shannon entropy using sliding window on count grid."""
+    import numpy as _np
+    from scipy.ndimage import uniform_filter
+
+    # Total counts per window
+    total = uniform_filter(counts.astype(float), size=window, mode='constant')
+    total = _np.maximum(total, 1e-10)  # Avoid division by zero
+
+    # Probability of 1s in each window
+    p1 = counts.astype(float) / _np.maximum(counts.max(), 1)
+    p1_smooth = uniform_filter(p1, size=window, mode='constant')
+    p0_smooth = 1.0 - p1_smooth
+
+    # Shannon entropy: -p*log2(p) - (1-p)*log2(1-p)
+    # Handle edge cases where p=0 or p=1
+    eps = 1e-10
+    p1_safe = _np.clip(p1_smooth, eps, 1-eps)
+    p0_safe = 1.0 - p1_safe
+    entropy = -p1_safe * _np.log2(p1_safe) - p0_safe * _np.log2(p0_safe)
+
+    return entropy
+
+
+def _adaptive_hilbert_grid(n_bits: int, config_grid: int) -> int:
+    """
+    Compute optimal grid size based on available bits.
+
+    Goal: Ensure enough bits per cell for meaningful statistics.
+    Minimum ~4 bits/cell for differential detection, ~16 for entropy.
+
+    Args:
+        n_bits: Number of bits available
+        config_grid: Maximum grid from config
+
+    Returns:
+        Optimal grid size (power of 2 for Hilbert curve alignment)
+    """
+    import math
+    # Target: at least 8 bits per cell on average for good statistics
+    target_bits_per_cell = 8
+    max_cells = n_bits / target_bits_per_cell
+    # Grid size = sqrt(cells), rounded to nearest power of 2
+    ideal_grid = int(math.sqrt(max_cells))
+    # Clamp to reasonable range and nearest power of 2
+    ideal_grid = max(64, min(ideal_grid, config_grid))
+    # Round to nearest power of 2
+    power = int(math.log2(ideal_grid))
+    return 2 ** power
 
 
 def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
@@ -1044,9 +1094,9 @@ def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
         return
     import matplotlib.pyplot as plt
     import numpy as _np
-    from matplotlib.colors import LogNorm, Normalize
+    from matplotlib.colors import LogNorm, Normalize, TwoSlopeNorm
     hc = _get_hilbert_config()
-    target_grid = max(64, int(hc.get('target_grid', 1024)))
+    config_grid = max(64, int(hc.get('target_grid', 1024)))
     max_bits_eff = hc['max_bits'] if max_bits is None else int(max_bits)
     for r in results_list:
         if not r: continue
@@ -1057,7 +1107,31 @@ def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
             if not bits:
                 print(f"[WARN] Hilbert map skipped for {var}: no data available.", flush=True)
                 continue
-            # 1) Convert to array — VECTORIZED (100x faster than fromiter with generator)
+
+            # Adaptive grid: adjust resolution based on actual bits available
+            # Truncate bits to nearest power of 4 so Hilbert curve fills grid completely
+            import math
+            n_bits_raw = len(bits)
+            # Find largest power of 4 <= n_bits (ensures complete Hilbert grid fill)
+            hilbert_order = int(math.log(n_bits_raw, 4)) if n_bits_raw >= 4 else 1
+            exact_bits = 4 ** hilbert_order  # e.g., 4^12 = 16,777,216
+            next_power = 4 ** (hilbert_order + 1)  # Next level up
+
+            # Log if significant bits are being discarded
+            discarded = n_bits_raw - exact_bits
+            if discarded > 0:
+                pct_used = (exact_bits / n_bits_raw) * 100
+                print(f"[INFO] Hilbert requires power-of-4 bits: using {exact_bits:,} of {n_bits_raw:,} ({pct_used:.1f}%)")
+                print(f"       → To use next level (4^{hilbert_order+1}), request --hilbert-bits {next_power:,}")
+
+            bits = bits[:exact_bits]  # Truncate to exact power of 4
+            n_bits = exact_bits
+            grid_size = 2 ** hilbert_order  # Grid is 2^order × 2^order
+            target_grid = min(grid_size, config_grid)
+            bits_per_cell = n_bits / (target_grid * target_grid)
+            prog.update(message=f"Using {n_bits:,} bits → {grid_size}×{grid_size} grid (fills 100%)")
+
+            # 1) Convert to array — VECTORIZED
             prog.update(message="Converting to array...")
             a = _np.frombuffer(bits.encode('ascii'), dtype='S1') == b'1'
             a = a.astype(_np.uint8)
@@ -1065,38 +1139,74 @@ def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
             coords = phi_to_hilbert_coords(a)
             x = coords[:,0]; y = coords[:,1]
             size = int(max(x.max(), y.max()) + 1)
-            # 2) VECTORIZED heatmap accumulation (was slow Python loop)
-            prog.update(message=f"Building heatmap ({len(a):,} points, vectorized)...")
-            # Filter only positions where a==1
+
+            # 2) Build count grids: ones and total
+            prog.update(message=f"Building heatmaps ({len(a):,} points)...")
             ones_mask = (a == 1)
-            x_ones = x[ones_mask]
-            y_ones = y[ones_mask]
-            # Use np.add.at for vectorized accumulation
-            heat = _np.zeros((size, size), dtype=_np.int32)
-            _np.add.at(heat, (y_ones, x_ones), 1)
-            # 3) Rebin cap a target_grid per a concentrar densitats
+            heat_ones = _np.zeros((size, size), dtype=_np.int32)
+            heat_total = _np.zeros((size, size), dtype=_np.int32)
+            _np.add.at(heat_ones, (y[ones_mask], x[ones_mask]), 1)
+            _np.add.at(heat_total, (y, x), 1)
+
+            # 3) Rebin to adaptive target_grid
             pool = max(1, size // target_grid)
             if pool > 1:
-                prog.update(message="Rebinning...")
+                prog.update(message=f"Rebinning to {target_grid}x{target_grid}...")
                 new_h = size // pool; new_w = size // pool
-                heat = heat[:new_h*pool, :new_w*pool]
-                heat = heat.reshape(new_h, pool, new_w, pool).sum(axis=(1,3))
-            # 4) Visualize
+                heat_ones = heat_ones[:new_h*pool, :new_w*pool].reshape(new_h, pool, new_w, pool).sum(axis=(1,3))
+                heat_total = heat_total[:new_h*pool, :new_w*pool].reshape(new_h, pool, new_w, pool).sum(axis=(1,3))
+
+            # 4) Compute differential (deviation from 50% random)
+            prog.update(message="Computing differential...")
+            with _np.errstate(divide='ignore', invalid='ignore'):
+                density = _np.where(heat_total > 0, heat_ones / heat_total, 0.5)
+            differential = density - 0.5  # Range: [-0.5, +0.5]
+
+            # 5) Compute local entropy
+            prog.update(message="Computing entropy...")
+            try:
+                entropy = _compute_local_entropy(heat_ones, window=5)
+            except ImportError:
+                entropy = None  # scipy not available
+
+            # 6) Create 3-panel figure
             prog.update(message="Rendering...")
-            plt.figure(figsize=(6,6))
-            vmax = int(heat.max()) if heat.size else 0
-            if vmax <= 0:
-                plt.imshow(heat, cmap='inferno', origin='lower')
-            else:
-                vmin_pos = int(heat[heat>0].min()) if (heat>0).any() else 1
-                if vmin_pos >= vmax:
-                    norm = Normalize(vmin=0, vmax=vmax)
-                else:
-                    norm = LogNorm(vmin=max(1, vmin_pos), vmax=vmax)
-                plt.imshow(heat, cmap='inferno', origin='lower', norm=norm)
-            plt.title(f'Hilbert map — {var} (i={iters}, first {len(bits):,} bits)')
-            plt.axis('off'); plt.tight_layout()
+            n_panels = 3 if entropy is not None else 2
+            fig, axes = plt.subplots(1, n_panels, figsize=(5*n_panels, 5))
             _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            # Panel 1: Density (count of 1s per cell)
+            ax1 = axes[0]
+            vmax = int(heat_ones.max()) if heat_ones.size else 0
+            if vmax <= 0:
+                im1 = ax1.imshow(heat_ones, cmap='inferno', origin='lower')
+            else:
+                vmin_pos = int(heat_ones[heat_ones>0].min()) if (heat_ones>0).any() else 1
+                norm = LogNorm(vmin=max(1, vmin_pos), vmax=vmax) if vmin_pos < vmax else Normalize(0, vmax)
+                im1 = ax1.imshow(heat_ones, cmap='inferno', origin='lower', norm=norm)
+            ax1.set_title('Density (1s per cell)', fontsize=10)
+            ax1.axis('off')
+            plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+
+            # Panel 2: Differential (deviation from random)
+            ax2 = axes[1]
+            vabs = max(abs(differential.min()), abs(differential.max()), 0.01)
+            norm_diff = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
+            im2 = ax2.imshow(differential, cmap='RdBu_r', origin='lower', norm=norm_diff)
+            ax2.set_title('Differential (red=excess 1s, blue=excess 0s)', fontsize=10)
+            ax2.axis('off')
+            plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+
+            # Panel 3: Entropy (if available)
+            if entropy is not None:
+                ax3 = axes[2]
+                im3 = ax3.imshow(entropy, cmap='viridis_r', origin='lower', vmin=0, vmax=1)
+                ax3.set_title('Local Entropy (dark=ordered, bright=random)', fontsize=10)
+                ax3.axis('off')
+                plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+
+            fig.suptitle(f'Hilbert Analysis — {var} (i={iters}, {len(bits):,} bits)', fontsize=12)
+            plt.tight_layout()
             out = VIS_DIR / f"hilbert_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
             prog.update(message="Saving...")
             plt.savefig(out, dpi=200)
@@ -1163,69 +1273,6 @@ def plot_fft(results_list, max_bits: int, skip: bool):
         print(f"[INFO] FFT saved: {out.relative_to(BASE_PATH)}", flush=True)
         plt.close()
     print('[INFO] Saved FFT power spectra (where data available).')
-
-
-def plot_fft_amplitude_linear(results_list, max_bits: int, skip: bool):
-    if skip:
-        return
-    if not MATPLOTLIB_OK:
-        print("[WARN] Skipping FFT (matplotlib unavailable).")
-        return
-    import matplotlib.pyplot as plt
-    spec_cfg = _get_spectral_config()
-    for r in results_list:
-        if not r: continue
-        iters = r.get('iterations'); var = r.get('variant','?')
-        method = spec_cfg['method']
-        method_eff = _decide_spectral_method_auto(iters, spec_cfg, var) if method=='auto' else method
-        if method_eff == 'welch':
-            freqs, psd = _welch_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft-amplitude", var=var)
-            if freqs is None:
-                # Fallback: direct two-sided FFT on prefix if Welch failed
-                bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude-fallback", var=var)
-                if not bits:
-                    print(f"[WARN] FFT amplitude skipped for {var}: no data available."); continue
-                a = _bits_to_float64(bits)
-                a = a - a.mean(); spec = np.fft.fft(a)
-                amp = np.abs(np.fft.fftshift(spec))
-                freq = np.fft.fftshift(np.fft.fftfreq(a.size, d=1.0))
-            else:
-                amp = np.sqrt(psd); freq = freqs
-        elif method_eff == 'sampling':
-            freqs, psd = _sampling_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft-amp-sampling", var=var)
-            if freqs is None:
-                # Fallback: direct two-sided FFT on prefix if sampling failed
-                bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude-fallback", var=var)
-                if not bits:
-                    print(f"[WARN] FFT amplitude skipped for {var}: no data available."); continue
-                a = _bits_to_float64(bits)
-                a = a - a.mean(); spec = np.fft.fft(a)
-                amp = np.abs(np.fft.fftshift(spec))
-                freq = np.fft.fftshift(np.fft.fftfreq(a.size, d=1.0))
-            else:
-                amp = np.sqrt(psd); freq = freqs
-        else:
-            bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft-amplitude", var=var)
-            if not bits:
-                print(f"[WARN] FFT amplitude skipped for {var}: no data available.")
-                continue
-            a = _bits_to_float64(bits)
-            a = a - a.mean()
-            spec = np.fft.fft(a)
-            amp = np.abs(np.fft.fftshift(spec))
-            freq = np.fft.fftshift(np.fft.fftfreq(a.size, d=1.0))
-        plt.figure(figsize=(10,4))
-        plt.plot(freq, amp, color='blue', linewidth=1.0)
-        title = 'Discrete Fourier Transform — Amplitude (Welch)' if method=='welch' else ('Discrete Fourier Transform — Amplitude (Sampling)' if method=='sampling' else 'Discrete Fourier Transform — Amplitude')
-        if freqs is None:
-            title = f'Discrete Fourier Transform — Amplitude (prefix {len(bits):,} bits)'
-        plt.title(title)
-        plt.xlabel('Frequency'); plt.ylabel('Amplitude'); plt.grid(True, alpha=0.3)
-        _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        out = VIS_DIR / f"fft_amplitude_linear_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
-        plt.tight_layout(); plt.savefig(out, dpi=200)
-        print(f"[INFO] FFT amplitude (linear) saved: {out.relative_to(BASE_PATH)}")
-        plt.close()
 
 
 def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
@@ -1304,7 +1351,7 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
                 f"Sampling {spec_cfg['window_size']:,}w" if method=='sampling' else f'n={len(bits):,}'
             )
         )
-        plt.title(f'Power spectrum β-fit — {var} (i={iters}, {title_src})')
+        plt.title(f'FFT Power Spectrum β-fit — {var} (i={iters}, {title_src})')
         plt.xlabel('Frequency'); plt.ylabel('Power'); plt.legend()
         _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         out = VIS_DIR / f"spectrum_beta_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
@@ -1320,10 +1367,168 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
         })
     return out_metrics
 
-    print('[INFO] Saved fractal log-log plots where data was available.')
 
+def plot_autocorrelation(results_list, max_bits: int, skip: bool):
+    """
+    Compute and plot autocorrelation to detect periodicity in bit sequences.
 
-    _load_dotenv_if_present()
+    This analysis reveals:
+    - Dominant periods in the sequence
+    - Whether periods relate to Fibonacci numbers or φ
+    - The regularity/predictability of the pattern
+    """
+    if skip:
+        return
+    if not MATPLOTLIB_OK:
+        print("[WARN] Skipping autocorrelation (matplotlib unavailable).", flush=True)
+        return
+    import matplotlib.pyplot as plt
+
+    # Fibonacci sequence for comparison
+    FIB = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181]
+    PHI = (1 + 5**0.5) / 2  # Golden ratio
+
+    for r in results_list:
+        if not r:
+            continue
+        iters = r.get('iterations')
+        var = r.get('variant', '?')
+
+        with ProgressIndicator(f"Autocorr {var}") as prog:
+            prog.update(message="Reading bits...")
+            bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=False, label="autocorr", var=var)
+            if not bits or len(bits) < 1000:
+                print(f"[WARN] Autocorrelation skipped for {var}: insufficient data.", flush=True)
+                continue
+
+            prog.update(message="Converting to array...")
+            # Convert bits to +1/-1 for better autocorrelation signal
+            arr = np.array([1 if b == '1' else -1 for b in bits], dtype=np.float32)
+            n = len(arr)
+
+            # Limit max lag for computational efficiency
+            max_lag = min(5000, n // 4)
+
+            prog.update(message=f"Computing autocorrelation (max_lag={max_lag})...")
+
+            # Use FFT-based autocorrelation for efficiency
+            # Autocorrelation via FFT: R(τ) = IFFT(|FFT(x)|²)
+            arr_centered = arr - arr.mean()
+            fft_arr = np.fft.fft(arr_centered, n=2*n)  # Zero-pad for linear correlation
+            power = np.abs(fft_arr)**2
+            autocorr_full = np.fft.ifft(power).real[:n]
+            autocorr_full /= autocorr_full[0]  # Normalize to 1 at lag 0
+
+            autocorr = autocorr_full[1:max_lag+1]  # Skip lag 0 (always 1)
+            lags = np.arange(1, max_lag+1)
+
+            prog.update(message="Finding peaks...")
+            # Find peaks in autocorrelation
+            peaks = []
+            for i in range(1, len(autocorr)-1):
+                if autocorr[i] > autocorr[i-1] and autocorr[i] > autocorr[i+1]:
+                    if autocorr[i] > 0.05:  # Threshold for significance
+                        peaks.append((lags[i], autocorr[i]))
+
+            # Sort by correlation strength
+            peaks.sort(key=lambda x: -x[1])
+            top_peaks = peaks[:10]  # Top 10 peaks
+
+            # Check if peaks relate to Fibonacci
+            fib_matches = []
+            for lag, corr in top_peaks:
+                for fib in FIB:
+                    if abs(lag - fib) <= 2:  # Allow ±2 tolerance
+                        fib_matches.append((lag, fib, corr))
+                        break
+
+            # Check if ratios between peaks approximate φ
+            phi_ratios = []
+            if len(top_peaks) >= 2:
+                sorted_peaks = sorted(top_peaks, key=lambda x: x[0])
+                for i in range(len(sorted_peaks)-1):
+                    lag1, _ = sorted_peaks[i]
+                    lag2, _ = sorted_peaks[i+1]
+                    if lag1 > 0:
+                        ratio = lag2 / lag1
+                        phi_ratios.append((lag1, lag2, ratio, abs(ratio - PHI)))
+
+            prog.update(message="Rendering plot...")
+
+            # Create figure with 2 subplots
+            fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+            # Plot 1: Full autocorrelation
+            ax1 = axes[0]
+            ax1.plot(lags, autocorr, 'b-', alpha=0.7, linewidth=0.5)
+            ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+            ax1.axhline(y=0.05, color='red', linestyle=':', alpha=0.5, label='Significance threshold')
+
+            # Mark Fibonacci lags
+            for fib in FIB:
+                if fib <= max_lag:
+                    ax1.axvline(x=fib, color='gold', alpha=0.3, linestyle='-')
+
+            # Mark top peaks
+            for lag, corr in top_peaks[:5]:
+                ax1.plot(lag, corr, 'ro', markersize=8)
+                ax1.annotate(f'{lag}', (lag, corr), textcoords='offset points',
+                           xytext=(0, 10), ha='center', fontsize=8)
+
+            ax1.set_xlabel('Lag (bits)')
+            ax1.set_ylabel('Autocorrelation')
+            ax1.set_title(f'Autocorrelation — {var} (i={iters}, {n:,} bits)')
+            ax1.set_xlim(0, max_lag)
+            ax1.legend(loc='upper right')
+            ax1.grid(True, alpha=0.3)
+
+            # Plot 2: Zoomed view (first 500 lags) with annotations
+            ax2 = axes[1]
+            zoom_max = min(500, max_lag)
+            ax2.plot(lags[:zoom_max], autocorr[:zoom_max], 'b-', alpha=0.8, linewidth=1)
+            ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+
+            # Mark Fibonacci lags with labels
+            for fib in FIB:
+                if fib <= zoom_max:
+                    ax2.axvline(x=fib, color='gold', alpha=0.5, linestyle='-')
+                    ax2.annotate(f'F={fib}', (fib, ax2.get_ylim()[1]*0.9),
+                               rotation=90, fontsize=7, color='goldenrod')
+
+            ax2.set_xlabel('Lag (bits)')
+            ax2.set_ylabel('Autocorrelation')
+            ax2.set_title(f'Zoomed (0-{zoom_max}) — Gold lines = Fibonacci numbers')
+            ax2.set_xlim(0, zoom_max)
+            ax2.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+
+            # Add text box with analysis summary
+            analysis_text = f"Top 5 periods: {', '.join([str(p[0]) for p in top_peaks[:5]])}\n"
+            if fib_matches:
+                analysis_text += f"Fibonacci matches: {', '.join([f'{m[0]}≈F{m[1]}' for m in fib_matches[:3]])}\n"
+            if phi_ratios:
+                best_phi = min(phi_ratios, key=lambda x: x[3])
+                analysis_text += f"Best φ-ratio: {best_phi[1]}/{best_phi[0]}={best_phi[2]:.4f} (φ={PHI:.4f})"
+
+            fig.text(0.02, 0.02, analysis_text, fontsize=9, family='monospace',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+            _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            out = VIS_DIR / f"autocorr_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
+            prog.update(message="Saving...")
+            plt.savefig(out, dpi=200, bbox_inches='tight')
+            plt.close()
+
+        print(f"[INFO] Autocorrelation saved: {out.relative_to(BASE_PATH)}", flush=True)
+
+        # Print summary to console
+        print(f"       📊 {var}: Top periods = {[p[0] for p in top_peaks[:5]]}", flush=True)
+        if fib_matches:
+            print(f"       🔢 Fibonacci matches: {[(m[0], m[1]) for m in fib_matches]}", flush=True)
+
+    print('[INFO] Saved autocorrelation plots.', flush=True)
+
 
 def create_comparison_visualization(results_list):
     """Create comparative visualizations."""
@@ -1395,8 +1600,20 @@ def parse_args():
     parser.add_argument("--plot-only", action="store_true", help="Do not run variants; just load latest report and generate plots")
     parser.add_argument("--report-iter", type=int, default=None, help="Target iteration for plot-only")
     parser.add_argument("--report-path", type=str, default=None, help="Explicit path to a report JSON for plot-only")
-    parser.add_argument("--hilbert-bits", type=int, default=None, help="Override config.hilbert.max_bits for plot-only")
-    parser.add_argument("--fft-bits", type=int, default=None, help="Override config.fft/window for plot-only")
+    parser.add_argument("--hilbert-bits", type=int, default=None, help="Override config.hilbert.max_bits")
+    parser.add_argument("--fft-bits", type=int, default=None, help="Override bits for FFT spectrum")
+    parser.add_argument("--autocorr-bits", type=int, default=None, help="Override bits for autocorrelation")
+    parser.add_argument("--raster-bits", type=int, default=None, help="Override bits for 2D raster plot")
+    parser.add_argument("--beta-bits", type=int, default=None, help="Override bits for spectrum β-fit")
+    # Skip flags (alternative to env vars HSI_NO_*)
+    parser.add_argument("--no-growth", action="store_true", help="Skip growth plots")
+    parser.add_argument("--no-raster", action="store_true", help="Skip 2D raster plot")
+    parser.add_argument("--no-hilbert", action="store_true", help="Skip Hilbert heatmap")
+    parser.add_argument("--no-fft", action="store_true", help="Skip FFT spectrum")
+    parser.add_argument("--no-autocorr", action="store_true", help="Skip autocorrelation")
+    parser.add_argument("--no-beta", action="store_true", help="Skip spectrum β-fit")
+    parser.add_argument("--only", type=str, default=None,
+                        help="Generate ONLY this plot type: growth, raster, hilbert, fft, autocorr, beta")
     return parser.parse_args()
 
     ax4.scatter(fractal_dims, y_scatter, c=colors, s=100, alpha=0.7)
@@ -1477,11 +1694,13 @@ def main():
 
         # Load results if execution was successful
         if success:
+            print(f"\n📂 Loading results for variant {variant_code}...", flush=True)
             results_path = find_variant_result_file(variant_code)
             results = load_variant_results(results_path)
             # Try to keep a back-pointer to the report path for enrichment
             if results is not None:
                 results['report_path'] = results_path
+                print(f"   ✅ Results loaded from: {Path(results_path).name}", flush=True)
             variant_results.append(results)
         else:
             variant_results.append(None)
@@ -1489,30 +1708,54 @@ def main():
     total_execution_time = time.time() - total_start_time
 
     # Show execution summary
-    print(f"\n⏱️ TOTAL EXECUTION TIME: {total_execution_time:.2f}s")
-    print(f"✅ Successful variants: {sum(1 for r in execution_results if r['success'])}/{len(variants)}")
+    print(f"\n⏱️ TOTAL EXECUTION TIME: {total_execution_time:.2f}s", flush=True)
+    print(f"✅ Successful variants: {sum(1 for r in execution_results if r['success'])}/{len(variants)}", flush=True)
 
     # Compare convergence
+    print("\n📊 Comparing φ-convergence across variants...", flush=True)
     best_variant = compare_phi_convergence(variant_results)
 
-    # Visualizations
-    create_comparison_visualization(variant_results)
-    plot_growth_and_time(variant_results)
+    # Visualizations (post-generation: minimal set, use plot-only for full control)
+    print("\n🎨 Starting visualization generation...", flush=True)
+
+    # Read skip flags from environment
+    skip_growth = os.environ.get("HSI_NO_GROWTH") == "1"
+    skip_raster = os.environ.get("HSI_NO_RASTER") == "1"
+    skip_beta = os.environ.get("HSI_NO_BETA") == "1"
+
     try:
         fft_prefix = int(os.environ.get("HSI_FFT_PREFIX", "2000000"))
     except Exception:
         fft_prefix = 2_000_000
-    beta_stats = plot_spectrum_beta_fit(variant_results, max_bits=fft_prefix, skip=False)
-    # Attach growth and spectral metrics (v32: no phi-alignment)
+
+    print("   [1/5] Comparison visualization...", flush=True)
+    create_comparison_visualization(variant_results)
+
+    if skip_growth:
+        print("   [2/5] Growth plots SKIPPED", flush=True)
+    else:
+        print("   [2/5] Growth and time plots...", flush=True)
+        plot_growth_and_time(variant_results)
+
+    beta_stats = {}
+    if skip_beta:
+        print("   [3/5] Spectrum β-fit SKIPPED", flush=True)
+    else:
+        print("   [3/5] Spectrum β-fit analysis...", flush=True)
+        beta_stats = plot_spectrum_beta_fit(variant_results, max_bits=fft_prefix, skip=False)
+
+    # Attach growth and spectral metrics
+    print("   [4/5] Attaching growth metrics & saving enriched reports...", flush=True)
     _attach_growth_metrics(variant_results, beta_stats)
-    # Write enriched per-variant JSONs with these metrics
     for r in variant_results:
         if r:
             _write_enriched_variant_report(r)
-    plot_raster2d(variant_results, max_iter_cap=None)  # use config.output.raster_iter_cap
-    skip_f = os.environ.get("HSI_NO_FFT") == "1"
-    plot_fft(variant_results, max_bits=fft_prefix, skip=skip_f)
-    plot_fft_amplitude_linear(variant_results, max_bits=fft_prefix, skip=skip_f)
+
+    if skip_raster:
+        print("   [5/5] 2D raster SKIPPED", flush=True)
+    else:
+        print("   [5/5] 2D raster plot...", flush=True)
+        plot_raster2d(variant_results, max_iter_cap=None)
 
     # Save master summary with variants in filename to avoid overwrites
     master_results = {
@@ -1526,7 +1769,8 @@ def main():
     }
 
     # Build filename with variant codes (e.g., hsi_master_results_B_E_I.json)
-    variant_codes = '_'.join(sorted(variants))
+    # variants is a list of tuples; extract the code (element 4) from each
+    variant_codes = '_'.join(sorted([v[4] for v in variants]))
     master_results_dir = RESULTS_DIR / "level0" / "reports"
     master_results_dir.mkdir(parents=True, exist_ok=True)
     master_results_path = master_results_dir / f'hsi_master_results_{variant_codes}.json'
@@ -1564,11 +1808,19 @@ def _run_plot_only():
     args = parse_args()
     # Variant: prefer explicit CLI
     var = (args.variant or os.environ.get("HSI_VARIANT_CODE") or "B").upper()
-    # Prefix caps: prefer CLI or config
+    # Prefix caps: prefer CLI > env > config
     if args.hilbert_bits is not None:
         hilbert_prefix = int(args.hilbert_bits)
     else:
-        hilbert_prefix = _get_hilbert_config()['max_bits']
+        env_hilbert = os.environ.get("HSI_HILBERT_PREFIX")
+        if env_hilbert:
+            try:
+                hilbert_prefix = int(env_hilbert)
+            except Exception:
+                hilbert_prefix = _get_hilbert_config()['max_bits']
+        else:
+            hilbert_prefix = _get_hilbert_config()['max_bits']
+    # FFT prefix
     if args.fft_bits is not None:
         fft_prefix = int(args.fft_bits)
     else:
@@ -1576,15 +1828,57 @@ def _run_plot_only():
             fft_prefix = int(os.environ.get("HSI_FFT_PREFIX", "2000000"))
         except Exception:
             fft_prefix = 2_000_000
-    skip_h = os.environ.get("HSI_NO_HILBERT") == "1"
-    skip_f = os.environ.get("HSI_NO_FFT") == "1"
+    # Autocorrelation prefix (defaults to fft_prefix if not specified)
+    if args.autocorr_bits is not None:
+        autocorr_prefix = int(args.autocorr_bits)
+    else:
+        try:
+            autocorr_prefix = int(os.environ.get("HSI_AUTOCORR_PREFIX", str(fft_prefix)))
+        except Exception:
+            autocorr_prefix = fft_prefix
+    # Beta-fit prefix (defaults to fft_prefix if not specified)
+    if args.beta_bits is not None:
+        beta_prefix = int(args.beta_bits)
+    else:
+        try:
+            beta_prefix = int(os.environ.get("HSI_BETA_PREFIX", str(fft_prefix)))
+        except Exception:
+            beta_prefix = fft_prefix
+    # Raster prefix
+    if args.raster_bits is not None:
+        raster_prefix = int(args.raster_bits)
+    else:
+        try:
+            raster_prefix = int(os.environ.get("HSI_RASTER_PREFIX", "1000000"))
+        except Exception:
+            raster_prefix = 1_000_000
+
+    # Skip flags: CLI > env
+    only_mode = args.only.lower() if args.only else None
+    if only_mode:
+        # If --only is set, skip everything except that plot
+        skip_g = only_mode != "growth"
+        skip_r = only_mode != "raster"
+        skip_h = only_mode != "hilbert"
+        skip_f = only_mode != "fft"
+        skip_b = only_mode != "beta"
+        skip_a = only_mode != "autocorr"
+        skip_rep = True  # Always skip report in --only mode
+    else:
+        skip_g = args.no_growth or os.environ.get("HSI_NO_GROWTH") == "1"
+        skip_r = args.no_raster or os.environ.get("HSI_NO_RASTER") == "1"
+        skip_h = args.no_hilbert or os.environ.get("HSI_NO_HILBERT") == "1"
+        skip_f = args.no_fft or os.environ.get("HSI_NO_FFT") == "1"
+        skip_b = args.no_beta or os.environ.get("HSI_NO_BETA") == "1"
+        skip_a = args.no_autocorr or os.environ.get("HSI_NO_AUTOCORR") == "1"
+        skip_rep = os.environ.get("HSI_NO_REPORT") == "1"
 
     print("\n" + "=" * 60, flush=True)
     print("📊 PLOT-ONLY MODE — Generating visualizations", flush=True)
     print("=" * 60, flush=True)
 
     # Allow direct report path/iteration via CLI or env
-    print(f"[1/7] 🔍 Locating report for variant {var}...", flush=True)
+    print(f"[1/8] 🔍 Locating report for variant {var}...", flush=True)
     t0 = _time.perf_counter()
     if args.report_path and os.path.exists(args.report_path):
         path = args.report_path
@@ -1596,7 +1890,7 @@ def _run_plot_only():
             target_iter = args.report_iter or (int(os.environ.get("HSI_REPORT_ITER")) if os.environ.get("HSI_REPORT_ITER") else None)
             path = find_variant_result_file(var, iterations=target_iter)
 
-    print(f"[1/7] 📂 Loading report JSON...", flush=True)
+    print(f"[1/8] 📂 Loading report JSON...", flush=True)
     res = load_variant_results(path)
     if res is not None:
         res['report_path'] = path
@@ -1607,7 +1901,7 @@ def _run_plot_only():
             rel = path
         print(f"[PLOT-ONLY] ❌ No report found for variant {var} at {rel}")
         return
-    print(f"[1/7] ✅ Report loaded in {_time.perf_counter()-t0:.1f}s", flush=True)
+    print(f"[1/8] ✅ Report loaded in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     # Compact path in log
     try:
@@ -1621,7 +1915,7 @@ def _run_plot_only():
 
     if target_iter and target_iter != report_iter:
         # Check if snapshot exists for target iteration
-        snapshot_dir = BASE_PATH / "results" / "phi_snapshots" / f"var_{var}"
+        snapshot_dir = BASE_PATH / "results" / "level0" / "phi_snapshots" / f"var_{var}"
         snapshot_file = snapshot_dir / f"phi_iter{target_iter}.struct.gz"
         if snapshot_file.exists():
             print(f"       [override] Using iteration {target_iter} instead of report's {report_iter}", flush=True)
@@ -1636,52 +1930,67 @@ def _run_plot_only():
     print("", flush=True)
 
     results_list = [res]
+    beta_stats = []  # Initialize for report step
 
     # Each plot step with timing
-    print(f"[2/7] 📈 Generating growth & time plots...", flush=True)
-    t0 = _time.perf_counter()
-    plot_growth_and_time(results_list)
-    print(f"[2/7] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+    if skip_g:
+        print(f"[2/8] ⏭️  Growth plots SKIPPED", flush=True)
+    else:
+        print(f"[2/8] 📈 Generating growth & time plots...", flush=True)
+        t0 = _time.perf_counter()
+        plot_growth_and_time(results_list)
+        print(f"[2/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
-    print(f"[3/7] 🖼️  Generating 2D raster...", flush=True)
-    t0 = _time.perf_counter()
-    plot_raster2d(results_list, max_iter_cap=None)  # use config.output.raster_iter_cap
-    print(f"[3/7] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+    if skip_r:
+        print(f"[3/8] ⏭️  2D raster SKIPPED", flush=True)
+    else:
+        print(f"[3/8] 🖼️  Generating 2D raster...", flush=True)
+        t0 = _time.perf_counter()
+        plot_raster2d(results_list, max_iter_cap=None)
+        print(f"[3/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_h:
-        print(f"[4/7] ⏭️  Hilbert heatmap SKIPPED (--no-hilbert)", flush=True)
+        print(f"[4/8] ⏭️  Hilbert heatmap SKIPPED", flush=True)
     else:
-        print(f"[4/7] 🌀 Generating Hilbert heatmap ({hilbert_prefix:,} bits)...", flush=True)
+        print(f"[4/8] 🌀 Generating Hilbert heatmap ({hilbert_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
         plot_hilbert_heatmap(results_list, hilbert_prefix, skip_h)
-        print(f"[4/7] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[4/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_f:
-        print(f"[5/7] ⏭️  FFT spectrum SKIPPED (--no-fft)", flush=True)
+        print(f"[5/8] ⏭️  FFT spectrum SKIPPED", flush=True)
     else:
-        print(f"[5/7] 📡 Computing FFT spectrum ({fft_prefix:,} bits)...", flush=True)
+        print(f"[5/8] 📡 Computing FFT spectrum ({fft_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
         plot_fft(results_list, fft_prefix, skip_f)
-        print(f"[5/7] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[5/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
-    if skip_f:
-        print(f"[6/7] ⏭️  Spectrum β-fit SKIPPED (--no-fft)", flush=True)
-        beta_stats = []
+    if skip_b:
+        print(f"[6/8] ⏭️  Spectrum β-fit SKIPPED", flush=True)
     else:
-        print(f"[6/7] 📊 Computing spectrum β-fit...", flush=True)
+        print(f"[6/8] 📊 Computing spectrum β-fit ({beta_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
-        beta_stats = plot_spectrum_beta_fit(results_list, max_bits=fft_prefix, skip=skip_f)
-        print(f"[6/7] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        beta_stats = plot_spectrum_beta_fit(results_list, max_bits=beta_prefix, skip=skip_b)
+        print(f"[6/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
-    print(f"[7/7] 💾 Writing enriched report...", flush=True)
-    t0 = _time.perf_counter()
-    _attach_growth_metrics(results_list, beta_stats)
-    for r in results_list:
-        if r:
-            _write_enriched_variant_report(r)
-    if not skip_f:
-        plot_fft_amplitude_linear(results_list, fft_prefix, skip_f)
-    print(f"[7/7] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+    if skip_a:
+        print(f"[7/8] ⏭️  Autocorrelation SKIPPED", flush=True)
+    else:
+        print(f"[7/8] 🔄 Computing autocorrelation ({autocorr_prefix:,} bits)...", flush=True)
+        t0 = _time.perf_counter()
+        plot_autocorrelation(results_list, autocorr_prefix, skip_a)
+        print(f"[7/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+
+    if skip_rep:
+        print(f"[8/8] ⏭️  Report SKIPPED", flush=True)
+    else:
+        print(f"[8/8] 💾 Writing enriched report...", flush=True)
+        t0 = _time.perf_counter()
+        _attach_growth_metrics(results_list, beta_stats)
+        for r in results_list:
+            if r:
+                _write_enriched_variant_report(r)
+        print(f"[8/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     print("\n" + "=" * 60, flush=True)
     print("[PLOT-ONLY] ✅ All visualizations complete!", flush=True)
@@ -1701,7 +2010,7 @@ def _run_plot_only():
 
 def export_metadata_for_level1(variant_code: str, results: dict):
     """
-    Export metadata.json to reports/ directory.
+    Export metadata.json to results/level0/reports/ directory.
 
     Parameters:
     -----------
@@ -1711,7 +2020,7 @@ def export_metadata_for_level1(variant_code: str, results: dict):
         Results dictionary from variant execution
     """
     try:
-        reports_dir = RESULTS_DIR / "reports"
+        reports_dir = RESULTS_DIR / "level0" / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
 
         metadata = {
@@ -1753,8 +2062,8 @@ def compress_iterations_to_tar(variant_code: str):
         import tarfile
         import gzip
 
-        # v33: snapshots are in phi_snapshots/var_X/
-        var_dir = BASE_PATH / "results" / "phi_snapshots" / f"var_{variant_code.upper()}"
+        # v33: snapshots are in level0/phi_snapshots/var_X/
+        var_dir = BASE_PATH / "results" / "level0" / "phi_snapshots" / f"var_{variant_code.upper()}"
         if not var_dir.exists():
             print(f"[WARN] Variant directory not found: {var_dir}")
             return False
