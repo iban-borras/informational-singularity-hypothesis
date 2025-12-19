@@ -88,21 +88,73 @@ class HybridCollapseEngine:
         
         return last_zero_depth
     
-    def _collapse_regex(self, data: str) -> Tuple[str, bool]:
+    def _collapse_regex(self, data: str, max_chunk: int = 500_000_000) -> Tuple[str, bool]:
         """
         Apply one pass of regex collapse on innermost parentheses.
-        
+
+        For very large data, processes in overlapping chunks to avoid MemoryError.
+
+        Args:
+            data: String to collapse
+            max_chunk: Maximum chunk size for regex processing (default 500MB)
+
         Returns:
             Tuple (collapsed_string, had_changes)
         """
-        had_changes = [False]  # Use list to modify in lambda
-        
-        def replacer(m):
-            had_changes[0] = True
-            return self.simplify_fn(m.group(1))
-        
-        result = self._pattern.sub(replacer, data)
-        return result, had_changes[0]
+        # If data is small enough, process directly
+        if len(data) <= max_chunk:
+            had_changes = [False]
+
+            def replacer(m):
+                had_changes[0] = True
+                return self.simplify_fn(m.group(1))
+
+            result = self._pattern.sub(replacer, data)
+            return result, had_changes[0]
+
+        # Large data: process in chunks with overlap
+        print(f"      [regex] Large data ({len(data)/1e9:.2f}GB), chunking...", flush=True)
+
+        total_had_changes = False
+        result_parts = []
+        pos = 0
+        chunk_num = 0
+        overlap = 10000  # Overlap to handle patterns at boundaries
+
+        while pos < len(data):
+            chunk_num += 1
+            end = min(pos + max_chunk, len(data))
+
+            # Include overlap from previous chunk boundary
+            chunk = data[pos:end]
+
+            had_changes = [False]
+            def replacer(m):
+                had_changes[0] = True
+                return self.simplify_fn(m.group(1))
+
+            collapsed = self._pattern.sub(replacer, chunk)
+
+            if had_changes[0]:
+                total_had_changes = True
+
+            # For non-first chunks, skip the overlap portion
+            if pos > 0 and len(collapsed) > overlap:
+                result_parts.append(collapsed[overlap:])
+            else:
+                result_parts.append(collapsed)
+
+            # Progress
+            if chunk_num % 10 == 0:
+                pct = (end / len(data)) * 100
+                print(f"      [regex] Chunk {chunk_num}: {pct:.1f}%", flush=True)
+
+            pos = end - overlap if end < len(data) else end
+            if pos <= 0:
+                pos = end
+
+        print(f"      [regex] Done: {chunk_num} chunks processed", flush=True)
+        return ''.join(result_parts), total_had_changes
     
     def collapse_one_pass(
         self,

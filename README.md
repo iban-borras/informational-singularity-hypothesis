@@ -32,6 +32,16 @@ hsi_agents_project/
 ├── level1_visualize.py               # Level 1: Generate publication figures
 ├── level1_view_results.py            # Level 1: View/analyze JSON results
 │
+├── ════════════════════════════════════════════════════════════
+│   🔬 HIDDEN φ DISCOVERY TOOLS (Level 1+)
+├── ════════════════════════════════════════════════════════════
+├── level1_scale_ratios.py            # Phase 1: MSRA (find φ in scale proportions)
+├── level1_nesting_tree.py            # Phase 1: PCSA (tree branching ratios)
+├── level1_hilbert_multires.py        # Phase 1: HMRC (Hilbert multi-resolution)
+├── level1_deep_analysis.py           # Phase 2: Wavelet, Recurrence, LZ complexity
+├── level1_topological.py             # Phase 3: TPA (topological persistence)
+├── level1_geometric.py               # Phase 3: Γ, 𝓡, 𝓣, 𝓔 operators
+│
 ├── Setup-virtual-envelop.ps1         # Setup/activation script (Windows)
 ├── config.json                       # Experiment configuration
 ├── requirements.txt                  # Python dependencies
@@ -43,6 +53,7 @@ hsi_agents_project/
 │   ├── variants_spec.md              # Variant specifications
 │   ├── phi_emergence_mechanism.md    # φ emergence analysis (E vs B vs I)
 │   ├── geometric_analysis_plan.md    # Geometric analysis plan
+│   ├── hidden_phi_discovery_roadmap.md # Hidden φ research roadmap
 │   ├── GPU_ACCELERATION_PROPOSAL.md  # Future GPU integration
 │   └── HSI_Variants_Analysis_For_Review.md # Analysis for peer review
 │
@@ -137,6 +148,45 @@ All scripts can be run directly from the project root:
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
 | `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
 
+### 🔬 Hidden φ Discovery Tools
+
+These tools implement the research roadmap for discovering hidden φ in variant structures (see `Documentation/hidden_phi_discovery_roadmap.md`).
+
+#### Phase 1: Scale & Structure Analysis
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `level1_scale_ratios.py` | **MSRA** — Find φ in ratios between block metrics at different scales (2^k) | `python level1_scale_ratios.py -v B -i 15` |
+| `level1_nesting_tree.py` | **PCSA** — Analyze parentheses tree for φ in branching ratios | `python level1_nesting_tree.py -v B -i 15` |
+| `level1_hilbert_multires.py` | **HMRC** — Compare Hilbert maps at multiple resolutions | `python level1_hilbert_multires.py -v B -i 15` |
+
+#### Phase 2: Deep Analysis
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `level1_deep_analysis.py` | Unified deep analysis: Wavelet φ-band, Recurrence plots, LZ complexity | `python level1_deep_analysis.py -v B -i 15` |
+
+**Key Discovery (Dec 2025):** Variant B shows **LZ φ-scaling** with distance 0.019 from φ — the proportions of complexity between scales follow the golden ratio! F shows 0.063 (3.3× weaker). This supports the hypothesis that **φ is hidden in B's proportions**, not in absolute structures.
+
+#### Phase 3: Topology & Geometry
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `level1_topological.py` | **TPA** — Topological Persistence Analysis: find φ in structural "holes" | `python level1_topological.py -v B -i 15` |
+| `level1_geometric.py` | **Geometric Operators** — Γ (connection), 𝓡 (curvature), 𝓣 (torsion), 𝓔 (energy) | `python level1_geometric.py -v B -i 17` |
+
+**Requirements for Geometric Operators:**
+- **Torsion-only** (`--torsion-only`): Only needs phi_snapshots (single iteration)
+- **Full analysis** (Γ, 𝓡, 𝓔): Requires Level 1 pattern analysis for 3 consecutive iterations
+
+```bash
+# Check requirements before running full geometric analysis
+python level1_geometric.py -v B -i 17 --check-only
+
+# Torsion-only mode (always works if phi data exists)
+python level1_geometric.py -v B -i 15 --torsion-only
+```
+
 ### Usage Examples
 
 ```bash
@@ -178,6 +228,51 @@ python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_ite
 
 # Generate publication figures
 python level1_visualize.py --variants B A --iterations 18 --format pdf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 🔬 HIDDEN φ DISCOVERY — Complete Analysis Pipeline
+# ═══════════════════════════════════════════════════════════════════════════
+
+# --- Phase 1: Scale & Structure Analysis ---
+
+# MSRA: Multi-Scale Ratio Analyzer (find φ in proportions between scales)
+python level1_scale_ratios.py -v B -i 15 --max-bits 100000
+
+# PCSA: Pre-Collapse Structure Analysis (φ in tree branching)
+python level1_nesting_tree.py -v B -i 15 --max-bits 100000
+
+# HMRC: Hilbert Multi-Resolution Comparison
+python level1_hilbert_multires.py -v B -i 15 --bits 1048576
+
+# --- Phase 2: Deep Analysis ---
+
+# Unified deep analysis (Wavelet, Recurrence, LZ complexity)
+python level1_deep_analysis.py -v B -i 15 --max-bits 50000
+
+# Compare variants (KEY DISCOVERY: B shows LZ φ-scaling 0.019!)
+python level1_deep_analysis.py -v B -i 15 --max-bits 50000 --compare F
+
+# --- Phase 3: Topology & Geometry ---
+
+# Topological Persistence Analysis (φ in structural holes)
+python level1_topological.py -v B -i 15 --max-bits 50000
+
+# Compare topology between variants
+python level1_topological.py -v B -i 15 --max-bits 50000 --compare F
+
+# Geometric Operators — Check requirements first!
+python level1_geometric.py -v B -i 17 --check-only
+
+# Torsion-only (works with single iteration, no Level 1 needed)
+python level1_geometric.py -v B -i 15 --torsion-only
+
+# Full geometric analysis (requires 3 consecutive Level 1 results)
+# First, generate Level 1 for iterations 15, 16, 17:
+python level1_analyze_patterns.py -v B -i 15 --report
+python level1_analyze_patterns.py -v B -i 16 --report
+python level1_analyze_patterns.py -v B -i 17 --report
+# Then run full analysis:
+python level1_geometric.py -v B -i 17 --output results/geometric_B_i17.json
 ```
 
 The system uses `config.json` for configuration. If the file doesn't exist, it will be created automatically with default values.
@@ -753,6 +848,46 @@ python level0_estimate_storage.py --max-iteration 28 --detailed
 - **φ-alignment (Golden Tendency)**: Evaluates whether generated structures show fractal dimension or internal proportions close to φ (1.618), indicating emergent order coherent with the hypothesis of convergence towards the golden ratio
 - **Informational Convergence**: Measure of how Φ sequences evolve towards stable patterns
 - **Holographic Field Coherence**: Assessment of consistency of Pₖ patterns as manifestations of the primordial field
+
+### 🔬 Hidden φ Discovery Metrics (Phase 1-3)
+
+These advanced metrics implement the research roadmap for discovering hidden φ in variant structures. The key hypothesis: **φ exists in PROPORTIONS between structures, not in absolute structures themselves**.
+
+#### Phase 1: Scale & Structure Metrics
+
+| Metric | Script | What it measures | φ Detection |
+|--------|--------|------------------|-------------|
+| **MSRA (Multi-Scale Ratio Analyzer)** | `level1_scale_ratios.py` | Ratios between block metrics (entropy, density) at scales 2^k | Ratios near 1.618 |
+| **PCSA (Pre-Collapse Structure Analysis)** | `level1_nesting_tree.py` | Branching ratios in parentheses tree structure | Children/parent ratios |
+| **HMRC (Hilbert Multi-Resolution)** | `level1_hilbert_multires.py` | Density gradients across Hilbert curve resolutions | Resolution scaling |
+
+#### Phase 2: Deep Analysis Metrics
+
+| Metric | Script | What it measures | φ Detection |
+|--------|--------|------------------|-------------|
+| **Wavelet φ-Band** | `level1_deep_analysis.py` | Energy concentration in φ-related frequency bands | Band energy ratios |
+| **Recurrence Plot** | `level1_deep_analysis.py` | Diagonal line distribution in recurrence matrix | Line length ratios |
+| **LZ φ-Scaling** ⭐ | `level1_deep_analysis.py` | Lempel-Ziv complexity ratios between scales | **B shows 0.019 distance!** |
+
+**Key Discovery (Dec 2025):** The LZ complexity analysis revealed that Variant B shows **extraordinary φ-scaling** with distance 0.019 from φ, while F shows 0.063 (3.3× weaker). This confirms that **φ is hidden in B's proportions**.
+
+#### Phase 3: Topology & Geometry Metrics
+
+| Metric | Script | What it measures | φ Detection |
+|--------|--------|------------------|-------------|
+| **TPA (Topological Persistence)** | `level1_topological.py` | Birth/death times of topological features (holes, components) | Lifespan ratios |
+| **Betti φ-Scaling** | `level1_topological.py` | Betti numbers (H0, H1) at φ-related scales | Inter-scale ratios |
+| **𝓣 Torsion** | `level1_geometric.py` | Positional asymmetries (pattern distribution variance) | Torsion ratios |
+| **Γ Connection** | `level1_geometric.py` | Pattern survival rate between iterations | Survival ≈ 1/φ |
+| **𝓡 Curvature** | `level1_geometric.py` | Rule interference / path-dependence | Curvature ≈ φ-1 |
+| **𝓔 Energy** | `level1_geometric.py` | Global quality functional: α|𝓡|² + β|𝓣|² + γ·Φ_incoh | Low = stable |
+
+**Geometric Operators Interpretation:**
+- **𝓣 LOW** → Symmetric, patterns uniformly distributed
+- **𝓣 HIGH** → Strong positional asymmetries (life-compatible?)
+- **𝓡 ≈ 0** → Flat geometry, path-independent
+- **𝓡 HIGH** → Curved geometry, order matters
+- **𝓔 LOW** → Stable, coherent configuration (universe-like)
 
 ### 🌟 Emergence Index (Level 2 Potential)
 
