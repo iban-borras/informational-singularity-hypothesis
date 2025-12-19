@@ -1,8 +1,8 @@
-# 🚀 ISH Agents System — Informational Singularity Hypothesis
+# ISH Agents System — Informational Singularity Hypothesis
 
 This project implements a modular agent system to explore the **Informational Singularity Hypothesis (ISH)** developed by Iban Borràs. The system generates primitive binary sequences Φ and uses specialized agents to detect emergent patterns Pₖ and infer rules ωₖ from the Primordial Holographic Field.
 
-## 📋 Project Description
+## Project Description
 
 The ISH proposes that all reality emerges from a primordial tension between "Absolute Nothingness" (0) and the "Absolute" (1), generating pure information that self-organizes into complex patterns. This agent system implements:
 
@@ -13,13 +13,13 @@ The ISH proposes that all reality emerges from a primordial tension between "Abs
 
 > **📖 Important**: For detailed technical documentation, see the `Documentation/` folder which contains analysis guides, variant specifications, and order metrics explanations.
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 hsi_agents_project/
 │
 ├── ════════════════════════════════════════════════════════════
-│   📌 MAIN SCRIPTS (run from project root)
+│   MAIN SCRIPTS (run from project root)
 ├── ════════════════════════════════════════════════════════════
 ├── level0_generate.py                # Level 0: Generate Φ for all ISH variants (A-I)
 ├── level0_random_control.py          # Level 0: Random control for comparison
@@ -33,7 +33,7 @@ hsi_agents_project/
 ├── level1_view_results.py            # Level 1: View/analyze JSON results
 │
 ├── ════════════════════════════════════════════════════════════
-│   🔬 HIDDEN φ DISCOVERY TOOLS (Level 1+)
+│   HIDDEN φ DISCOVERY TOOLS (Level 1+)
 ├── ════════════════════════════════════════════════════════════
 ├── level1_scale_ratios.py            # Phase 1: MSRA (find φ in scale proportions)
 ├── level1_nesting_tree.py            # Phase 1: PCSA (tree branching ratios)
@@ -86,7 +86,7 @@ hsi_agents_project/
 └── results/                          # Results (excluded from git)
 ```
 
-## 🔧 Installation and Dependencies
+## Installation and Dependencies
 
 ### System Requirements
 
@@ -129,7 +129,7 @@ matplotlib>=3.5.0      # Visualization
 seaborn>=0.11.0        # Statistical visualization
 ```
 
-## 🚀 System Usage
+## System Usage
 
 ### Main Scripts
 
@@ -148,7 +148,7 @@ All scripts can be run directly from the project root:
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
 | `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
 
-### 🔬 Hidden φ Discovery Tools
+### Hidden φ Discovery Tools
 
 These tools implement the research roadmap for discovering hidden φ in variant structures (see `Documentation/hidden_phi_discovery_roadmap.md`).
 
@@ -291,7 +291,7 @@ The system includes **intelligent compression management** for large sequences:
 - Scalability: Enables experiments for high iterations
 
 
-## 🔍 System Components
+## System Components
 
 ### 1. Φ Generator (Level 0)
 
@@ -368,7 +368,7 @@ results = validator.validate_rules(rules, patterns, test_sequences)
 - Predictive precision
 - Rule complexity
 
-## 🧩 Absolute Token (ABS) Modes and Variants
+## Absolute Token (ABS) Modes and Variants
 
 The outer decay frame is `(Accα)ABS`, where ABS controls how the Absolute integrates prior states:
 - ABS = `1` (symmetric baseline)
@@ -384,11 +384,11 @@ Snapshots and outputs are segregated by variant and ABS:
 - `results/var_{VAR}/phi_final.txt`
 - Visualizations include `_abs{ABS}` in filenames
 
-## 📑 Surviving Variants
+## Surviving Variants
 
 **Status:** 7 active variants + 1 control (A and C eliminated for incompatibility with ISH principles)
 
-### ⭐ Core Variants (Tier 1)
+### Core Variants (Tier 1)
 
 **Variant B — Stratified Baseline (Gold Standard)**
 - **Algorithm:** Inside→out collapse + final global simplify
@@ -402,7 +402,7 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Scientific Value:** Baseline comparison with B using dedicated simplify function
 - **Why it survives:** Tests robustness of order emergence
 
-### 🧪 Experimental Variants (Tier 2)
+### Experimental Variants (Tier 2)
 
 **Variant E — Two-Phase Degradation**
 - **Algorithm:** Phase 1: 01→0 (iterate until stable), Phase 2: 10→0 (iterate until stable)
@@ -441,7 +441,7 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Why it survives:** Critical for understanding if order has semantic meaning in collapse dynamics
 - **Key Finding:** Confirms asymmetry — the order of removal IS semantically meaningful for φ emergence
 
-### 🎲 Control Variant
+### Control Variant
 
 **Variant A — Random Control (PRNG/CSPRNG Baseline)** *(REPURPOSED)*
 - **Algorithm:** Pseudo-random bit generation (Mersenne Twister or cryptographic RNG)
@@ -474,7 +474,7 @@ python level0_refresh_plots.py -v A -i 14
 
 ---
 
-### 🔬 Experimental Validation: A vs B Comparison (Dec 2025)
+### Experimental Validation: A vs B Comparison (Dec 2025)
 
 The following results demonstrate that ISH collapse generates **genuine emergent structure**, not algorithmic artifacts:
 
@@ -553,7 +553,7 @@ For large Φ sequences, the pattern detector uses sampling mode to avoid memory 
 
 These values balance memory usage vs. analysis thoroughness. The defaults work well for systems with 8-16GB RAM.
 
-## 🔬 Level 1 Analysis (Structural Format)
+## Level 1 Analysis (Structural Format)
 
 **Status:** Fully operational with structural pattern detection and order metrics
 
@@ -733,7 +733,7 @@ Level 1 analysis enables:
 - **Comparison between variants** to identify which best exhibits order emergence
 - **Temporal analysis** of how order evolves across iterations
 
-## 💾 Data Management and Compression
+## Data Management and Compression
 
 ### Automatic Compression Strategy
 
@@ -827,7 +827,7 @@ python level0_estimate_storage.py --max-iteration 32
 python level0_estimate_storage.py --max-iteration 28 --detailed
 ```
 
-## 📊 Metrics and Validation
+## Metrics and Validation
 
 ### Metrics for Patterns Pₖ
 
@@ -849,7 +849,7 @@ python level0_estimate_storage.py --max-iteration 28 --detailed
 - **Informational Convergence**: Measure of how Φ sequences evolve towards stable patterns
 - **Holographic Field Coherence**: Assessment of consistency of Pₖ patterns as manifestations of the primordial field
 
-### 🔬 Hidden φ Discovery Metrics (Phase 1-3)
+### Hidden φ Discovery Metrics (Phase 1-3)
 
 These advanced metrics implement the research roadmap for discovering hidden φ in variant structures. The key hypothesis: **φ exists in PROPORTIONS between structures, not in absolute structures themselves**.
 
@@ -889,7 +889,7 @@ These advanced metrics implement the research roadmap for discovering hidden φ 
 - **𝓡 HIGH** → Curved geometry, order matters
 - **𝓔 LOW** → Stable, coherent configuration (universe-like)
 
-### 🌟 Emergence Index (Level 2 Potential)
+### Emergence Index (Level 2 Potential)
 
 The **Emergence Index** is a composite metric (0-1) that estimates which variant has the highest potential for generating physics-like emergent behavior (Level 2). It combines three scientifically-grounded indicators:
 
@@ -933,7 +933,7 @@ The `--null-test` flag enables comparison against a null model to determine if t
 - **Medium (0.4-0.7)**: Moderate potential; some emergent properties present
 - **Low (<0.4)**: Limited potential; either too ordered or too chaotic
 
-### 🧠 Structured Complexity Index (SCI) & Cosmological Coherence Index (ICC)
+### Structured Complexity Index (SCI) & Cosmological Coherence Index (ICC)
 
 These are advanced metrics designed to evaluate which HSI variant has the highest potential for generating **universe-like structures with emergent physical laws**.
 
@@ -992,11 +992,11 @@ python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_ite
 Analyzes metric evolution across multiple iterations to identify trends and extrapolate future behavior.
 
 **Features:**
-- 🔍 **Auto-discovery**: Scans `results/phi_snapshots/var_{X}/` to detect available iterations
-- 📊 **Batch analysis**: Runs emergence + SCI/ICC for all discovered/specified iterations
-- 📈 **Trend plots**: Generates PNG plots showing metric evolution over iterations
-- 🔮 **Extrapolation**: Linear regression to predict values at future iterations (default: iter 30)
-- 💾 **Consolidated JSON**: Saves all data to `results/trend_analysis.json`
+- **Auto-discovery**: Scans `results/phi_snapshots/var_{X}/` to detect available iterations
+- **Batch analysis**: Runs emergence + SCI/ICC for all discovered/specified iterations
+- **Trend plots**: Generates PNG plots showing metric evolution over iterations
+- **Extrapolation**: Linear regression to predict values at future iterations (default: iter 30)
+- **Consolidated JSON**: Saves all data to `results/trend_analysis.json`
 
 **Usage:**
 ```bash
@@ -1025,7 +1025,7 @@ icc                  -0.006801   0.222    0.5215
 phi_tendency         +0.011082   0.607    0.4045
 ```
 
-## 🎨 Visualizations
+## Visualizations
 ### Spectral Analysis (Welch Streaming)
 
 The project implements streaming spectral analysis directly from compressed Φ snapshots (.bin.gz) using Welch’s method. This is robust for large iterations without loading full sequences into RAM.
@@ -1081,7 +1081,7 @@ The system can generate:
 - Rule performance charts
 - Comparison plots across variants (if matplotlib is available)
 
-## 📁 Results
+## Results
 
 Results are organized in:
 
@@ -1100,7 +1100,7 @@ Reports for Level 0 generator are now saved under:
 hsi_agents_project/reports/
 ```
 
-## 🔬 Usage Examples
+## Usage Examples
 
 ### Quick Start
 
@@ -1205,7 +1205,7 @@ ISH_COMPRESSION_LEVEL=5
 ISH_CLEANUP_KEEP_LAST=2
 ```
 
-## 🤝 Contributions
+## Contributions
 
 This project is part of research on the Informational Singularity Hypothesis. Contributions are welcome:
 
@@ -1214,7 +1214,7 @@ This project is part of research on the Informational Singularity Hypothesis. Co
 3. Implement changes with tests
 4. Create pull request with detailed description
 
-## 📚 References and Documentation
+## References and Documentation
 
 ### Technical Documentation
 
@@ -1233,25 +1233,25 @@ This project is part of research on the Informational Singularity Hypothesis. Co
 - Detailed docstrings in all Python modules
 - Inline comments explaining ISH theory
 
-## 📄 License
+## License
 
 This project is developed by Iban Borràs in collaboration with Augment Agent (Claude Sonnet 4) as part of research on the Informational Singularity Hypothesis.
 
-## 🔮 Roadmap and Future Developments
+## Roadmap and Future Developments
 
 ### Planned Technological Expansions
 
-#### 🌌 **Symbolic Quantum Computing**
+#### **Symbolic Quantum Computing**
 - **Integration with quantum simulators** to explore ISH in Hilbert spaces
 - **Quantum algorithms** for detecting Pₖ patterns in superposition
 - **Informational entanglement** as manifestation of the Primordial Holographic Field
 
-#### 🧠 **Informational Consciousness Models**
+#### **Informational Consciousness Models**
 - **Application to consciousness theories** based on integrated information (IIT)
 - **Modeling of cognitive processes** emerging from 0↔1 tension
 - **Connections with fundamental physics** and theories of everything
 
-#### 🎨 **Advanced Visualization**
+#### **Advanced Visualization**
 - **3D rendering** of H(Φ) structures from the Holographic Field
 - **Immersive visualization** of temporal evolution of Ψ
 - **Virtual reality** to explore emergent pattern space
@@ -1259,35 +1259,35 @@ This project is developed by Iban Borràs in collaboration with Augment Agent (C
 
 ### Scientific Extensions
 
-#### 🔬 **Experimental Validation**
+#### **Experimental Validation**
 - **Comparison with real physical data** (fundamental constants, cosmic structures)
 - **Testable predictions** derived from ISH
 - **Collaboration with theoretical physicists** for empirical validation
 
-#### 📊 **Advanced Analysis**
+#### **Advanced Analysis**
 - **Machine Learning** to discover non-obvious ISH patterns
 - **Neural networks** trained on Φ sequences
 - **Time series analysis** of informational evolution
 
-#### 🌐 **Interdisciplinary Applications**
+#### **Interdisciplinary Applications**
 - **Biology**: ISH patterns in DNA and evolution
 - **Cosmology**: Large-scale structures and ISH
 - **Mathematics**: Connections with number theory and fractal geometry
 
 ### System Improvements
 
-#### ⚡ **Performance Optimization**
+#### **Performance Optimization**
 - **Parallelization** of pattern detection algorithms
 - **GPU acceleration** for fractal dimension calculations
 - **Distributed algorithms** for large-scale experiments
 
-#### 🔧 **Advanced Features**
+#### **Advanced Features**
 - **Visual editor** for custom collapse rules
 - **Web interface** for remote experiments
 - **REST API** for integration with other systems
 - **Database** of discovered patterns and rules
 
-## 🆘 Support
+## Support
 
 For problems or questions:
 

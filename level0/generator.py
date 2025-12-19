@@ -41,6 +41,36 @@ SNAPSHOT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
+def _resolve_snapshot_dir(output_dir: str, variant: str) -> Path:
+    """
+    Resolve the correct snapshot directory, handling abs mode variants.
+
+    Tries in order:
+    1. var_{VARIANT}_abs{mode} if HSI_ABSOLUTE_TOKEN is set
+    2. var_{VARIANT} (plain)
+
+    Returns the first existing directory, or the expected path if none exist.
+    """
+    import os
+    from pathlib import Path
+
+    base = Path(output_dir) / "level0" / "phi_snapshots"
+    abs_mode = os.environ.get("HSI_ABSOLUTE_TOKEN", "1")
+
+    # Try with abs suffix first
+    abs_path = base / f"var_{variant.upper()}_abs{abs_mode}"
+    if abs_path.exists():
+        return abs_path
+
+    # Fallback to plain path
+    plain_path = base / f"var_{variant.upper()}"
+    if plain_path.exists():
+        return plain_path
+
+    # If neither exists, return plain path (for new generations)
+    return plain_path
+
+
 def find_last_completed_iteration(output_dir: str, variant: str) -> int:
     """
     Find the last successfully completed iteration from saved snapshots.
@@ -55,7 +85,7 @@ def find_last_completed_iteration(output_dir: str, variant: str) -> int:
     import json
     from pathlib import Path
 
-    snapshot_dir = Path(output_dir) / "level0" / "phi_snapshots" / f"var_{variant}_abs1"
+    snapshot_dir = _resolve_snapshot_dir(output_dir, variant)
 
     if not snapshot_dir.exists():
         return 0
@@ -80,7 +110,8 @@ def find_last_completed_iteration(output_dir: str, variant: str) -> int:
 
             format_type = meta.get('format', 'v32')
 
-            if format_type == 'v33_structural':
+            # v33 formats use .struct.gz, v32 uses .bin.gz
+            if format_type.startswith('v33'):
                 data_file = meta_file.parent / f"phi_iter{iter_num}.struct.gz"
             else:
                 data_file = meta_file.parent / f"phi_iter{iter_num}.bin.gz"
@@ -103,9 +134,7 @@ def cleanup_incomplete_iteration(output_dir: str, variant: str, iteration: int):
         variant: Variant code (e.g., "B")
         iteration: Iteration number to clean up
     """
-    from pathlib import Path
-
-    snapshot_dir = Path(output_dir) / "level0" / "phi_snapshots" / f"var_{variant}_abs1"
+    snapshot_dir = _resolve_snapshot_dir(output_dir, variant)
 
     if not snapshot_dir.exists():
         return
