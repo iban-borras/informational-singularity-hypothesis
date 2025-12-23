@@ -54,23 +54,20 @@ class ResultsReporter:
 
     def _parse_file_info(self):
         """Extract variant and iteration from filename."""
-        fname = self.results_path.stem  # e.g., "level1_analysis_varB_iter18"
+        import re
+        fname = self.results_path.stem  # e.g., "var_B_iter15_min10_max50"
         self.variant = "?"
         self.iteration = 0
 
-        if "var" in fname:
-            try:
-                var_part = fname.split("var")[1]
-                self.variant = var_part[0]  # First char after "var"
-            except (IndexError, KeyError):
-                pass
+        # Match patterns like "var_B" or "varB"
+        var_match = re.search(r'var[_]?([A-Za-z])', fname)
+        if var_match:
+            self.variant = var_match.group(1).upper()
 
-        if "iter" in fname:
-            try:
-                iter_part = fname.split("iter")[1]
-                self.iteration = int(''.join(c for c in iter_part if c.isdigit()))
-            except (ValueError, IndexError):
-                pass
+        # Match patterns like "iter15" or "iter_15", stop at underscore or end
+        iter_match = re.search(r'iter[_]?(\d+)', fname)
+        if iter_match:
+            self.iteration = int(iter_match.group(1))
 
     def analyze_patterns(self) -> Dict[str, Any]:
         """Analyze pattern statistics."""
@@ -150,6 +147,83 @@ class ResultsReporter:
             ]
         }
 
+    def _interpret_phi_alignment(self, phi_value: float) -> Dict[str, str]:
+        """Interpret φ-alignment value with dynamic text based on range."""
+        if phi_value is None:
+            return {
+                'level': 'unknown',
+                'emoji': '❓',
+                'short': 'Not calculated',
+                'description': 'φ-alignment was not calculated for this analysis.',
+                'significance': 'Run analysis with pattern metrics enabled to calculate φ-alignment.'
+            }
+
+        if phi_value >= 0.8:
+            return {
+                'level': 'very_high',
+                'emoji': '🌟',
+                'short': f'Very High ({phi_value:.2%})',
+                'description': f'Exceptional φ-coherence ({phi_value:.4f}) indicating strong golden ratio alignment.',
+                'significance': 'The patterns show remarkable convergence toward φ, suggesting deep structural affinity with the golden ratio. This is strong evidence for ISH-predicted self-organization.'
+            }
+        elif phi_value >= 0.6:
+            return {
+                'level': 'high',
+                'emoji': '✨',
+                'short': f'High ({phi_value:.2%})',
+                'description': f'High φ-coherence ({phi_value:.4f}) with significant golden ratio structure.',
+                'significance': 'The sequence exhibits notable φ-related proportions, consistent with emergent order predicted by ISH.'
+            }
+        elif phi_value >= 0.35:
+            return {
+                'level': 'moderate',
+                'emoji': '📊',
+                'short': f'Moderate ({phi_value:.2%})',
+                'description': f'Moderate φ-coherence ({phi_value:.4f}) with emerging φ-related patterns.',
+                'significance': 'Some golden ratio structure is present, suggesting partial self-organization. May increase with more iterations.'
+            }
+        elif phi_value >= 0.15:
+            return {
+                'level': 'low',
+                'emoji': '📉',
+                'short': f'Low ({phi_value:.2%})',
+                'description': f'Low φ-coherence ({phi_value:.4f}) with minimal golden ratio alignment.',
+                'significance': 'Limited φ-structure detected. The sequence may be too short or the variant may not converge toward φ.'
+            }
+        else:
+            return {
+                'level': 'minimal',
+                'emoji': '⚪',
+                'short': f'Minimal ({phi_value:.2%})',
+                'description': f'Minimal φ-coherence ({phi_value:.4f}), near random distribution.',
+                'significance': 'No significant golden ratio structure detected. This suggests random or chaotic behavior.'
+            }
+
+    def _interpret_density(self, ones_ratio: float) -> Dict[str, str]:
+        """Interpret the density of 1s vs 0s."""
+        deviation = abs(ones_ratio - 0.5)
+
+        if deviation < 0.01:
+            return {
+                'level': 'balanced',
+                'description': f'Nearly perfect balance ({ones_ratio:.2%} ones)',
+                'significance': 'Equal distribution suggests maximum entropy or symmetric collapse process.'
+            }
+        elif deviation < 0.05:
+            bias = '1s' if ones_ratio > 0.5 else '0s'
+            return {
+                'level': 'slight_bias',
+                'description': f'Slight bias toward {bias} ({ones_ratio:.2%} ones)',
+                'significance': 'Minor asymmetry may indicate preferential collapse direction.'
+            }
+        else:
+            bias = '1s' if ones_ratio > 0.5 else '0s'
+            return {
+                'level': 'significant_bias',
+                'description': f'Significant bias toward {bias} ({ones_ratio:.2%} ones)',
+                'significance': 'Strong asymmetry suggests non-equilibrium dynamics in the collapse process.'
+            }
+
     def analyze_scientific_insights(self) -> Dict[str, Any]:
         """Extract scientifically relevant insights for the ISH paper."""
         insights = {
@@ -158,8 +232,41 @@ class ResultsReporter:
             'fibonacci_patterns': [],
             'phi_indicators': [],
             'is_chaotic': False,
-            'chaos_indicators': []
+            'chaos_indicators': [],
+            'phi_alignment': None,
+            'phi_interpretation': None,
+            'density_analysis': None,
+            'complexity_metrics': {}
         }
+
+        # Get φ-alignment from validation results
+        phi_value = self.validation.get('phi_alignment')
+        insights['phi_alignment'] = phi_value
+        insights['phi_interpretation'] = self._interpret_phi_alignment(phi_value)
+
+        # Calculate density (1s vs 0s ratio)
+        char_counts = self.data.get('char_counts', {})
+        observable_len = char_counts.get('observable', 0)
+        if observable_len > 0:
+            # Estimate from patterns if available
+            observable = self.patterns.get('observable', [])
+            if observable:
+                all_patterns = ''.join(p.get('pattern_data', '') for p in observable[:100])
+                if all_patterns:
+                    ones_ratio = all_patterns.count('1') / len(all_patterns)
+                    insights['density_analysis'] = self._interpret_density(ones_ratio)
+
+        # Calculate complexity metrics
+        if self.rules:
+            contexts = [r.get('context', '') for r in self.rules if r.get('context')]
+            if contexts:
+                avg_context_len = sum(len(c) for c in contexts) / len(contexts)
+                max_context_len = max(len(c) for c in contexts)
+                insights['complexity_metrics'] = {
+                    'avg_context_length': avg_context_len,
+                    'max_context_length': max_context_len,
+                    'rule_diversity': len(set(contexts)) / len(contexts) if contexts else 0
+                }
 
         observable = self.patterns.get('observable', [])
 
@@ -348,6 +455,12 @@ class ResultsReporter:
         md.append("---")
         md.append("## Executive Summary")
         md.append("")
+
+        # Get φ-alignment interpretation
+        phi_interp = insights.get('phi_interpretation', {})
+        phi_display = phi_interp.get('short', 'N/A') if phi_interp else 'N/A'
+        phi_emoji = phi_interp.get('emoji', '') if phi_interp else ''
+
         md.append("| Metric | Value |")
         md.append("|--------|-------|")
         md.append(f"| Structural sequence | {char_counts.get('structural', 0):,} chars |")
@@ -355,6 +468,7 @@ class ResultsReporter:
         md.append(f"| Patterns detected | {pattern_stats.get('total_observable', 0):,} |")
         md.append(f"| Rules inferred | {rule_stats.get('total_rules', 0):,} |")
         md.append(f"| Avg rule confidence | {rule_stats.get('avg_confidence', 0)*100:.2f}% |")
+        md.append(f"| **φ-alignment** | {phi_emoji} {phi_display} |")
         md.append(f"| Analysis time | {self.data.get('analysis_time_seconds', 0):,.1f}s |")
         md.append("")
 
@@ -364,12 +478,34 @@ class ResultsReporter:
         md.append("")
 
         findings = []
+
+        # φ-alignment finding (always first if available)
+        if phi_interp and phi_interp.get('level') not in ['unknown', None]:
+            findings.append(f"**{phi_emoji} φ-Alignment ({phi_interp.get('level', '').replace('_', ' ').title()})**: {phi_interp.get('description', '')}")
+
         if insights.get('alternating_dominance'):
-            findings.append("**Alternating Pattern Dominance**: The most recurrent patterns are alternating sequences (0101...), suggesting an oscillatory structure.")
+            findings.append("**🔄 Alternating Pattern Dominance**: The most recurrent patterns are alternating sequences (0101...), suggesting an oscillatory structure in the collapse dynamics.")
+
         if insights.get('deterministic_structure'):
-            findings.append("**Deterministic Structure**: Over 50% of rules have ≥99% confidence, indicating non-random, rule-governed sequences.")
+            pct = rule_stats.get('confidence_99plus', 0) / max(1, rule_stats.get('total_rules', 1)) * 100
+            findings.append(f"**🎯 Deterministic Structure**: {pct:.1f}% of rules have ≥99% confidence, indicating non-random, rule-governed sequences.")
+
         if insights.get('fibonacci_patterns'):
-            findings.append(f"**Fibonacci Periods**: Detected periods matching Fibonacci numbers: {insights['fibonacci_patterns']}")
+            findings.append(f"**🌀 Fibonacci Periods**: Detected periods matching Fibonacci numbers: {insights['fibonacci_patterns']}")
+
+        # Density analysis
+        density = insights.get('density_analysis')
+        if density:
+            findings.append(f"**⚖️ Bit Density**: {density.get('description', '')}. {density.get('significance', '')}")
+
+        # Complexity metrics
+        complexity = insights.get('complexity_metrics', {})
+        if complexity.get('avg_context_length'):
+            diversity_pct = complexity.get('rule_diversity', 0) * 100
+            findings.append(f"**🧬 Rule Complexity**: Average context length of {complexity['avg_context_length']:.1f} bits with {diversity_pct:.1f}% rule diversity.")
+
+        if not findings:
+            findings.append("*No significant findings detected. Consider analyzing more iterations or adjusting pattern detection parameters.*")
 
         for i, finding in enumerate(findings, 1):
             md.append(f"{i}. {finding}")
@@ -413,6 +549,42 @@ class ResultsReporter:
         for r in rule_stats.get('top_rules', [])[:10]:
             md.append(f"| `{r['context']}` | → | `{r['prediction']}` | {r['confidence']*100:.1f}% | {r['support']:,} |")
         md.append("")
+
+        # φ-Alignment Section (NEW)
+        md.append("---")
+        md.append("## φ-Alignment Analysis")
+        md.append("")
+
+        phi_value = insights.get('phi_alignment')
+        phi_interp = insights.get('phi_interpretation', {})
+
+        if phi_value is not None:
+            md.append(f"### {phi_interp.get('emoji', '')} Overall φ-Alignment: {phi_value:.4f}")
+            md.append("")
+            md.append(f"**Level:** {phi_interp.get('level', 'unknown').replace('_', ' ').title()}")
+            md.append("")
+            md.append(f"> {phi_interp.get('description', '')}")
+            md.append("")
+            md.append("#### Significance for ISH")
+            md.append("")
+            md.append(phi_interp.get('significance', ''))
+            md.append("")
+
+            # Add visual indicator
+            md.append("#### φ-Alignment Scale")
+            md.append("")
+            md.append("```")
+            bar_pos = int(phi_value * 50)
+            bar = "─" * bar_pos + "●" + "─" * (50 - bar_pos)
+            md.append(f"0.0 [{bar}] 1.0")
+            md.append(f"     {'Random':<15}{'Moderate':^20}{'Golden Ratio':>15}")
+            md.append("```")
+            md.append("")
+        else:
+            md.append("*φ-alignment was not calculated for this analysis.*")
+            md.append("")
+            md.append("To enable φ-alignment calculation, run the analysis with pattern metrics enabled.")
+            md.append("")
 
         # Scientific Interpretation
         md.append("---")
