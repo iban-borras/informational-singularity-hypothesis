@@ -1,5 +1,5 @@
 """
-📊 Order Metrics — HSI v33 Structural Analysis
+📊 Order Metrics — HSI Structural Analysis
 
 This module implements metrics for analyzing emergent order in v33 structural data.
 Unlike pattern metrics (which measure pattern quality), order metrics measure
@@ -545,7 +545,7 @@ def create_order_report(phi_structural: str, output_path: Optional[str] = None) 
 
 if __name__ == "__main__":
     # Example usage
-    print("📊 Order Metrics — HSI v33")
+    print("📊 Order Metrics — HSI")
     print("=" * 60)
 
     # Example structural Φ

@@ -17,6 +17,13 @@ from collections import defaultdict, Counter
 import hashlib
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+# Import tqdm for progress bars
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+
 # Import Numba-optimized kernels
 try:
     from .numba_kernels import (
@@ -26,6 +33,13 @@ try:
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
+
+# Import PatternMetrics for φ-alignment calculation
+try:
+    from metrics.pattern_metrics import PatternMetrics
+    PATTERN_METRICS_AVAILABLE = True
+except ImportError:
+    PATTERN_METRICS_AVAILABLE = False
 
 
 class Validator:
@@ -61,7 +75,8 @@ class Validator:
     def validate_rules(self,
                       rules: List[Dict[str, Any]],
                       patterns: List[Dict[str, Any]],
-                      phi_sequences: List[str]) -> Dict[str, Any]:
+                      phi_sequences: List[str],
+                      context_index: Optional[Dict[str, Tuple[np.ndarray, np.ndarray]]] = None) -> Dict[str, Any]:
         """
         Validate inferred rules on multiple Φ sequences.
 
@@ -69,32 +84,48 @@ class Validator:
             rules: List of rules ωₖ to validate
             patterns: Original patterns Pₖ
             phi_sequences: Multiple Φ sequences for validation
+            context_index: Pre-computed context index from RuleInferer for O(1) lookups
 
         Returns:
             Dictionary with validation results and metrics
         """
         print(f"✅ Validating {len(rules)} rules on {len(phi_sequences)} sequences", flush=True)
 
+        # Store context index for use by validation methods
+        self._context_index = context_index
+        if context_index:
+            print(f"   Using pre-computed context index ({len(context_index)} contexts)", flush=True)
+
+        # Store patterns for φ-alignment calculation
+        self._patterns = patterns
+
         validation_results = {
             'rule_scores': {},
             'overall_metrics': {},
             'stability_analysis': {},
-            'recommendations': []
+            'recommendations': [],
+            'phi_alignment': None
         }
 
-        # Validate each rule individually
+        # Validate each rule with progress bar
         total_rules = len(rules)
-        log_interval = max(1, total_rules // 20)  # Log cada 5%
 
-        for idx, rule in enumerate(rules):
+        if TQDM_AVAILABLE:
+            rule_iter = tqdm(rules, desc="   Validating", unit="rule",
+                           bar_format="   {l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
+        else:
+            rule_iter = rules
+            log_interval = max(1, total_rules // 20)
+
+        for idx, rule in enumerate(rule_iter):
             rule_id = rule['rule_id']
 
-            # Log cada 5% en lloc de cada 100
-            if idx > 0 and idx % log_interval == 0:
+            # Fallback progress for non-tqdm
+            if not TQDM_AVAILABLE and idx > 0 and idx % log_interval == 0:
                 pct = 100 * idx // total_rules
                 print(f"  ⏳ Validating rules: {idx:,}/{total_rules:,} ({pct}%)", flush=True)
 
-            rule_results = self._validate_single_rule(rule, phi_sequences)
+            rule_results = self._validate_single_rule_indexed(rule, phi_sequences)
             validation_results['rule_scores'][rule_id] = rule_results
 
             # Store rule performance
@@ -106,6 +137,15 @@ class Validator:
         print(f"  ⏳ Calculating overall metrics...", flush=True)
         validation_results['overall_metrics'] = self._calculate_overall_metrics(rules)
         print(f"  ✓ Overall metrics calculated", flush=True)
+
+        # Calculate φ-alignment from patterns
+        print(f"  ⏳ Calculating φ-alignment...", flush=True)
+        validation_results['phi_alignment'] = self._calculate_phi_alignment_aggregate()
+        phi_val = validation_results['phi_alignment']
+        if phi_val is not None:
+            print(f"  ✓ φ-alignment: {phi_val:.4f}", flush=True)
+        else:
+            print(f"  ⚠️  φ-alignment: N/A (no patterns or metrics unavailable)", flush=True)
 
         # Stability analysis
         print(f"  ⏳ Analyzing stability...", flush=True)
@@ -120,11 +160,198 @@ class Validator:
         self.validation_results.append(validation_results)
         return validation_results
 
+    def _calculate_phi_alignment_aggregate(self) -> Optional[float]:
+        """
+        Calculate aggregate φ-alignment from detected patterns.
+
+        Uses PatternMetrics.calculate_phi_alignment() on each pattern
+        and returns the weighted average (by pattern frequency/support).
+
+        Returns:
+            Float [0,1] where 1 = perfect φ-alignment, or None if unavailable
+        """
+        if not PATTERN_METRICS_AVAILABLE:
+            return None
+
+        patterns = getattr(self, '_patterns', None)
+        if not patterns:
+            return None
+
+        # Sample patterns for efficiency (max 1000)
+        sample_size = min(1000, len(patterns))
+        if len(patterns) > sample_size:
+            import random
+            sampled = random.sample(patterns, sample_size)
+        else:
+            sampled = patterns
+
+        phi_alignments = []
+        weights = []
+
+        for pattern in sampled:
+            # Get pattern data (binary string) - try both 'pattern_data' and 'pattern' keys
+            pattern_data = pattern.get('pattern_data') or pattern.get('pattern', '')
+            if not pattern_data or len(pattern_data) < 4:
+                continue
+
+            # Calculate φ-alignment for this pattern
+            try:
+                phi_result = PatternMetrics.calculate_phi_alignment(pattern_data)
+                phi_coherence = phi_result.get('phi_coherence', 0.0)
+
+                # Weight by pattern frequency/support
+                weight = pattern.get('frequency', 1) or pattern.get('support', 1) or 1
+
+                phi_alignments.append(phi_coherence)
+                weights.append(weight)
+            except Exception:
+                continue
+
+        if not phi_alignments:
+            return None
+
+        # Weighted average
+        total_weight = sum(weights)
+        if total_weight == 0:
+            return float(np.mean(phi_alignments))
+
+        weighted_sum = sum(p * w for p, w in zip(phi_alignments, weights))
+        return float(weighted_sum / total_weight)
+
+    def _validate_single_rule_indexed(self, rule: Dict[str, Any],
+                                      phi_sequences: List[str]) -> Dict[str, Any]:
+        """
+        Validate a single rule using pre-computed metrics or context index.
+        Rules already have precision/stability from the metrics phase - reuse them!
+        """
+        # If rule already has metrics from the inference phase, reuse them
+        # This is the fastest path - O(1) with no computation needed
+        if 'precision' in rule and 'stability' in rule:
+            return {
+                'accuracy': float(rule.get('precision', 0)),
+                'stability': float(rule.get('stability', 0)),
+                'confidence': float(rule.get('confidence', 0)),
+                'support': int(rule.get('support', 0)),
+                'total_tests': int(rule.get('support', 0)),
+                'validation_type': 'cached_metrics'
+            }
+
+        rule_type = rule.get('rule_type', 'unknown')
+
+        # Use indexed validation for Markov and context rules if index available
+        if self._context_index:
+            if rule_type == 'markov_transition':
+                return self._validate_markov_rule_indexed(rule)
+            elif rule_type in ['context_before', 'context_after']:
+                return self._validate_context_rule_indexed(rule)
+
+        # Fallback to original methods
+        if rule_type == 'markov_transition':
+            return self._validate_markov_rule(rule, phi_sequences)
+        elif rule_type in ['context_before', 'context_after']:
+            return self._validate_context_rule(rule, phi_sequences)
+        elif rule_type in ['composition', 'overlap_composition']:
+            return self._validate_composition_rule(rule, phi_sequences)
+        elif rule_type == 'periodicity':
+            return self._validate_periodicity_rule(rule, phi_sequences)
+        else:
+            return self._validate_generic_rule(rule, phi_sequences)
+
+    def _validate_markov_rule_indexed(self, rule: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate Markov rule using pre-computed context index - O(1) lookup."""
+        context = rule.get('context', '')
+        prediction = rule.get('prediction', '')
+
+        if not context or not prediction:
+            return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
+
+        index_entry = self._context_index.get(context)
+        if index_entry is None:
+            return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
+
+        positions, next_chars = index_entry
+        n_pos = len(positions)
+        if n_pos == 0:
+            return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
+
+        # Vectorized accuracy calculation
+        pred_int = int(prediction)
+        correct = np.sum(next_chars == pred_int)
+        accuracy = correct / n_pos
+
+        # Calculate stability across segments
+        num_segments = 4
+        segment_scores = []
+        segment_size = n_pos // num_segments if n_pos >= num_segments else n_pos
+
+        for i in range(min(num_segments, n_pos)):
+            start_idx = i * segment_size
+            end_idx = start_idx + segment_size if i < num_segments - 1 else n_pos
+            seg_correct = np.sum(next_chars[start_idx:end_idx] == pred_int)
+            seg_total = end_idx - start_idx
+            if seg_total > 0:
+                segment_scores.append(seg_correct / seg_total)
+
+        stability = 1.0 - np.std(segment_scores) if len(segment_scores) > 1 else 1.0
+
+        return {
+            'accuracy': float(accuracy),
+            'stability': float(max(0, stability)),
+            'total_tests': int(n_pos),
+            'validation_type': 'indexed'
+        }
+
+    def _validate_context_rule_indexed(self, rule: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate context rule using pre-computed index - O(1) lookup."""
+        rule_type = rule.get('rule_type', '')
+        context = rule.get('context', '') if rule_type == 'context_before' else rule.get('pattern', '')
+
+        if not context:
+            return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
+
+        index_entry = self._context_index.get(context)
+        if index_entry is None:
+            return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
+
+        positions, next_chars = index_entry
+        n_pos = len(positions)
+        if n_pos == 0:
+            return {'accuracy': 0.0, 'stability': 0.0, 'total_tests': 0}
+
+        # For context rules, accuracy is based on dominant next_char consistency
+        count_0 = np.sum(next_chars == 0)
+        count_1 = np.sum(next_chars == 1)
+        correct = max(count_0, count_1)
+        accuracy = correct / n_pos
+
+        # Stability: check consistency across segments
+        num_segments = 4
+        segment_scores = []
+        segment_size = n_pos // num_segments if n_pos >= num_segments else n_pos
+
+        for i in range(min(num_segments, n_pos)):
+            start_idx = i * segment_size
+            end_idx = start_idx + segment_size if i < num_segments - 1 else n_pos
+            seg_0 = np.sum(next_chars[start_idx:end_idx] == 0)
+            seg_1 = np.sum(next_chars[start_idx:end_idx] == 1)
+            seg_total = end_idx - start_idx
+            if seg_total > 0:
+                segment_scores.append(max(seg_0, seg_1) / seg_total)
+
+        stability = 1.0 - np.std(segment_scores) if len(segment_scores) > 1 else 1.0
+
+        return {
+            'accuracy': float(accuracy),
+            'stability': float(max(0, stability)),
+            'total_tests': int(n_pos),
+            'validation_type': 'indexed'
+        }
+
     def _validate_single_rule(self, rule: Dict[str, Any],
                             phi_sequences: List[str]) -> Dict[str, Any]:
         """Validate a single rule on multiple sequences."""
         rule_type = rule.get('rule_type', 'unknown')
-        
+
         if rule_type == 'markov_transition':
             return self._validate_markov_rule(rule, phi_sequences)
         elif rule_type in ['context_before', 'context_after']:

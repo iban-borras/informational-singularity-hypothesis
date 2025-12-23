@@ -1625,44 +1625,78 @@ def get_phi_array(phi_string: str) -> np.ndarray:
     return (np.frombuffer(phi_string.encode('ascii'), dtype='S1') == b'1').astype(np.uint8)
 
 
-def _hilbert_indices_to_xy_vectorized(n_points: int, grid_size: int) -> np.ndarray:
+def _hilbert_chunk_to_xy(start_idx: int, end_idx: int, grid_size: int) -> np.ndarray:
     """
-    VECTORIZED Hilbert curve index to (x, y) conversion.
-    Computes all coordinates in parallel using NumPy operations.
-    ~100x faster than calling _hilbert_index_to_xy in a loop.
+    Process a chunk of Hilbert indices to (x, y) coordinates.
+    Memory-efficient: only allocates arrays for the chunk size.
     """
-    indices = np.arange(n_points, dtype=np.int64)
-    x = np.zeros(n_points, dtype=np.int32)
-    y = np.zeros(n_points, dtype=np.int32)
-    t = indices.copy()
+    chunk_size = end_idx - start_idx
+    indices = np.arange(start_idx, end_idx, dtype=np.int64)
+    x = np.zeros(chunk_size, dtype=np.int32)
+    y = np.zeros(chunk_size, dtype=np.int32)
+    t = indices  # No need to copy, we'll modify in-place
     s = 1
 
     while s < grid_size:
-        rx = (t >> 1) & 1  # 1 & (t // 2)
-        ry = (t ^ rx) & 1  # 1 & (t ^ rx)
+        rx = (t >> 1) & 1
+        ry = (t ^ rx) & 1
 
-        # Where ry == 0, apply rotation/flip
         mask_ry0 = (ry == 0)
         mask_rx1 = (rx == 1)
         mask_flip = mask_ry0 & mask_rx1
 
-        # Apply flip: x = s - 1 - x, y = s - 1 - y
         x[mask_flip] = s - 1 - x[mask_flip]
         y[mask_flip] = s - 1 - y[mask_flip]
 
-        # Apply swap for all ry == 0: x, y = y, x
         x_temp = x[mask_ry0].copy()
         x[mask_ry0] = y[mask_ry0]
         y[mask_ry0] = x_temp
 
-        # Translate
         x += s * rx
         y += s * ry
 
-        t >>= 2  # t //= 4
+        t >>= 2
         s *= 2
 
     return np.column_stack([x, y])
+
+
+def _hilbert_indices_to_xy_vectorized(n_points: int, grid_size: int) -> np.ndarray:
+    """
+    VECTORIZED Hilbert curve index to (x, y) conversion.
+    Processes in chunks to avoid memory overflow for large arrays.
+    """
+    # Determine optimal chunk size based on available memory
+    # Each point needs: ~40 bytes (indices int64 + x,y int32 + temporaries)
+    # Target: ~500MB per chunk = ~12.5M points
+    MAX_CHUNK_SIZE = 16_000_000  # ~640 MB per chunk
+
+    if n_points <= MAX_CHUNK_SIZE:
+        # Small enough to process in one go
+        return _hilbert_chunk_to_xy(0, n_points, grid_size)
+
+    # Process in chunks
+    import sys
+    show_progress = n_points > 100_000_000  # Show progress for >100M points
+
+    result = np.empty((n_points, 2), dtype=np.int32)
+    n_chunks = (n_points + MAX_CHUNK_SIZE - 1) // MAX_CHUNK_SIZE
+
+    for i in range(n_chunks):
+        start = i * MAX_CHUNK_SIZE
+        end = min(start + MAX_CHUNK_SIZE, n_points)
+
+        if show_progress and i % max(1, n_chunks // 20) == 0:
+            pct = (i / n_chunks) * 100
+            print(f"\r   [Hilbert coords] {pct:.0f}% ({i+1}/{n_chunks} chunks)...",
+                  end='', flush=True)
+
+        result[start:end] = _hilbert_chunk_to_xy(start, end, grid_size)
+
+    if show_progress:
+        print(f"\r   [Hilbert coords] 100% complete.                    ")
+
+    return result
 
 
 def phi_to_hilbert_coords(phi_array: np.ndarray, grid_size: int = None) -> np.ndarray:
@@ -1689,6 +1723,59 @@ def phi_to_hilbert_coords(phi_array: np.ndarray, grid_size: int = None) -> np.nd
 
     # VECTORIZED: compute all Hilbert coordinates at once
     return _hilbert_indices_to_xy_vectorized(n_points, grid_size)
+
+
+def build_hilbert_heatmaps_chunked(phi_array: np.ndarray, grid_size: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Build Hilbert heatmaps (ones count and total count) using chunked processing.
+    Memory-efficient: processes data in chunks without storing all coordinates.
+
+    Args:
+        phi_array: Binary array (0s and 1s)
+        grid_size: Size of the Hilbert grid (must be power of 2)
+
+    Returns:
+        Tuple of (heat_ones, heat_total) arrays of shape (grid_size, grid_size)
+    """
+    n_points = len(phi_array)
+
+    # Initialize heatmaps
+    heat_ones = np.zeros((grid_size, grid_size), dtype=np.int32)
+    heat_total = np.zeros((grid_size, grid_size), dtype=np.int32)
+
+    # Chunk size: ~16M points = ~640MB per chunk
+    CHUNK_SIZE = 16_000_000
+    n_chunks = (n_points + CHUNK_SIZE - 1) // CHUNK_SIZE
+    show_progress = n_points > 100_000_000
+
+    for i in range(n_chunks):
+        start = i * CHUNK_SIZE
+        end = min(start + CHUNK_SIZE, n_points)
+
+        if show_progress and i % max(1, n_chunks // 20) == 0:
+            pct = (i / n_chunks) * 100
+            print(f"\r   [Hilbert heatmap] {pct:.0f}% ({i+1}/{n_chunks} chunks)...",
+                  end='', flush=True)
+
+        # Get chunk of data and coordinates
+        chunk_data = phi_array[start:end]
+        chunk_coords = _hilbert_chunk_to_xy(start, end, grid_size)
+
+        x = chunk_coords[:, 0]
+        y = chunk_coords[:, 1]
+        ones_mask = (chunk_data == 1)
+
+        # Accumulate to heatmaps
+        np.add.at(heat_ones, (y[ones_mask], x[ones_mask]), 1)
+        np.add.at(heat_total, (y, x), 1)
+
+        # Free memory
+        del chunk_data, chunk_coords, x, y, ones_mask
+
+    if show_progress:
+        print(f"\r   [Hilbert heatmap] 100% complete.                    ")
+
+    return heat_ones, heat_total
 
 
 def _hilbert_index_to_xy(index: int, n: int) -> Tuple[int, int]:

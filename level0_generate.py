@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HSI Variants Master Runner (v33)
+HSI Variants Master Runner
 Runs the 6 surviving collapse variants (B, D, E, F, G, H) and compares results.
 
 v33 Update: Variants A and C eliminated for incompatibility with HSI v32 principles.
@@ -1135,18 +1135,24 @@ def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
             prog.update(message="Converting to array...")
             a = _np.frombuffer(bits.encode('ascii'), dtype='S1') == b'1'
             a = a.astype(_np.uint8)
-            prog.update(message="Computing Hilbert coords...")
-            coords = phi_to_hilbert_coords(a)
-            x = coords[:,0]; y = coords[:,1]
-            size = int(max(x.max(), y.max()) + 1)
 
-            # 2) Build count grids: ones and total
+            # 2) Build heatmaps using memory-efficient chunked processing
             prog.update(message=f"Building heatmaps ({len(a):,} points)...")
-            ones_mask = (a == 1)
-            heat_ones = _np.zeros((size, size), dtype=_np.int32)
-            heat_total = _np.zeros((size, size), dtype=_np.int32)
-            _np.add.at(heat_ones, (y[ones_mask], x[ones_mask]), 1)
-            _np.add.at(heat_total, (y, x), 1)
+            try:
+                from level0.generator import build_hilbert_heatmaps_chunked
+                heat_ones, heat_total = build_hilbert_heatmaps_chunked(a, grid_size)
+                size = grid_size
+            except ImportError:
+                # Fallback to old method for small datasets
+                prog.update(message="Computing Hilbert coords...")
+                coords = phi_to_hilbert_coords(a)
+                x = coords[:,0]; y = coords[:,1]
+                size = int(max(x.max(), y.max()) + 1)
+                ones_mask = (a == 1)
+                heat_ones = _np.zeros((size, size), dtype=_np.int32)
+                heat_total = _np.zeros((size, size), dtype=_np.int32)
+                _np.add.at(heat_ones, (y[ones_mask], x[ones_mask]), 1)
+                _np.add.at(heat_total, (y, x), 1)
 
             # 3) Rebin to adaptive target_grid
             pool = max(1, size // target_grid)

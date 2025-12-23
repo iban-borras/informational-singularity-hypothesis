@@ -252,7 +252,7 @@ def iter_phi_from_variant(
 if __name__ == "__main__":
     import sys
 
-    print("🔄 Streaming Φ Loader — HSI v33")
+    print("🔄 Streaming Φ Loader — HSI")
     print("=" * 50)
 
     # Example usage

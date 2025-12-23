@@ -16,7 +16,7 @@ Usage:
   python -m hsi_agents_project.variant_A_control --iterations 14 --seed 42
   python -m hsi_agents_project.variant_A_control --match-variant B --iterations 14
 
-The generated files are saved in the same format (v33) as other variants,
+The generated files are saved in the same format as other variants,
 allowing direct use with refresh_variant_from_cache.py for visualization.
 """
 from __future__ import annotations

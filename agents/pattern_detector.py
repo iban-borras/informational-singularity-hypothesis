@@ -40,16 +40,22 @@ except ImportError:
     STRUCTURAL_AVAILABLE = False
 
 # Import Numba-optimized kernels
+# Only show message in main process (not in worker subprocesses)
+import multiprocessing as _mp
+_IS_MAIN_PROCESS = _mp.current_process().name == 'MainProcess'
+
 try:
     from .numba_kernels import (
         str_to_bytes, bytes_to_str, sliding_window_hashes,
         block_similarities, compute_autosimilarity
     )
     NUMBA_AVAILABLE = True
-    print("✅ Numba acceleration enabled")
+    if _IS_MAIN_PROCESS:
+        print("✅ Numba acceleration enabled")
 except ImportError:
     NUMBA_AVAILABLE = False
-    print("⚠️ Numba not available, using pure Python (slower)")
+    if _IS_MAIN_PROCESS:
+        print("⚠️ Numba not available, using pure Python (slower)")
 
 
 # =============================================================================
@@ -333,7 +339,7 @@ class PatternDetector:
 
         # Detect structural patterns if available
         if phi_structural and self.structural_detector:
-            print(f"🔍 Detecting structural patterns (v33)...")
+            print(f"🔍 Detecting structural patterns...")
             self.structural_patterns = self.structural_detector.detect_structural_patterns(phi_structural)
             print(f"   ✅ {len(self.structural_patterns)} structural patterns detected")
 

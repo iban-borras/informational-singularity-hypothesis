@@ -1,10 +1,10 @@
-# ISH Agents System — Informational Singularity Hypothesis
+# ISH Agents System (Informational Singularity Hypothesis)
 
 This project implements a modular agent system to explore the **Informational Singularity Hypothesis (ISH)** developed by Iban Borràs. The system generates primitive binary sequences Φ and uses specialized agents to detect emergent patterns Pₖ and infer rules ωₖ from the Primordial Holographic Field.
 
 ## Project Description
 
-The ISH proposes that all reality emerges from a primordial tension between "Absolute Nothingness" (0) and the "Absolute" (1), generating pure information that self-organizes into complex patterns. This agent system implements:
+The ISH proposes that all reality emerges from a primordial tension between "Nothingness" (0) and the "Absolute Nothingness" (1), generating pure information that self-organizes into complex patterns. This agent system implements:
 
 - **Level 0**: Generation of binary sequences Φ through iterative processes
 - **Level 1**: Detection of recurrent patterns Pₖ(Φ)

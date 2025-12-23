@@ -128,7 +128,7 @@
       "max_memory_gb": "Maximum memory to use for Level 1 analysis (in GB)",
       "enable_tar_compression": "Compress all iteration snapshots into single tar.gz file",
       "export_metadata": "Export metadata.json with iteration info for Level 1",
-      "enable_structural_analysis": "Enable v33 structural analysis (nesting, containment, order)",
+      "enable_structural_analysis": "Enable structural analysis (nesting, containment, order)",
       "structural_metrics": "List of structural metrics to compute: nesting, containment, stratified_order",
       "max_nesting_depth": "Maximum expected nesting depth for structural analysis"
     }

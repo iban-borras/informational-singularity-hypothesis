@@ -8,7 +8,7 @@ patterns Pₖ and rules ωₖ.
 Available modules:
 - pattern_metrics: Metrics to evaluate patterns Pₖ
 - rule_metrics: Metrics to evaluate rules ωₖ
-- order_metrics: Metrics to evaluate emergent order (v33 structural)
+- order_metrics: Metrics to evaluate emergent order (structural)
 - emergence_index: Emergence Index for Level 2 potential estimation
 - structured_complexity: SCI and ICC for universe generation potential
 """

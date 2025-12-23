@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HSI v33 Structural Format Encoder/Decoder
+HSI Structural Format Encoder/Decoder
 ==========================================
 
 2-bit encoding scheme that preserves structural information (parentheses):

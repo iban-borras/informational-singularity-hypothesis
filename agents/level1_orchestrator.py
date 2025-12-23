@@ -218,8 +218,10 @@ class Level1Orchestrator:
 
         # Phase 3: Validation (always run fresh to allow parameter tuning)
         print("\n✓ Phase 3: Validation...")
-        # Validator expects: rules, patterns, phi_sequences (list)
-        validation = self.validator.validate_rules(rules, all_patterns, [phi_observable])
+        # Get pre-computed context index from rule_inferer for O(1) lookups
+        context_index = self.rule_inferer.get_context_index()
+        # Validator expects: rules, patterns, phi_sequences (list), optional context_index
+        validation = self.validator.validate_rules(rules, all_patterns, [phi_observable], context_index=context_index)
 
         overall = validation.get('overall_metrics', {})
         validated_count = overall.get('rules_above_threshold', 0)
@@ -394,10 +396,14 @@ class Level1Orchestrator:
 
         validation = self.results.get('validation', {})
         overall = validation.get('overall_metrics', {})
+        phi_align = validation.get('phi_alignment')
         print(f"\n✓ Validation:")
         print(f"   Validated rules: {overall.get('rules_above_threshold', 0)}")
         print(f"   Avg confidence: {overall.get('mean_accuracy', 0):.2%}")
-        print(f"   φ-alignment: {validation.get('phi_alignment', 'N/A')}")
+        if phi_align is not None:
+            print(f"   φ-alignment: {phi_align:.4f}")
+        else:
+            print(f"   φ-alignment: N/A")
 
 
 if __name__ == "__main__":
