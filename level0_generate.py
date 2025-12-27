@@ -1374,9 +1374,274 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
     return out_metrics
 
 
+def plot_spectrum_beta_fit_enhanced(results_list, max_bits: int, skip: bool):
+    """
+    Enhanced power spectrum analysis with:
+    - Logarithmic binning for noise reduction
+    - Automatic breakpoint detection for multi-scale analysis
+    - Segmented β fitting to reveal scale transitions
+    - Adaptive frequency range selection
+
+    This provides scientifically meaningful spectral characterization
+    instead of a single global fit that may not capture the structure.
+    """
+    if skip:
+        return []
+    if not MATPLOTLIB_OK:
+        print("[WARN] Skipping enhanced spectrum (matplotlib unavailable).")
+        return []
+
+    import matplotlib.pyplot as plt
+    import numpy as _np
+    from scipy import stats
+
+    spec_cfg = _get_spectral_config()
+    # Use more windows for better statistics
+    enhanced_cfg = spec_cfg.copy()
+    enhanced_cfg['max_windows'] = int(os.environ.get('HSI_ENHANCED_MAX_WINDOWS', '512'))
+
+    out_metrics = []
+
+    for r in results_list:
+        if not r:
+            out_metrics.append(None)
+            continue
+
+        iters = r.get('iterations')
+        var = r.get('variant', '?')
+
+        print(f"[spectrum-enhanced] Processing {var} i={iters}...", flush=True)
+
+        # Get PSD with more windows
+        freqs, power = _welch_psd_from_gz(
+            iters, enhanced_cfg, max_bits_cap=max_bits,
+            label="enhanced-beta", var=var
+        )
+
+        if freqs is None or power is None:
+            print(f"[WARN] Enhanced spectrum skipped for {var}: no data.")
+            out_metrics.append(None)
+            continue
+
+        # Remove DC component and invalid values
+        valid_mask = (freqs > 0) & _np.isfinite(power) & (power > 0)
+        freqs_clean = freqs[valid_mask]
+        power_clean = power[valid_mask]
+
+        if len(freqs_clean) < 100:
+            print(f"[WARN] Enhanced spectrum skipped for {var}: insufficient data.")
+            out_metrics.append(None)
+            continue
+
+        # === LOGARITHMIC BINNING ===
+        log_freqs = _np.log10(freqs_clean)
+        log_power = _np.log10(power_clean)
+
+        # Create log-spaced bins (typically 50-100 bins work well)
+        n_bins = int(os.environ.get('HSI_SPECTRUM_BINS', '80'))
+        bin_edges = _np.linspace(log_freqs.min(), log_freqs.max(), n_bins + 1)
+
+        binned_freq = []
+        binned_power = []
+        binned_std = []
+
+        for i in range(n_bins):
+            mask = (log_freqs >= bin_edges[i]) & (log_freqs < bin_edges[i + 1])
+            if _np.sum(mask) >= 3:  # Need at least 3 points per bin
+                binned_freq.append(_np.mean(log_freqs[mask]))
+                binned_power.append(_np.mean(log_power[mask]))
+                binned_std.append(_np.std(log_power[mask]))
+
+        binned_freq = _np.array(binned_freq)
+        binned_power = _np.array(binned_power)
+        binned_std = _np.array(binned_std)
+
+        if len(binned_freq) < 10:
+            print(f"[WARN] Enhanced spectrum: insufficient bins for {var}.")
+            out_metrics.append(None)
+            continue
+
+        # === BREAKPOINT DETECTION ===
+        # Use piecewise linear regression to find scale transitions
+        # Test 1, 2, and 3 segment models
+
+        def fit_segment(x, y, start_idx, end_idx):
+            """Fit a line to a segment and return slope, intercept, R², residuals."""
+            if end_idx - start_idx < 5:
+                return None
+            xs = x[start_idx:end_idx]
+            ys = y[start_idx:end_idx]
+            slope, intercept, r_value, _, _ = stats.linregress(xs, ys)
+            y_pred = slope * xs + intercept
+            residuals = ys - y_pred
+            return {
+                'slope': slope,
+                'intercept': intercept,
+                'r2': r_value ** 2,
+                'beta': -slope,  # β = -slope in log-log space
+                'residuals': residuals,
+                'x_range': (xs[0], xs[-1]),
+                'f_range': (10**xs[0], 10**xs[-1]),
+                'n_points': len(xs)
+            }
+
+        # Single segment fit (baseline)
+        single_fit = fit_segment(binned_freq, binned_power, 0, len(binned_freq))
+
+        # Find best 2-segment split
+        best_2seg = None
+        best_2seg_score = -_np.inf
+
+        for split in range(10, len(binned_freq) - 10):
+            fit1 = fit_segment(binned_freq, binned_power, 0, split)
+            fit2 = fit_segment(binned_freq, binned_power, split, len(binned_freq))
+            if fit1 and fit2:
+                # Score: weighted average R² by number of points
+                n1, n2 = fit1['n_points'], fit2['n_points']
+                score = (fit1['r2'] * n1 + fit2['r2'] * n2) / (n1 + n2)
+                if score > best_2seg_score:
+                    best_2seg_score = score
+                    best_2seg = (fit1, fit2, split)
+
+        # Find best 3-segment split
+        best_3seg = None
+        best_3seg_score = -_np.inf
+        n = len(binned_freq)
+
+        for s1 in range(10, n - 20, 5):  # Step by 5 for efficiency
+            for s2 in range(s1 + 10, n - 10, 5):
+                fit1 = fit_segment(binned_freq, binned_power, 0, s1)
+                fit2 = fit_segment(binned_freq, binned_power, s1, s2)
+                fit3 = fit_segment(binned_freq, binned_power, s2, n)
+                if fit1 and fit2 and fit3:
+                    n1, n2, n3 = fit1['n_points'], fit2['n_points'], fit3['n_points']
+                    score = (fit1['r2']*n1 + fit2['r2']*n2 + fit3['r2']*n3) / (n1+n2+n3)
+                    if score > best_3seg_score:
+                        best_3seg_score = score
+                        best_3seg = (fit1, fit2, fit3, s1, s2)
+
+        # Choose best model using BIC-like criterion
+        # Penalize complexity: score - penalty * n_segments
+        penalty = 0.02  # Tunable
+        scores = {
+            '1-segment': single_fit['r2'] if single_fit else 0,
+            '2-segment': best_2seg_score - penalty if best_2seg else 0,
+            '3-segment': best_3seg_score - 2*penalty if best_3seg else 0,
+        }
+        best_model = max(scores, key=scores.get)
+
+        # === PLOTTING ===
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+        # Left plot: Raw spectrum with binned overlay
+        ax1 = axes[0]
+        ax1.loglog(freqs_clean, power_clean, alpha=0.3, color='lightblue', label='Raw')
+        ax1.loglog(10**binned_freq, 10**binned_power, 'b-', lw=2, label='Binned (log-avg)')
+        ax1.fill_between(
+            10**binned_freq,
+            10**(binned_power - binned_std),
+            10**(binned_power + binned_std),
+            alpha=0.2, color='blue'
+        )
+        ax1.set_xlabel('Frequency')
+        ax1.set_ylabel('Power')
+        ax1.set_title(f'Power Spectrum — {var} (i={iters})\nLog-binned with ±1σ')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # Right plot: Segmented fits
+        ax2 = axes[1]
+        ax2.scatter(binned_freq, binned_power, s=20, alpha=0.6, label='Binned data')
+
+        colors = ['red', 'green', 'purple']
+        segment_info = []
+
+        if best_model == '1-segment' and single_fit:
+            x_line = _np.linspace(binned_freq.min(), binned_freq.max(), 100)
+            y_line = single_fit['slope'] * x_line + single_fit['intercept']
+            ax2.plot(x_line, y_line, 'r-', lw=2,
+                    label=f"β={single_fit['beta']:.3f} (R²={single_fit['r2']:.3f})")
+            segment_info.append(single_fit)
+
+        elif best_model == '2-segment' and best_2seg:
+            fit1, fit2, split = best_2seg
+            for i, fit in enumerate([fit1, fit2]):
+                x_line = _np.linspace(fit['x_range'][0], fit['x_range'][1], 50)
+                y_line = fit['slope'] * x_line + fit['intercept']
+                ax2.plot(x_line, y_line, color=colors[i], lw=2,
+                        label=f"β{i+1}={fit['beta']:.3f} (R²={fit['r2']:.3f})")
+                segment_info.append(fit)
+            # Mark breakpoint
+            ax2.axvline(binned_freq[split], color='gray', ls='--', alpha=0.5)
+
+        elif best_model == '3-segment' and best_3seg:
+            fit1, fit2, fit3, s1, s2 = best_3seg
+            for i, fit in enumerate([fit1, fit2, fit3]):
+                x_line = _np.linspace(fit['x_range'][0], fit['x_range'][1], 50)
+                y_line = fit['slope'] * x_line + fit['intercept']
+                ax2.plot(x_line, y_line, color=colors[i], lw=2,
+                        label=f"β{i+1}={fit['beta']:.3f} (R²={fit['r2']:.3f})")
+                segment_info.append(fit)
+            ax2.axvline(binned_freq[s1], color='gray', ls='--', alpha=0.5)
+            ax2.axvline(binned_freq[s2], color='gray', ls='--', alpha=0.5)
+
+        ax2.set_xlabel('log₁₀(Frequency)')
+        ax2.set_ylabel('log₁₀(Power)')
+        ax2.set_title(f'Segmented β-fit — Best: {best_model}\n(breakpoints shown as dashed lines)')
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        out_path = VIS_DIR / f"spectrum_enhanced_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
+        plt.savefig(out_path, dpi=200)
+        print(f"[INFO] Enhanced spectrum saved: {out_path.relative_to(BASE_PATH)}")
+        plt.close()
+
+        # Compile metrics
+        metrics = {
+            'variant': var,
+            'iterations': iters,
+            'best_model': best_model,
+            'n_bins': len(binned_freq),
+            'segments': []
+        }
+        for i, seg in enumerate(segment_info):
+            metrics['segments'].append({
+                'segment': i + 1,
+                'beta': float(seg['beta']),
+                'r2': float(seg['r2']),
+                'freq_range': [float(seg['f_range'][0]), float(seg['f_range'][1])],
+                'n_points': int(seg['n_points'])
+            })
+
+        # Overall quality score
+        if segment_info:
+            avg_r2 = sum(s['r2'] for s in segment_info) / len(segment_info)
+            metrics['avg_r2'] = float(avg_r2)
+            metrics['quality'] = 'excellent' if avg_r2 > 0.95 else \
+                                 'good' if avg_r2 > 0.85 else \
+                                 'moderate' if avg_r2 > 0.70 else 'poor'
+
+        out_metrics.append(metrics)
+
+        # Print summary
+        print(f"   Best model: {best_model}")
+        for seg in metrics['segments']:
+            print(f"   Segment {seg['segment']}: β={seg['beta']:.3f}, "
+                  f"R²={seg['r2']:.3f}, f=[{seg['freq_range'][0]:.2e}, {seg['freq_range'][1]:.2e}]")
+        if 'avg_r2' in metrics:
+            print(f"   Quality: {metrics['quality']} (avg R²={metrics['avg_r2']:.3f})")
+
+    return out_metrics
+
+
 def plot_autocorrelation(results_list, max_bits: int, skip: bool):
     """
     Compute and plot autocorrelation to detect periodicity in bit sequences.
+
+    Uses chunked FFT processing (Welch-like) for memory efficiency and
+    statistical robustness. Provides error bars from inter-chunk variance.
 
     This analysis reveals:
     - Dominant periods in the sequence
@@ -1394,6 +1659,10 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
     FIB = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181]
     PHI = (1 + 5**0.5) / 2  # Golden ratio
 
+    # Chunked processing parameters
+    CHUNK_SIZE = 50_000_000  # 50M bits per chunk (~200MB RAM per FFT)
+    MAX_LAG = 5000  # Maximum lag to compute
+
     for r in results_list:
         if not r:
             continue
@@ -1407,44 +1676,69 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
                 print(f"[WARN] Autocorrelation skipped for {var}: insufficient data.", flush=True)
                 continue
 
-            prog.update(message="Converting to array...")
-            # Convert bits to +1/-1 for better autocorrelation signal
-            arr = np.array([1 if b == '1' else -1 for b in bits], dtype=np.float32)
-            n = len(arr)
+            n_total = len(bits)
+            n_chunks = max(1, n_total // CHUNK_SIZE)
+            actual_chunk_size = n_total // n_chunks
+            max_lag = min(MAX_LAG, actual_chunk_size // 4)
 
-            # Limit max lag for computational efficiency
-            max_lag = min(5000, n // 4)
+            prog.update(message=f"Processing {n_chunks} chunks of ~{actual_chunk_size//1_000_000}M bits...")
 
-            prog.update(message=f"Computing autocorrelation (max_lag={max_lag})...")
+            # Accumulate autocorrelations from all chunks
+            all_autocorrs = []
 
-            # Use FFT-based autocorrelation for efficiency
-            # Autocorrelation via FFT: R(τ) = IFFT(|FFT(x)|²)
-            arr_centered = arr - arr.mean()
-            fft_arr = np.fft.fft(arr_centered, n=2*n)  # Zero-pad for linear correlation
-            power = np.abs(fft_arr)**2
-            autocorr_full = np.fft.ifft(power).real[:n]
-            autocorr_full /= autocorr_full[0]  # Normalize to 1 at lag 0
+            for chunk_idx in range(n_chunks):
+                start = chunk_idx * actual_chunk_size
+                end = start + actual_chunk_size
+                chunk_bits = bits[start:end]
 
-            autocorr = autocorr_full[1:max_lag+1]  # Skip lag 0 (always 1)
+                # Convert to +1/-1 array
+                arr = np.array([1 if b == '1' else -1 for b in chunk_bits], dtype=np.float32)
+
+                # FFT-based autocorrelation for this chunk
+                arr_centered = arr - arr.mean()
+                n = len(arr)
+                fft_arr = np.fft.fft(arr_centered, n=2*n)
+                power = np.abs(fft_arr)**2
+                autocorr_full = np.fft.ifft(power).real[:n]
+                autocorr_full /= autocorr_full[0]  # Normalize
+
+                # Keep only up to max_lag
+                all_autocorrs.append(autocorr_full[1:max_lag+1])
+
+                if (chunk_idx + 1) % 5 == 0 or chunk_idx == n_chunks - 1:
+                    prog.update(message=f"Chunk {chunk_idx+1}/{n_chunks}...")
+
+                # Free memory
+                del arr, arr_centered, fft_arr, power, autocorr_full
+
+            # Stack and compute mean + std
+            autocorr_matrix = np.array(all_autocorrs)
+            autocorr_mean = np.mean(autocorr_matrix, axis=0)
+            autocorr_std = np.std(autocorr_matrix, axis=0)
+
+            # Standard error of the mean
+            autocorr_sem = autocorr_std / np.sqrt(n_chunks)
+
             lags = np.arange(1, max_lag+1)
 
             prog.update(message="Finding peaks...")
-            # Find peaks in autocorrelation
+            # Find peaks in mean autocorrelation
             peaks = []
-            for i in range(1, len(autocorr)-1):
-                if autocorr[i] > autocorr[i-1] and autocorr[i] > autocorr[i+1]:
-                    if autocorr[i] > 0.05:  # Threshold for significance
-                        peaks.append((lags[i], autocorr[i]))
+            for i in range(1, len(autocorr_mean)-1):
+                if autocorr_mean[i] > autocorr_mean[i-1] and autocorr_mean[i] > autocorr_mean[i+1]:
+                    # Peak must be > 2σ above zero for significance
+                    if autocorr_mean[i] > 2 * autocorr_sem[i] and autocorr_mean[i] > 0.01:
+                        peaks.append((lags[i], autocorr_mean[i], autocorr_sem[i]))
 
             # Sort by correlation strength
             peaks.sort(key=lambda x: -x[1])
-            top_peaks = peaks[:10]  # Top 10 peaks
+            top_peaks = peaks[:10]
 
             # Check if peaks relate to Fibonacci
             fib_matches = []
-            for lag, corr in top_peaks:
+            for lag, corr, _ in top_peaks:
                 for fib in FIB:
-                    if abs(lag - fib) <= 2:  # Allow ±2 tolerance
+                    if abs(lag - fib) <= 2:
                         fib_matches.append((lag, fib, corr))
                         break
 
@@ -1453,8 +1747,8 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
             if len(top_peaks) >= 2:
                 sorted_peaks = sorted(top_peaks, key=lambda x: x[0])
                 for i in range(len(sorted_peaks)-1):
-                    lag1, _ = sorted_peaks[i]
-                    lag2, _ = sorted_peaks[i+1]
+                    lag1 = sorted_peaks[i][0]
+                    lag2 = sorted_peaks[i+1][0]
                     if lag1 > 0:
                         ratio = lag2 / lag1
                         phi_ratios.append((lag1, lag2, ratio, abs(ratio - PHI)))
@@ -1464,34 +1758,39 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
             # Create figure with 2 subplots
             fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-            # Plot 1: Full autocorrelation
+            # Plot 1: Full autocorrelation with error band
             ax1 = axes[0]
-            ax1.plot(lags, autocorr, 'b-', alpha=0.7, linewidth=0.5)
+            ax1.fill_between(lags, autocorr_mean - autocorr_sem, autocorr_mean + autocorr_sem,
+                           alpha=0.3, color='blue', label='±1 SEM')
+            ax1.plot(lags, autocorr_mean, 'b-', alpha=0.8, linewidth=0.5, label='Mean autocorr')
             ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-            ax1.axhline(y=0.05, color='red', linestyle=':', alpha=0.5, label='Significance threshold')
 
             # Mark Fibonacci lags
             for fib in FIB:
                 if fib <= max_lag:
                     ax1.axvline(x=fib, color='gold', alpha=0.3, linestyle='-')
 
-            # Mark top peaks
-            for lag, corr in top_peaks[:5]:
-                ax1.plot(lag, corr, 'ro', markersize=8)
+            # Mark top peaks with error bars
+            for lag, corr, sem in top_peaks[:5]:
+                ax1.errorbar(lag, corr, yerr=sem, fmt='ro', markersize=6, capsize=3)
                 ax1.annotate(f'{lag}', (lag, corr), textcoords='offset points',
                            xytext=(0, 10), ha='center', fontsize=8)
 
             ax1.set_xlabel('Lag (bits)')
             ax1.set_ylabel('Autocorrelation')
-            ax1.set_title(f'Autocorrelation — {var} (i={iters}, {n:,} bits)')
+            ax1.set_title(f'Autocorrelation — {var} (i={iters}, {n_total:,} bits, {n_chunks} chunks)')
             ax1.set_xlim(0, max_lag)
             ax1.legend(loc='upper right')
             ax1.grid(True, alpha=0.3)
 
-            # Plot 2: Zoomed view (first 500 lags) with annotations
+            # Plot 2: Zoomed view with error band
             ax2 = axes[1]
             zoom_max = min(500, max_lag)
-            ax2.plot(lags[:zoom_max], autocorr[:zoom_max], 'b-', alpha=0.8, linewidth=1)
+            ax2.fill_between(lags[:zoom_max],
+                           (autocorr_mean - autocorr_sem)[:zoom_max],
+                           (autocorr_mean + autocorr_sem)[:zoom_max],
+                           alpha=0.3, color='blue')
+            ax2.plot(lags[:zoom_max], autocorr_mean[:zoom_max], 'b-', alpha=0.8, linewidth=1)
             ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
 
             # Mark Fibonacci lags with labels
@@ -1503,14 +1802,15 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
 
             ax2.set_xlabel('Lag (bits)')
             ax2.set_ylabel('Autocorrelation')
-            ax2.set_title(f'Zoomed (0-{zoom_max}) — Gold lines = Fibonacci numbers')
+            ax2.set_title(f'Zoomed (0-{zoom_max}) — Gold lines = Fibonacci, band = ±1 SEM')
             ax2.set_xlim(0, zoom_max)
             ax2.grid(True, alpha=0.3)
 
             plt.tight_layout()
 
             # Add text box with analysis summary
-            analysis_text = f"Top 5 periods: {', '.join([str(p[0]) for p in top_peaks[:5]])}\n"
+            analysis_text = f"Chunks: {n_chunks} × {actual_chunk_size//1_000_000}M bits\n"
+            analysis_text += f"Top 5 periods: {', '.join([str(p[0]) for p in top_peaks[:5]])}\n"
             if fib_matches:
                 analysis_text += f"Fibonacci matches: {', '.join([f'{m[0]}≈F{m[1]}' for m in fib_matches[:3]])}\n"
             if phi_ratios:
@@ -1527,13 +1827,214 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
             plt.close()
 
         print(f"[INFO] Autocorrelation saved: {out.relative_to(BASE_PATH)}", flush=True)
-
-        # Print summary to console
-        print(f"       📊 {var}: Top periods = {[p[0] for p in top_peaks[:5]]}", flush=True)
+        print(f"       📊 {var}: {n_chunks} chunks, top periods = {[p[0] for p in top_peaks[:5]]}", flush=True)
         if fib_matches:
             print(f"       🔢 Fibonacci matches: {[(m[0], m[1]) for m in fib_matches]}", flush=True)
 
     print('[INFO] Saved autocorrelation plots.', flush=True)
+
+
+def plot_block_entropy(results_list, max_bits: int, skip: bool):
+    """
+    Compute and plot Block Entropy H(L)/L for different block sizes.
+
+    This analysis demonstrates:
+    - Random sequences: H(L)/L ≈ 1.0 (maximum entropy)
+    - Trivial sequences: H(L)/L ≈ 0.0 (no entropy)
+    - Structured sequences: H(L)/L in intermediate range (organized complexity)
+
+    Critical for distinguishing HSI from random noise in scientific papers.
+    """
+    if skip:
+        return
+    if not MATPLOTLIB_OK:
+        print("[WARN] Skipping block entropy (matplotlib unavailable).", flush=True)
+        return
+    import matplotlib.pyplot as plt
+    from collections import Counter
+
+    # Block sizes to analyze (powers of 2 and intermediates)
+    BLOCK_SIZES = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128]
+
+    # For large block sizes, we need sampling to avoid memory issues
+    MAX_PATTERNS_FULL = 2**20  # Only do full count if 2^L < this
+    SAMPLE_SIZE = 10_000_000  # Sample this many blocks for large L
+
+    PHI = (1 + 5**0.5) / 2
+
+    all_results = {}  # Store results for all variants
+
+    for r in results_list:
+        if not r:
+            continue
+        iters = r.get('iterations')
+        var = r.get('variant', '?')
+
+        with ProgressIndicator(f"BlockEntropy {var}") as prog:
+            prog.update(message="Reading bits...")
+            bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=False, label="entropy", var=var)
+            if not bits or len(bits) < 1000:
+                print(f"[WARN] Block entropy skipped for {var}: insufficient data.", flush=True)
+                continue
+
+            n_bits = len(bits)
+            entropies = []
+            entropies_std = []
+
+            for L in BLOCK_SIZES:
+                if L > n_bits // 10:  # Need at least 10 blocks
+                    break
+
+                prog.update(message=f"Block size L={L}...")
+
+                n_blocks = n_bits // L
+
+                # For small L, do full count; for large L, use sampling
+                if 2**L <= MAX_PATTERNS_FULL and n_blocks <= SAMPLE_SIZE:
+                    # Full count - extract all blocks
+                    blocks = [bits[i*L:(i+1)*L] for i in range(n_blocks)]
+                    counts = Counter(blocks)
+                    total = sum(counts.values())
+
+                    # Shannon entropy
+                    H = 0.0
+                    for count in counts.values():
+                        p = count / total
+                        if p > 0:
+                            H -= p * np.log2(p)
+
+                    h = H / L  # Normalized entropy
+                    entropies.append((L, h, 0.0))  # No std for full count
+
+                else:
+                    # Sampling with bootstrap for error estimation
+                    n_samples = min(n_blocks, SAMPLE_SIZE)
+                    n_bootstrap = 5
+                    h_samples = []
+
+                    for _ in range(n_bootstrap):
+                        # Random sample of block positions
+                        indices = np.random.choice(n_blocks, size=n_samples, replace=False)
+                        blocks = [bits[i*L:(i+1)*L] for i in indices]
+                        counts = Counter(blocks)
+                        total = len(blocks)
+
+                        H = 0.0
+                        for count in counts.values():
+                            p = count / total
+                            if p > 0:
+                                H -= p * np.log2(p)
+
+                        h_samples.append(H / L)
+
+                    h_mean = np.mean(h_samples)
+                    h_std = np.std(h_samples)
+                    entropies.append((L, h_mean, h_std))
+
+            all_results[var] = {
+                'entropies': entropies,
+                'n_bits': n_bits,
+                'iterations': iters
+            }
+
+    if not all_results:
+        print("[WARN] No data for block entropy plot.", flush=True)
+        return
+
+    # Create comparative plot
+    print("[INFO] Rendering block entropy plot...", flush=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Color map for variants
+    colors = {'A': 'gray', 'B': 'blue', 'C': 'green', 'D': 'orange', 'E': 'purple', 'F': 'red'}
+
+    # Plot 1: H(L)/L vs L (linear scale)
+    ax1 = axes[0]
+
+    for var, data in all_results.items():
+        ent = data['entropies']
+        L_vals = [e[0] for e in ent]
+        h_vals = [e[1] for e in ent]
+        h_std = [e[2] for e in ent]
+
+        color = colors.get(var, 'black')
+        label = f"Variant {var}"
+        if var == 'A':
+            label += " (Control)"
+
+        ax1.errorbar(L_vals, h_vals, yerr=h_std, marker='o', linestyle='-',
+                    color=color, label=label, capsize=3, alpha=0.8)
+
+    # Reference lines
+    ax1.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Max entropy (random)')
+    ax1.axhline(y=0.0, color='green', linestyle='--', alpha=0.5, label='Zero entropy (trivial)')
+    ax1.axhline(y=1/PHI, color='gold', linestyle=':', alpha=0.7, label=f'1/φ ≈ {1/PHI:.3f}')
+
+    ax1.set_xlabel('Block size L (bits)')
+    ax1.set_ylabel('Normalized entropy H(L)/L')
+    ax1.set_title('Block Entropy Analysis — Linear Scale')
+    ax1.set_ylim(-0.05, 1.15)
+    ax1.legend(loc='lower left', fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    # Plot 2: Same but log scale for L
+    ax2 = axes[1]
+
+    for var, data in all_results.items():
+        ent = data['entropies']
+        L_vals = [e[0] for e in ent]
+        h_vals = [e[1] for e in ent]
+        h_std = [e[2] for e in ent]
+
+        color = colors.get(var, 'black')
+        ax2.errorbar(L_vals, h_vals, yerr=h_std, marker='o', linestyle='-',
+                    color=color, capsize=3, alpha=0.8)
+
+    ax2.axhline(y=1.0, color='red', linestyle='--', alpha=0.5)
+    ax2.axhline(y=1/PHI, color='gold', linestyle=':', alpha=0.7)
+    ax2.set_xscale('log', base=2)
+    ax2.set_xlabel('Block size L (bits) — log₂ scale')
+    ax2.set_ylabel('Normalized entropy H(L)/L')
+    ax2.set_title('Block Entropy Analysis — Log Scale')
+    ax2.set_ylim(-0.05, 1.15)
+    ax2.grid(True, alpha=0.3, which='both')
+
+    plt.tight_layout()
+
+    # Add summary text
+    summary_parts = []
+    for var, data in all_results.items():
+        ent = data['entropies']
+        if ent:
+            h_at_1 = ent[0][1] if ent[0][0] == 1 else None
+            h_at_8 = next((e[1] for e in ent if e[0] == 8), None)
+            h_at_64 = next((e[1] for e in ent if e[0] == 64), None)
+            summary_parts.append(f"{var}: H(1)={h_at_1:.3f}, H(8)={h_at_8:.3f}" +
+                               (f", H(64)={h_at_64:.3f}" if h_at_64 else ""))
+
+    fig.text(0.02, 0.02, " | ".join(summary_parts), fontsize=8, family='monospace',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    # Determine filename based on variants
+    variants_str = "".join(sorted(all_results.keys()))
+    first_data = list(all_results.values())[0]
+    iters = first_data['iterations']
+
+    _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    out = VIS_DIR / f"block_entropy_{variants_str}{_abs_suffix()}_i{iters}_{_ts}.png"
+    plt.savefig(out, dpi=200, bbox_inches='tight')
+    plt.close()
+
+    print(f"[INFO] Block entropy saved: {out.relative_to(BASE_PATH)}", flush=True)
+
+    # Print summary
+    for var, data in all_results.items():
+        ent = data['entropies']
+        if ent:
+            print(f"       📊 {var}: H(L)/L at L=1: {ent[0][1]:.4f}, at L=8: {next((e[1] for e in ent if e[0] == 8), 'N/A'):.4f}", flush=True)
+
+    print('[INFO] Block entropy analysis complete.', flush=True)
 
 
 def create_comparison_visualization(results_list):
@@ -1747,8 +2248,8 @@ def main():
     if skip_beta:
         print("   [3/5] Spectrum β-fit SKIPPED", flush=True)
     else:
-        print("   [3/5] Spectrum β-fit analysis...", flush=True)
-        beta_stats = plot_spectrum_beta_fit(variant_results, max_bits=fft_prefix, skip=False)
+        print("   [3/5] Spectrum β-fit analysis (enhanced)...", flush=True)
+        beta_stats = plot_spectrum_beta_fit_enhanced(variant_results, max_bits=fft_prefix, skip=False)
 
     # Attach growth and spectral metrics
     print("   [4/5] Attaching growth metrics & saving enriched reports...", flush=True)
@@ -1858,6 +2359,11 @@ def _run_plot_only():
             raster_prefix = int(os.environ.get("HSI_RASTER_PREFIX", "1000000"))
         except Exception:
             raster_prefix = 1_000_000
+    # Entropy prefix (defaults to 100M - sufficient for block entropy)
+    try:
+        entropy_prefix = int(os.environ.get("HSI_ENTROPY_PREFIX", "100000000"))
+    except Exception:
+        entropy_prefix = 100_000_000
 
     # Skip flags: CLI > env
     only_mode = args.only.lower() if args.only else None
@@ -1869,6 +2375,7 @@ def _run_plot_only():
         skip_f = only_mode != "fft"
         skip_b = only_mode != "beta"
         skip_a = only_mode != "autocorr"
+        skip_e = only_mode != "entropy"
         skip_rep = True  # Always skip report in --only mode
     else:
         skip_g = args.no_growth or os.environ.get("HSI_NO_GROWTH") == "1"
@@ -1877,6 +2384,7 @@ def _run_plot_only():
         skip_f = args.no_fft or os.environ.get("HSI_NO_FFT") == "1"
         skip_b = args.no_beta or os.environ.get("HSI_NO_BETA") == "1"
         skip_a = args.no_autocorr or os.environ.get("HSI_NO_AUTOCORR") == "1"
+        skip_e = os.environ.get("HSI_NO_ENTROPY") == "1"
         skip_rep = os.environ.get("HSI_NO_REPORT") == "1"
 
     print("\n" + "=" * 60, flush=True)
@@ -1884,7 +2392,7 @@ def _run_plot_only():
     print("=" * 60, flush=True)
 
     # Allow direct report path/iteration via CLI or env
-    print(f"[1/8] 🔍 Locating report for variant {var}...", flush=True)
+    print(f"[1/9] 🔍 Locating report for variant {var}...", flush=True)
     t0 = _time.perf_counter()
     if args.report_path and os.path.exists(args.report_path):
         path = args.report_path
@@ -1896,7 +2404,7 @@ def _run_plot_only():
             target_iter = args.report_iter or (int(os.environ.get("HSI_REPORT_ITER")) if os.environ.get("HSI_REPORT_ITER") else None)
             path = find_variant_result_file(var, iterations=target_iter)
 
-    print(f"[1/8] 📂 Loading report JSON...", flush=True)
+    print(f"[1/9] 📂 Loading report JSON...", flush=True)
     res = load_variant_results(path)
     if res is not None:
         res['report_path'] = path
@@ -1907,7 +2415,7 @@ def _run_plot_only():
             rel = path
         print(f"[PLOT-ONLY] ❌ No report found for variant {var} at {rel}")
         return
-    print(f"[1/8] ✅ Report loaded in {_time.perf_counter()-t0:.1f}s", flush=True)
+    print(f"[1/9] ✅ Report loaded in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     # Compact path in log
     try:
@@ -1940,63 +2448,71 @@ def _run_plot_only():
 
     # Each plot step with timing
     if skip_g:
-        print(f"[2/8] ⏭️  Growth plots SKIPPED", flush=True)
+        print(f"[2/9] ⏭️  Growth plots SKIPPED", flush=True)
     else:
-        print(f"[2/8] 📈 Generating growth & time plots...", flush=True)
+        print(f"[2/9] 📈 Generating growth & time plots...", flush=True)
         t0 = _time.perf_counter()
         plot_growth_and_time(results_list)
-        print(f"[2/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[2/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_r:
-        print(f"[3/8] ⏭️  2D raster SKIPPED", flush=True)
+        print(f"[3/9] ⏭️  2D raster SKIPPED", flush=True)
     else:
-        print(f"[3/8] 🖼️  Generating 2D raster...", flush=True)
+        print(f"[3/9] 🖼️  Generating 2D raster...", flush=True)
         t0 = _time.perf_counter()
         plot_raster2d(results_list, max_iter_cap=None)
-        print(f"[3/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[3/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_h:
-        print(f"[4/8] ⏭️  Hilbert heatmap SKIPPED", flush=True)
+        print(f"[4/9] ⏭️  Hilbert heatmap SKIPPED", flush=True)
     else:
-        print(f"[4/8] 🌀 Generating Hilbert heatmap ({hilbert_prefix:,} bits)...", flush=True)
+        print(f"[4/9] 🌀 Generating Hilbert heatmap ({hilbert_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
         plot_hilbert_heatmap(results_list, hilbert_prefix, skip_h)
-        print(f"[4/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[4/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_f:
-        print(f"[5/8] ⏭️  FFT spectrum SKIPPED", flush=True)
+        print(f"[5/9] ⏭️  FFT spectrum SKIPPED", flush=True)
     else:
-        print(f"[5/8] 📡 Computing FFT spectrum ({fft_prefix:,} bits)...", flush=True)
+        print(f"[5/9] 📡 Computing FFT spectrum ({fft_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
         plot_fft(results_list, fft_prefix, skip_f)
-        print(f"[5/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[5/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_b:
-        print(f"[6/8] ⏭️  Spectrum β-fit SKIPPED", flush=True)
+        print(f"[6/9] ⏭️  Spectrum β-fit SKIPPED", flush=True)
     else:
-        print(f"[6/8] 📊 Computing spectrum β-fit ({beta_prefix:,} bits)...", flush=True)
+        print(f"[6/9] 📊 Computing spectrum β-fit enhanced ({beta_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
-        beta_stats = plot_spectrum_beta_fit(results_list, max_bits=beta_prefix, skip=skip_b)
-        print(f"[6/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        beta_stats = plot_spectrum_beta_fit_enhanced(results_list, max_bits=beta_prefix, skip=skip_b)
+        print(f"[6/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_a:
-        print(f"[7/8] ⏭️  Autocorrelation SKIPPED", flush=True)
+        print(f"[7/9] ⏭️  Autocorrelation SKIPPED", flush=True)
     else:
-        print(f"[7/8] 🔄 Computing autocorrelation ({autocorr_prefix:,} bits)...", flush=True)
+        print(f"[7/9] 🔄 Computing autocorrelation ({autocorr_prefix:,} bits)...", flush=True)
         t0 = _time.perf_counter()
         plot_autocorrelation(results_list, autocorr_prefix, skip_a)
-        print(f"[7/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[7/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+
+    if skip_e:
+        print(f"[8/9] ⏭️  Block entropy SKIPPED", flush=True)
+    else:
+        print(f"[8/9] 🔄 Computing block entropy ({entropy_prefix:,} bits)...", flush=True)
+        t0 = _time.perf_counter()
+        plot_block_entropy(results_list, entropy_prefix, skip_e)
+        print(f"[8/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     if skip_rep:
-        print(f"[8/8] ⏭️  Report SKIPPED", flush=True)
+        print(f"[9/9] ⏭️  Report SKIPPED", flush=True)
     else:
-        print(f"[8/8] 💾 Writing enriched report...", flush=True)
+        print(f"[9/9] 💾 Writing enriched report...", flush=True)
         t0 = _time.perf_counter()
         _attach_growth_metrics(results_list, beta_stats)
         for r in results_list:
             if r:
                 _write_enriched_variant_report(r)
-        print(f"[8/8] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
+        print(f"[9/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     print("\n" + "=" * 60, flush=True)
     print("[PLOT-ONLY] ✅ All visualizations complete!", flush=True)

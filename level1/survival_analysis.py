@@ -72,52 +72,55 @@ def load_patterns_from_data(analysis_data: dict) -> Dict[str, dict]:
 
 
 def compute_survival_stats(patterns_by_iter: Dict[int, Dict[str, dict]]) -> dict:
-    """Compute survival statistics between iterations."""
-    
+    """Compute survival statistics between iterations.
+
+    Dynamically handles any set of iterations (not necessarily consecutive).
+    """
+    iterations = sorted(patterns_by_iter.keys())
+    if len(iterations) < 2:
+        return {'counts': {}, 'core': set(), 'core_count': 0, 'transitions': {},
+                'lost_patterns': {}, 'new_patterns': {}}
+
     sets = {i: set(p.keys()) for i, p in patterns_by_iter.items()}
-    
+
     # Core patterns (present in ALL iterations)
-    core = sets[17] & sets[18] & sets[19]
-    
-    # Transient patterns
-    only_17 = sets[17] - sets[18] - sets[19]  # Disappeared after 17
-    only_18 = sets[18] - sets[17] - sets[19]  # Only in 18
-    only_19 = sets[19] - sets[17] - sets[18]  # Only in 19
-    
-    # Transitions
-    survived_17_to_18 = sets[17] & sets[18]
-    survived_18_to_19 = sets[18] & sets[19]
-    new_in_18 = sets[18] - sets[17]
-    new_in_19 = sets[19] - sets[18]
-    lost_17_to_18 = sets[17] - sets[18]
-    lost_18_to_19 = sets[18] - sets[19]
-    
+    core = sets[iterations[0]]
+    for i in iterations[1:]:
+        core = core & sets[i]
+
+    # Compute transitions between consecutive available iterations
+    transitions = {}
+    lost_patterns = {}
+    new_patterns = {}
+
+    for idx in range(len(iterations) - 1):
+        i_from = iterations[idx]
+        i_to = iterations[idx + 1]
+        key = f'{i_from}→{i_to}'
+
+        survived = sets[i_from] & sets[i_to]
+        lost = sets[i_from] - sets[i_to]
+        new = sets[i_to] - sets[i_from]
+
+        survival_rate = len(survived) / len(sets[i_from]) * 100 if sets[i_from] else 0
+
+        transitions[key] = {
+            'survived': len(survived),
+            'lost': len(lost),
+            'new': len(new),
+            'survival_rate': survival_rate
+        }
+        lost_patterns[key] = lost
+        new_patterns[str(i_to)] = new
+
     return {
         'counts': {i: len(s) for i, s in sets.items()},
         'core': core,
         'core_count': len(core),
-        'transitions': {
-            '17→18': {
-                'survived': len(survived_17_to_18),
-                'lost': len(lost_17_to_18),
-                'new': len(new_in_18),
-                'survival_rate': len(survived_17_to_18) / len(sets[17]) * 100
-            },
-            '18→19': {
-                'survived': len(survived_18_to_19),
-                'lost': len(lost_18_to_19),
-                'new': len(new_in_19),
-                'survival_rate': len(survived_18_to_19) / len(sets[18]) * 100
-            }
-        },
-        'lost_patterns': {
-            '17→18': lost_17_to_18,
-            '18→19': lost_18_to_19
-        },
-        'new_patterns': {
-            '18': new_in_18,
-            '19': new_in_19
-        }
+        'transitions': transitions,
+        'lost_patterns': lost_patterns,
+        'new_patterns': new_patterns,
+        'iterations': iterations  # Include for reference
     }
 
 
@@ -155,31 +158,52 @@ def analyze_lost_patterns(patterns_by_iter: Dict[int, Dict[str, dict]],
     }
 
 
-def analyze_survivors(patterns_by_iter: Dict[int, Dict[str, dict]], 
+def analyze_survivors(patterns_by_iter: Dict[int, Dict[str, dict]],
                       core: Set[str]) -> dict:
-    """Analyze characteristics of core surviving patterns."""
-    
-    # Compare recurrence growth for core patterns
+    """Analyze characteristics of core surviving patterns.
+
+    Dynamically handles any set of iterations.
+    """
+    iterations = sorted(patterns_by_iter.keys())
+    if len(iterations) < 2 or not core:
+        return {'count': 0, 'top_10_stable': [], 'growth_rates': {}}
+
+    # Compare recurrence growth for core patterns across all iterations
     growth_ratios = []
     for p in core:
-        r17 = patterns_by_iter[17][p]['recurrence']
-        r18 = patterns_by_iter[18][p]['recurrence']
-        r19 = patterns_by_iter[19][p]['recurrence']
-        growth_ratios.append({
-            'pattern': p,
-            'r17': r17, 'r18': r18, 'r19': r19,
-            'growth_17_18': r18 / r17 if r17 > 0 else 0,
-            'growth_18_19': r19 / r18 if r18 > 0 else 0
-        })
-    
-    # Sort by total recurrence
-    growth_ratios.sort(key=lambda x: x['r19'], reverse=True)
-    
+        entry = {'pattern': p}
+        recurrences = {}
+        for i in iterations:
+            if p in patterns_by_iter[i]:
+                recurrences[i] = patterns_by_iter[i][p]['recurrence']
+                entry[f'r{i}'] = recurrences[i]
+
+        # Compute growth between consecutive iterations
+        for idx in range(len(iterations) - 1):
+            i_from, i_to = iterations[idx], iterations[idx + 1]
+            r_from = recurrences.get(i_from, 0)
+            r_to = recurrences.get(i_to, 0)
+            entry[f'growth_{i_from}_{i_to}'] = r_to / r_from if r_from > 0 else 0
+
+        growth_ratios.append(entry)
+
+    # Sort by recurrence at last iteration
+    last_iter = iterations[-1]
+    growth_ratios.sort(key=lambda x: x.get(f'r{last_iter}', 0), reverse=True)
+
+    # Compute average growth rates for each transition
+    avg_growth = {}
+    for idx in range(len(iterations) - 1):
+        i_from, i_to = iterations[idx], iterations[idx + 1]
+        key = f'growth_{i_from}_{i_to}'
+        values = [g[key] for g in growth_ratios if key in g]
+        avg_growth[f'{i_from}→{i_to}'] = np.mean(values) if values else 0
+
     return {
         'count': len(core),
         'top_10_stable': growth_ratios[:10],
-        'avg_growth_17_18': np.mean([g['growth_17_18'] for g in growth_ratios]),
-        'avg_growth_18_19': np.mean([g['growth_18_19'] for g in growth_ratios])
+        'growth_rates': avg_growth,
+        'iterations': iterations
     }
 
 
@@ -403,67 +427,88 @@ def generate_survival_figures(
     plt.close()
     generated.append(fname)
 
-    # Figure 2: Recurrence Distribution (if we have threshold analysis)
-    if threshold_analysis and len(iterations) >= 2:
-        iter1, iter2 = iterations[0], iterations[1]
+    # Figure 2: Recurrence Distribution for ALL transitions (not just the first)
+    # Generate one figure per transition to show complete survival dynamics
+    for idx in range(len(iterations) - 1):
+        iter1, iter2 = iterations[idx], iterations[idx + 1]
         trans_key = f"{iter1}→{iter2}"
 
-        if trans_key in stats['lost_patterns']:
-            lost = stats['lost_patterns'][trans_key]
-            survived = set(patterns_by_iter[iter1].keys()) & set(patterns_by_iter[iter2].keys())
+        if trans_key not in stats['lost_patterns']:
+            continue
 
-            lost_rec = [patterns_by_iter[iter1][p]['recurrence'] for p in lost if p in patterns_by_iter[iter1]]
-            survived_rec = [patterns_by_iter[iter1][p]['recurrence'] for p in survived if p in patterns_by_iter[iter1]]
+        lost = stats['lost_patterns'][trans_key]
+        survived = set(patterns_by_iter[iter1].keys()) & set(patterns_by_iter[iter2].keys())
 
-            if lost_rec and survived_rec:
-                fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        lost_rec = [patterns_by_iter[iter1][p]['recurrence'] for p in lost if p in patterns_by_iter[iter1]]
+        survived_rec = [patterns_by_iter[iter1][p]['recurrence'] for p in survived if p in patterns_by_iter[iter1]]
 
-                ax = axes[0]
-                all_rec = lost_rec + survived_rec
-                bins = np.logspace(np.log10(max(1, min(all_rec))), np.log10(max(all_rec)), 50)
-                ax.hist(lost_rec, bins=bins, alpha=0.6, label=f'Lost ({len(lost_rec):,})', color='red')
-                ax.hist(survived_rec, bins=bins, alpha=0.6, label=f'Survived ({len(survived_rec):,})', color='green')
-                if threshold_analysis.get('best_threshold'):
-                    ax.axvline(threshold_analysis['best_threshold'], color='black',
-                               linestyle='--', label=f"Threshold: {threshold_analysis['best_threshold']:,.0f}")
-                ax.set_xscale('log')
-                ax.set_xlabel('Recurrence Count (log scale)')
-                ax.set_ylabel('Number of Patterns')
-                ax.set_title(f'Recurrence: Lost vs Survived ({iter1}→{iter2})')
-                ax.legend()
+        if not lost_rec or not survived_rec:
+            continue
 
-                ax = axes[1]
-                all_patterns = list(patterns_by_iter[iter1].keys())
-                rec_survival = [(patterns_by_iter[iter1][p]['recurrence'], p in survived) for p in all_patterns]
-                rec_survival.sort()
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-                n_bins = min(20, len(rec_survival) // 10)
-                if n_bins >= 2:
-                    bin_size = len(rec_survival) // n_bins
-                    x_vals, y_vals = [], []
-                    for i in range(n_bins):
-                        start = i * bin_size
-                        end = start + bin_size if i < n_bins - 1 else len(rec_survival)
-                        chunk = rec_survival[start:end]
-                        if chunk:
-                            avg_rec = np.mean([r for r, _ in chunk])
-                            survival_rate = sum(1 for _, s in chunk if s) / len(chunk) * 100
-                            x_vals.append(avg_rec)
-                            y_vals.append(survival_rate)
+        ax = axes[0]
+        all_rec = lost_rec + survived_rec
+        bins = np.logspace(np.log10(max(1, min(all_rec))), np.log10(max(all_rec)), 50)
+        ax.hist(lost_rec, bins=bins, alpha=0.6, label=f'Lost ({len(lost_rec):,})', color='red')
+        ax.hist(survived_rec, bins=bins, alpha=0.6, label=f'Survived ({len(survived_rec):,})', color='green')
 
-                    ax.plot(x_vals, y_vals, 'o-', color='steelblue', linewidth=2, markersize=8)
-                    ax.axhline(50, color='gray', linestyle=':', alpha=0.5)
-                    ax.set_xscale('log')
-                    ax.set_xlabel('Average Recurrence (log scale)')
-                    ax.set_ylabel('Survival Rate (%)')
-                    ax.set_title('Survival Probability by Recurrence')
-                    ax.set_ylim(0, 105)
+        # Compute threshold for this specific transition
+        all_rec_sorted = sorted(set(lost_rec + survived_rec))
+        best_threshold = 0
+        best_accuracy = 0
+        for threshold in all_rec_sorted[::max(1, len(all_rec_sorted)//100)]:
+            correctly_classified = (
+                sum(1 for r in lost_rec if r < threshold) +
+                sum(1 for r in survived_rec if r >= threshold)
+            )
+            accuracy = correctly_classified / (len(lost_rec) + len(survived_rec))
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_threshold = threshold
 
-                fname = f'survival_recurrence_{variant}.{fmt}'
-                plt.tight_layout()
-                plt.savefig(output_dir / fname, dpi=dpi, bbox_inches='tight')
-                plt.close()
-                generated.append(fname)
+        if best_threshold > 0:
+            ax.axvline(best_threshold, color='black',
+                       linestyle='--', label=f"Threshold: {best_threshold:,.0f}")
+        ax.set_xscale('log')
+        ax.set_xlabel('Recurrence Count (log scale)')
+        ax.set_ylabel('Number of Patterns')
+        ax.set_title(f'Recurrence: Lost vs Survived ({iter1}→{iter2})')
+        ax.legend()
+
+        ax = axes[1]
+        all_patterns = list(patterns_by_iter[iter1].keys())
+        rec_survival = [(patterns_by_iter[iter1][p]['recurrence'], p in survived) for p in all_patterns]
+        rec_survival.sort()
+
+        n_bins = min(20, len(rec_survival) // 10)
+        if n_bins >= 2:
+            bin_size = len(rec_survival) // n_bins
+            x_vals, y_vals = [], []
+            for i in range(n_bins):
+                start = i * bin_size
+                end = start + bin_size if i < n_bins - 1 else len(rec_survival)
+                chunk = rec_survival[start:end]
+                if chunk:
+                    avg_rec = np.mean([r for r, _ in chunk])
+                    survival_rate = sum(1 for _, s in chunk if s) / len(chunk) * 100
+                    x_vals.append(avg_rec)
+                    y_vals.append(survival_rate)
+
+            ax.plot(x_vals, y_vals, 'o-', color='steelblue', linewidth=2, markersize=8)
+            ax.axhline(50, color='gray', linestyle=':', alpha=0.5)
+            ax.set_xscale('log')
+            ax.set_xlabel('Average Recurrence (log scale)')
+            ax.set_ylabel('Survival Rate (%)')
+            ax.set_title(f'Survival Probability by Recurrence ({iter1}→{iter2})')
+            ax.set_ylim(0, 105)
+
+        # Use transition-specific filename
+        fname = f'survival_recurrence_{variant}_{iter1}to{iter2}.{fmt}'
+        plt.tight_layout()
+        plt.savefig(output_dir / fname, dpi=dpi, bbox_inches='tight')
+        plt.close()
+        generated.append(fname)
 
     # Figure 3: Pattern Length Evolution
     fig, ax = plt.subplots(figsize=(10, 6))

@@ -168,6 +168,30 @@ These tools implement the research roadmap for discovering hidden φ in variant 
 
 **Key Discovery (Dec 2025):** Variant B shows **LZ φ-scaling** with distance 0.019 from φ — the proportions of complexity between scales follow the golden ratio! F shows 0.063 (3.3× weaker). This supports the hypothesis that **φ is hidden in B's proportions**, not in absolute structures.
 
+##### Multi-Scale Mode (100G+ bits)
+
+For analyzing very large datasets (100 gigabits or more), the script supports **Nyquist-based multi-scale subsampling**:
+
+```bash
+# Analyze ALL bits using multi-scale subsampling (~12M samples in RAM)
+python level1_deep_analysis.py -v B -i 23 --multiscale
+```
+
+**How it works (Nyquist theorem):**
+
+To detect patterns of scale N, you only need to sample at frequency 2/N. The script creates 4 sampling levels:
+
+| Level | Sampling | Samples | Detects patterns |
+|-------|----------|---------|------------------|
+| Fine | every bit | max 100k | 1-1k bits |
+| Medium | every 100 bits | max 1M | 1k-1M bits |
+| Large | every 10k bits | max 10M | 1M-1G bits |
+| Huge | every 1M bits | max 100k | 1G+ bits |
+
+**Total: ~12M samples ≈ 50MB RAM** to cover the ENTIRE spectrum from 1 bit to 100G+ bits.
+
+This is scientifically valid because large-scale patterns don't require bit-level resolution to be detected. The output includes scale ranges covered and memory usage for full transparency.
+
 #### Phase 3: Topology & Geometry
 
 | Script | Purpose | Usage |
@@ -251,6 +275,9 @@ python level1_deep_analysis.py -v B -i 15 --max-bits 50000
 
 # Compare variants (KEY DISCOVERY: B shows LZ φ-scaling 0.019!)
 python level1_deep_analysis.py -v B -i 15 --max-bits 50000 --compare F
+
+# Multi-scale mode for 100G+ bits (Nyquist-based subsampling)
+python level1_deep_analysis.py -v B -i 23 --multiscale
 
 # --- Phase 3: Topology & Geometry ---
 
@@ -419,7 +446,7 @@ Snapshots and outputs are segregated by variant and ABS:
 **Variant F — Hybrid Stabilization**
 - **Algorithm:** Stabilize inside→out, then single global pass
 - **Properties:** Combines stratified stabilization with final global closure
-- **Scientific Value:** Tests hybrid strategy (positioned between B and A)
+- **Scientific Value:** Tests hybrid strategy combining B's stratified collapse with a global closure step
 - **Why it survives:** Explores different closure strategies
 
 **Variant G — Raw Stratified Structure (ABS-aware)**
@@ -474,32 +501,11 @@ python level0_refresh_plots.py -v A -i 14
 
 ---
 
-### Experimental Validation: A vs B Comparison (Dec 2025)
+### 📊 Experimental Results
 
-The following results demonstrate that ISH collapse generates **genuine emergent structure**, not algorithmic artifacts:
+For detailed experimental validation comparing Control variant (A) vs ISH variants (B-I), including growth projections and φ-alignment analysis, see:
 
-| Metric | **Variant A (PRNG)** | **Variant B (ISH)** | Interpretation |
-|--------|---------------------|---------------------|----------------|
-| **β (power spectrum)** | **-0.013** | **-0.813** | A = white noise; B = blue spectrum (anti-correlation) |
-| **R²** | **0.000** | 0.119 | A = no fit; B = measurable structure |
-| **Hilbert map** | Uniform noise | Structured mesh | B shows spatial organization |
-| **FFT** | Flat spectrum | Peaks near Nyquist | B has high-frequency dominance |
-
-**Key Scientific Conclusions:**
-
-1. **β ≈ 0 confirms white noise**: The PRNG (Mersenne Twister, seed=42) generates exactly what is expected — a completely flat spectrum with no correlations
-
-2. **β = -0.813 is REAL structure**: The blue spectrum in Variant B is **not an artifact** — it is a genuine signature of the ISH collapse process
-
-3. **The Hilbert mesh is information**: The "grid" pattern visible in B represents organized information, while A is pure noise
-
-4. **Physical interpretation**: The stratified collapse (eliminating "10" and "01" pairs) generates **anti-correlations** — each bit tends to be the opposite of its neighbor, producing the characteristic blue spectrum
-
-This comparison provides **empirical evidence** that the ISH collapse mechanism produces measurable, distinguishable structure that cannot arise from random processes.
-
----
-
-**Epistemological Note:** True randomness is philosophically problematic — if ISH is correct, even quantum randomness might have underlying structure. The comparison is therefore **relative** (different patterns) rather than **absolute** (structure vs. no-structure).
+→ [`Documentation/hsi_growth_projections_analysis.md`](Documentation/hsi_growth_projections_analysis.md)
 
 ### ❌ Eliminated Variants
 

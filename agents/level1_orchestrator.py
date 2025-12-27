@@ -169,13 +169,21 @@ class Level1Orchestrator:
 
         # Load data (always needed for validation)
         print("\n📥 Loading Φ data...")
-        loader = StreamingPhiLoader(struct_gz_path)
+
+        # Show progress for large files (>100M chars target)
+        show_progress = max_chars is None or max_chars > 100_000_000
 
         # Load structural (with parentheses) and observable (0/1 only)
-        phi_structural, metadata = load_phi_for_agents(struct_gz_path, max_chars=max_chars)
-        phi_observable, _ = load_phi_for_agents(struct_gz_path, max_chars=max_chars, observable_only=True)
+        print("   [1/2] Structural sequence...")
+        phi_structural, metadata = load_phi_for_agents(
+            struct_gz_path, max_chars=max_chars, show_progress=show_progress
+        )
+        print("   [2/2] Observable sequence...")
+        phi_observable, _ = load_phi_for_agents(
+            struct_gz_path, max_chars=max_chars, observable_only=True, show_progress=show_progress
+        )
 
-        print(f"   Structural length: {len(phi_structural):,}")
+        print(f"\n   Structural length: {len(phi_structural):,}")
         print(f"   Observable length: {len(phi_observable):,}")
         print(f"   Metadata format: {metadata.get('format', 'unknown')}")
 
@@ -233,6 +241,8 @@ class Level1Orchestrator:
         
         # Compile results (include config for reproducibility)
         pd_config = self.config.get('pattern_detector', {})
+        coverage_info = self.pattern_detector.get_coverage_info()
+
         self.results = {
             'file': str(struct_gz_path),
             'metadata': metadata,
@@ -243,18 +253,68 @@ class Level1Orchestrator:
                 'min_occurrences': pd_config.get('min_occurrences', 3),
                 'similarity_threshold': pd_config.get('similarity_threshold', 0.85)
             },
+            'coverage': {
+                'percentage': coverage_info.get('coverage_percentage', 100.0),
+                'sampling_used': coverage_info.get('sampling_used', False),
+                'method': coverage_info.get('method', 'full_sequential'),
+                'sequence_length': coverage_info.get('sequence_length', len(phi_observable))
+            },
             'char_counts': {
                 'structural': len(phi_structural),
                 'observable': len(phi_observable)
             },
             'patterns': {
-                'observable': patterns,
-                'structural': structural_patterns,
+                'observable': self._limit_pattern_positions(patterns),
+                'structural': self._limit_pattern_positions(structural_patterns),
                 'total': len(patterns) + len(structural_patterns)
             },
-            'rules': rules,
+            'rules': self._limit_rules_for_storage(rules),
+            'rules_total_count': len(rules),  # Store original count for reference
             'validation': validation
         }
+
+    def _limit_pattern_positions(self, patterns: List[Dict], max_positions: int = 100) -> List[Dict]:
+        """
+        Limit positions per pattern for storage efficiency.
+
+        The 'recurrence' field contains the TOTAL count (unchanged).
+        The 'positions' field is limited to a sample for examples/context.
+        This does NOT affect statistical analyses that use 'recurrence'.
+        """
+        total_before = sum(len(p.get('positions', [])) for p in patterns)
+
+        for pattern in patterns:
+            positions = pattern.get('positions', [])
+            if len(positions) > max_positions:
+                pattern['positions'] = positions[:max_positions]
+
+        total_after = sum(len(p.get('positions', [])) for p in patterns)
+
+        if total_before > total_after:
+            reduction = (1 - total_after / total_before) * 100 if total_before > 0 else 0
+            print(f"   📦 Limiting positions: {total_before:,} → {total_after:,} ({reduction:.0f}% reduction)")
+
+        return patterns
+
+    def _limit_rules_for_storage(self, rules: List[Dict], max_rules: int = 10000) -> List[Dict]:
+        """
+        Limit rules to top N by confidence for storage efficiency.
+
+        This reduces JSON file size significantly while preserving
+        the most scientifically relevant rules.
+        """
+        if len(rules) <= max_rules:
+            return rules
+
+        # Sort by confidence (descending), then by support (descending)
+        sorted_rules = sorted(
+            rules,
+            key=lambda r: (r.get('confidence', 0), r.get('support', 0)),
+            reverse=True
+        )
+
+        print(f"   📦 Limiting rules for storage: {len(rules):,} → {max_rules:,} (top by confidence)")
+        return sorted_rules[:max_rules]
         
         print(f"\n✅ Analysis complete in {elapsed:.1f}s")
 
@@ -443,6 +503,8 @@ EXAMPLES:
     parser.add_argument("--output", "-o", help="Output JSON file path (auto-generated if not specified)")
     parser.add_argument("--no-cache", action="store_true",
                        help="Disable cache (force recalculation of all phases)")
+    parser.add_argument("--no-spectral", action="store_true",
+                       help="Skip spectral (FFT) pattern analysis (faster, useful when spectral yields no patterns)")
     parser.add_argument("--report", "-r", action="store_true",
                        help="Generate Markdown analysis report after execution")
 
@@ -458,19 +520,25 @@ EXAMPLES:
         orchestrator.config['pattern_detector']['max_pattern_length'] = args.max_len
         print(f"📏 Using max_pattern_length = {args.max_len}")
 
-    # Re-initialize pattern detector and rule inferer with new config
+    # Handle --no-spectral flag
+    enable_spectral = not args.no_spectral
+    if args.no_spectral:
+        print(f"⏭️  Spectral analysis: DISABLED (--no-spectral)")
+
+    # Re-initialize pattern detector with all config options
+    pd_config = orchestrator.config.get('pattern_detector', {})
+    ri_config = orchestrator.config.get('rule_inferer', {})
+
+    orchestrator.pattern_detector = PatternDetector(
+        min_pattern_length=pd_config.get('min_pattern_length', 3),
+        max_pattern_length=pd_config.get('max_pattern_length', 50),
+        min_occurrences=pd_config.get('min_occurrences', 2),
+        similarity_threshold=pd_config.get('similarity_threshold', 0.8),
+        enable_spectral_analysis=enable_spectral
+    )
+
+    # Re-initialize rule inferer if pattern lengths changed
     if args.min_len > 0 or args.max_len > 0:
-        pd_config = orchestrator.config.get('pattern_detector', {})
-        ri_config = orchestrator.config.get('rule_inferer', {})
-
-        orchestrator.pattern_detector = PatternDetector(
-            min_pattern_length=pd_config.get('min_pattern_length', 3),
-            max_pattern_length=pd_config.get('max_pattern_length', 50),
-            min_occurrences=pd_config.get('min_occurrences', 2),
-            similarity_threshold=pd_config.get('similarity_threshold', 0.8)
-        )
-
-        # Re-initialize rule inferer to use same min_context_length as min_pattern_length
         min_ctx = pd_config.get('min_pattern_length', 3)
         orchestrator.rule_inferer = RuleInferer(
             context_window=ri_config.get('context_window', 5),

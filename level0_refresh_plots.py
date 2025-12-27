@@ -14,7 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 RUNNER = ROOT / "level0_generate.py"
 
-VALID_PLOTS = {'growth', 'raster', 'hilbert', 'fft', 'beta', 'autocorr', 'report'}
+# Note: 'beta' now uses the enhanced version with segmented fits
+# Note: 'entropy' generates block entropy analysis (H(L)/L vs L)
+VALID_PLOTS = {'growth', 'raster', 'hilbert', 'fft', 'beta', 'autocorr', 'entropy', 'report'}
 
 def main():
     p = argparse.ArgumentParser(description="Refresh plots for an existing variant report (plot-only)")
@@ -27,6 +29,7 @@ def main():
     p.add_argument("--autocorr-bits", type=int, default=None, help="Max bits for autocorrelation")
     p.add_argument("--beta-bits", type=int, default=None, help="Max bits for spectrum β-fit")
     p.add_argument("--raster-bits", type=int, default=None, help="Max bits for 2D raster")
+    p.add_argument("--entropy-bits", type=int, default=None, help="Max bits for block entropy")
     p.add_argument("--only", type=str, default=None,
                    help=f"Comma-separated list of plots to generate. Valid: {','.join(sorted(VALID_PLOTS))}")
     args = p.parse_args()
@@ -48,6 +51,8 @@ def main():
         env["HSI_BETA_PREFIX"] = str(args.beta_bits)
     if args.raster_bits is not None:
         env["HSI_RASTER_PREFIX"] = str(args.raster_bits)
+    if args.entropy_bits is not None:
+        env["HSI_ENTROPY_PREFIX"] = str(args.entropy_bits)
 
     # Handle --only: skip everything NOT in the list
     if args.only:
@@ -68,6 +73,8 @@ def main():
             env["HSI_NO_BETA"] = "1"
         if 'autocorr' not in requested:
             env["HSI_NO_AUTOCORR"] = "1"
+        if 'entropy' not in requested:
+            env["HSI_NO_ENTROPY"] = "1"
         if 'report' not in requested:
             env["HSI_NO_REPORT"] = "1"
 

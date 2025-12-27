@@ -27,6 +27,13 @@ from pathlib import Path
 from typing import Iterator, Tuple, Optional, Dict, Any, Generator
 import json
 
+# Try to import tqdm for progress bars
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+
 # Decoding mapping: 2-bit pattern → character
 DECODING_MAP = {
     0b00: '0',
@@ -195,7 +202,8 @@ class StreamingPhiLoader:
 def load_phi_for_agents(
     struct_gz_path: str,
     max_chars: Optional[int] = None,
-    observable_only: bool = False
+    observable_only: bool = False,
+    show_progress: bool = False
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Convenience function to load Φ for agent analysis.
@@ -207,19 +215,104 @@ def load_phi_for_agents(
         struct_gz_path: Path to .struct.gz file
         max_chars: Maximum characters to load (None = all)
         observable_only: If True, return only 0/1 bits (no parentheses)
+        show_progress: If True, show loading progress bar
 
     Returns:
         Tuple of (phi_string, metadata)
     """
+    import time
+
     loader = StreamingPhiLoader(struct_gz_path)
 
+    # Determine total size for progress (from metadata or file size estimate)
+    total_chars = None
+    if show_progress:
+        meta = loader.metadata
+        if observable_only:
+            total_chars = meta.get('observable_len') or meta.get('phi_length')
+        else:
+            total_chars = meta.get('structural_len')
+
+        # If max_chars is set and smaller, use that as target
+        if max_chars and total_chars:
+            total_chars = min(max_chars, total_chars)
+        elif max_chars:
+            total_chars = max_chars
+
+        # If we still don't know, estimate from compressed file size
+        if not total_chars:
+            import os
+            compressed_size = os.path.getsize(struct_gz_path)
+            # Rough estimate: ~4 chars per byte compressed, ~10x compression ratio
+            total_chars = compressed_size * 40  # Very rough estimate
+
     chars = []
+    start_time = time.time()
+    last_update = 0
+    update_interval = 10_000_000  # Update every 10M chars
+
+    # Use tqdm progress bar if available and progress is requested
+    pbar = None
+    if show_progress and TQDM_AVAILABLE and total_chars:
+        pbar = tqdm(
+            total=total_chars,
+            desc="   Loading Φ",
+            unit="char",
+            unit_scale=True,
+            unit_divisor=1000,
+            bar_format="   {desc}: {percentage:3.0f}%|{bar}| {n:.2f}G/{total:.2f}G [{elapsed}<{remaining}, {rate_fmt}]",
+            mininterval=0.5
+        )
+        # Adjust display to show in Gigachars
+        pbar.unit = "G"
+        pbar.unit_scale = False
+        pbar.total = total_chars / 1e9
+        pbar.n = 0
+
     for char in loader.iter_chars():
         if observable_only and char not in '01':
             continue
         chars.append(char)
-        if max_chars and len(chars) >= max_chars:
+
+        current_count = len(chars)
+
+        # Progress update
+        if show_progress and current_count - last_update >= update_interval:
+            chars_added = current_count - last_update
+            last_update = current_count
+
+            if pbar:
+                # Update tqdm bar
+                pbar.n = current_count / 1e9
+                pbar.refresh()
+            else:
+                # Fallback to print-based progress
+                elapsed = time.time() - start_time
+                rate = current_count / elapsed if elapsed > 0 else 0
+
+                if total_chars and total_chars > 0:
+                    pct = min(100.0, current_count / total_chars * 100)
+                    remaining = (total_chars - current_count) / rate if rate > 0 else 0
+                    print(f"   Loading: {current_count:,} / {total_chars:,} chars "
+                          f"({pct:.1f}%) - {rate/1e6:.1f}M/s - ETA: {remaining:.0f}s",
+                          flush=True)
+                else:
+                    print(f"   Loading: {current_count:,} chars - {rate/1e6:.1f}M/s",
+                          flush=True)
+
+        if max_chars and current_count >= max_chars:
             break
+
+    # Close progress bar
+    if pbar:
+        pbar.n = len(chars) / 1e9
+        pbar.refresh()
+        pbar.close()
+
+    # Final progress message
+    if show_progress:
+        elapsed = time.time() - start_time
+        print(f"   ✓ Loaded {len(chars):,} chars in {elapsed:.1f}s", flush=True)
 
     return ''.join(chars), loader.metadata
 

@@ -165,7 +165,10 @@ def count_transitions_order3(sequence: np.ndarray) -> Tuple[np.ndarray, np.ndarr
     """Count third-order Markov transitions using arrays."""
     n = len(sequence)
     if n < 4:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+        # Must match types with normal return: int64, uint8, int64
+        return (np.zeros(0, dtype=np.int64),
+                np.zeros(0, dtype=np.uint8),
+                np.zeros(0, dtype=np.int64))
 
     # Store as (hash, next_char, count) tuples
     max_entries = n - 3

@@ -109,16 +109,27 @@ class ProgressBar:
 def discover_data(results_dir: Path) -> Dict[str, Dict[int, dict]]:
     """
     Scan results directory for available Level 1 analysis files.
-    
+
+    Supports both naming conventions:
+      - level1_analysis_varX_iterN_minM_maxM.json (old format)
+      - var_X_iterN_minM_maxM.json (new format)
+
     Returns:
         {variant: {iteration: {'path': str, 'min_len': int, 'max_len': int}}}
     """
-    pattern = str(results_dir / "level1_analysis_var*_iter*_min*_max*.json")
-    files = glob.glob(pattern)
+    # Support both old and new naming patterns
+    patterns = [
+        str(results_dir / "level1_analysis_var*_iter*_min*_max*.json"),
+        str(results_dir / "var_*_iter*_min*_max*.json"),
+    ]
+    files = []
+    for pattern in patterns:
+        files.extend(glob.glob(pattern))
     
     data = {}
     for f in files:
-        match = re.search(r'var([A-Z])_iter(\d+)_min(\d+)_max(\d+)', f)
+        # Support both: varB_iter... (old) and var_B_iter... (new, with underscore)
+        match = re.search(r'var_?([A-Z])_iter(\d+)_min(\d+)_max(\d+)', f)
         if match:
             variant, iteration, min_len, max_len = match.groups()
             if variant not in data:
