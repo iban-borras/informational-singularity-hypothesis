@@ -756,11 +756,17 @@ class RuleInferer:
                          if 'pattern_data' in p and 'positions' in p]
         total = len(valid_patterns)
 
-        import time as _time
-        t0 = _time.perf_counter()
+        # Use tqdm for progress bar
+        if TQDM_AVAILABLE and total > 100:
+            iterator = tqdm(valid_patterns, desc="   [context]",
+                           unit="pat", leave=True, ncols=100)
+        else:
+            iterator = valid_patterns
+            import time as _time
+            t0 = _time.perf_counter()
 
-        for idx, pattern in enumerate(valid_patterns):
-            if idx > 0 and idx % 500 == 0:
+        for idx, pattern in enumerate(iterator):
+            if not TQDM_AVAILABLE and idx > 0 and idx % 500 == 0:
                 elapsed = _time.perf_counter() - t0
                 rate = idx / elapsed if elapsed > 0 else 0
                 eta = (total - idx) / rate if rate > 0 else 0
@@ -874,11 +880,18 @@ class RuleInferer:
         # Progress tracking for large datasets
         n = len(valid_patterns)
         total_pairs = n * (n - 1)
-        processed = 0
-        last_percent = 0
+
+        # Use tqdm for outer loop (shows progress per pattern1)
+        if TQDM_AVAILABLE and n > 50:
+            outer_iterator = tqdm(enumerate(valid_patterns), total=n,
+                                 desc="   [composition]", unit="pat", leave=True, ncols=100)
+        else:
+            outer_iterator = enumerate(valid_patterns)
+            processed = 0
+            last_percent = 0
 
         # O(n²) loop with O(1) lookup instead of O(n³)
-        for i, pattern1 in enumerate(valid_patterns):
+        for i, pattern1 in outer_iterator:
             p1_data = pattern1['pattern_data']
             p1_id = pattern1['pattern_id']
 
@@ -918,12 +931,13 @@ class RuleInferer:
                             'method': 'overlap_analysis'
                         })
 
-                # Progress update every 5%
-                processed += 1
-                percent = (processed * 100) // total_pairs
-                if percent >= last_percent + 5:
-                    print(f"   [composition] {percent}% ({processed:,}/{total_pairs:,} pairs)", flush=True)
-                    last_percent = percent
+                # Fallback progress update (when tqdm not available)
+                if not TQDM_AVAILABLE:
+                    processed += 1
+                    percent = (processed * 100) // total_pairs
+                    if percent >= last_percent + 5:
+                        print(f"   [composition] {percent}% ({processed:,}/{total_pairs:,} pairs)", flush=True)
+                        last_percent = percent
 
         return rules
     
@@ -1022,12 +1036,19 @@ class RuleInferer:
         """Validate and filter inferred rules."""
         validated_rules = []
         total_rules = len(rules)
-        log_interval = max(1, total_rules // 20)  # Log cada 5%
 
         print(f"   ⏳ Filtering {total_rules:,} rules...", flush=True)
 
-        for idx, rule in enumerate(rules):
-            if idx > 0 and idx % log_interval == 0:
+        # Use tqdm for progress bar
+        if TQDM_AVAILABLE and total_rules > 1000:
+            iterator = tqdm(rules, desc="      [filter]",
+                           unit="rule", leave=True, ncols=100)
+        else:
+            iterator = rules
+            log_interval = max(1, total_rules // 20)
+
+        for idx, rule in enumerate(iterator):
+            if not TQDM_AVAILABLE and idx > 0 and idx % log_interval == 0:
                 pct = 100 * idx // total_rules
                 print(f"      [filter] {idx:,}/{total_rules:,} ({pct}%) - validated: {len(validated_rules):,}", flush=True)
 

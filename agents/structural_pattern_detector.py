@@ -31,6 +31,25 @@ from collections import defaultdict, Counter
 import hashlib
 from scipy.stats import entropy
 
+# Numba-optimized kernels
+try:
+    from .numba_kernels import (
+        str_to_bytes,
+        _analyze_nesting_numba,
+        _analyze_containment_numba,
+        _analyze_stratified_numba
+    )
+    NUMBA_STRUCTURAL_AVAILABLE = True
+except ImportError:
+    NUMBA_STRUCTURAL_AVAILABLE = False
+
+# Progress bars
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+
 
 class WelfordAccumulator:
     """
@@ -184,61 +203,86 @@ class StructuralPatternDetector:
         - Depth distribution
         - Depth transitions (calculated on-the-fly, O(1) memory)
 
-        v33.1: Optimized to NOT store depth_sequence (saves ~800MB for 100M parentheses).
-        Transitions are computed incrementally.
+        v33.2: Uses Numba JIT for 5-10x speedup on large sequences.
         """
         patterns = []
         n = len(phi_structural)
-        log_interval = max(1, n // 20)  # Log every 5%
 
-        depth = 0
-        max_depth = 0
-        prev_depth = 0  # For transition tracking
-        depth_distribution = defaultdict(int)
-        transitions = defaultdict(int)  # Computed on-the-fly
-        total_parentheses = 0
+        # Use Numba-optimized version if available
+        if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000:
+            self._log(f"      [nesting] Using Numba acceleration...")
+            seq_bytes = str_to_bytes(phi_structural)
 
-        for i, char in enumerate(phi_structural):
-            # Progress logging
-            if i % log_interval == 0 and i > 0:
-                pct = 100 * i // n
-                self._log(f"      [nesting] {i:,}/{n:,} ({pct}%) - max_depth={max_depth}")
+            max_depth, total_parens, depth_dist, trans_flat = _analyze_nesting_numba(seq_bytes)
 
-            if char == '(':
-                depth += 1
-                max_depth = max(max_depth, depth)
-                depth_distribution[depth] += 1
-                total_parentheses += 1
+            # Convert numpy arrays back to dicts
+            depth_distribution = {int(d): int(c) for d, c in enumerate(depth_dist) if c > 0}
 
-                # Track transition on-the-fly
-                if total_parentheses > 1:
+            # Reconstruct transitions dict from flattened array
+            MAX_DEPTH = 256
+            transitions = {}
+            for from_d in range(MAX_DEPTH):
+                for to_d in range(MAX_DEPTH):
+                    count = trans_flat[from_d * MAX_DEPTH + to_d]
+                    if count > 0:
+                        transitions[f"({from_d},{to_d})"] = int(count)
+
+            self._log(f"      [nesting] Complete: max_depth={max_depth}, parens={total_parens:,}")
+        else:
+            # Fallback to pure Python with progress
+            log_interval = max(1, n // 20)
+            depth = 0
+            max_depth = 0
+            prev_depth = 0
+            depth_distribution = defaultdict(int)
+            transitions = defaultdict(int)
+            total_parens = 0
+
+            if TQDM_AVAILABLE and n > 1_000_000:
+                iterator = tqdm(enumerate(phi_structural), total=n,
+                               desc="      [nesting]", unit="char", leave=True, ncols=100)
+            else:
+                iterator = enumerate(phi_structural)
+
+            for i, char in iterator:
+                if not TQDM_AVAILABLE and i % log_interval == 0 and i > 0:
+                    pct = 100 * i // n
+                    self._log(f"      [nesting] {i:,}/{n:,} ({pct}%) - max_depth={max_depth}")
+
+                if char == '(':
+                    depth += 1
+                    max_depth = max(max_depth, depth)
+                    depth_distribution[depth] += 1
+                    total_parens += 1
+                    if total_parens > 1:
+                        transitions[f"({prev_depth},{depth})"] += 1
+                    prev_depth = depth
+
+                elif char == ')':
+                    total_parens += 1
                     transitions[f"({prev_depth},{depth})"] += 1
-                prev_depth = depth
+                    prev_depth = depth
+                    depth -= 1
 
-            elif char == ')':
-                total_parentheses += 1
+            depth_distribution = dict(depth_distribution)
+            transitions = dict(transitions)
 
-                # Track transition before decreasing depth
-                transitions[f"({prev_depth},{depth})"] += 1
-                prev_depth = depth
-                depth -= 1
-
-        # Pattern 1: Depth distribution (without storing full sequence)
+        # Pattern 1: Depth distribution
         patterns.append({
             'pattern_id': 'nesting_depth_distribution',
             'pattern_type': 'nesting',
-            'max_depth': max_depth,
-            'depth_distribution': dict(depth_distribution),
-            'total_parentheses': total_parentheses,
-            'method': 'nesting_analysis'
+            'max_depth': int(max_depth),
+            'depth_distribution': depth_distribution,
+            'total_parentheses': int(total_parens),
+            'method': 'nesting_analysis' + ('_numba' if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000 else '')
         })
 
-        # Pattern 2: Depth transitions (already computed on-the-fly)
+        # Pattern 2: Depth transitions
         if transitions:
             patterns.append({
                 'pattern_id': 'nesting_depth_transitions',
                 'pattern_type': 'nesting',
-                'transitions': dict(transitions),
+                'transitions': transitions,
                 'num_transitions': len(transitions),
                 'total_transitions': sum(transitions.values()),
                 'method': 'transition_analysis'
@@ -250,72 +294,122 @@ class StructuralPatternDetector:
         """
         Detect what binary sequences are contained within each Absolute.
 
-        v33.1: Completely rewritten for O(n) complexity using:
-        - list.append() + join() instead of string concatenation
-        - Welford's algorithm for incremental statistics
-        - Single-pass extraction with on-the-fly analysis
+        v33.2: Uses Numba JIT for 5-10x speedup.
+        Note: Numba version doesn't track recurring content patterns (trade-off for speed).
 
         Analyzes:
         - Content length distribution
         - Content complexity (entropy) - computed incrementally
-        - Recurring content patterns
+        - Recurring content patterns (Python fallback only)
         """
         patterns = []
         n = len(phi_structural)
-        log_interval = max(1, n // 20)  # Log every 5%
 
-        # Data structures for single-pass processing
-        stack = []  # Each entry: {'start': int, 'depth': int, 'chars': list}
+        # Use Numba-optimized version if available (much faster for large sequences)
+        if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000:
+            self._log(f"      [containment] Using Numba acceleration ({n:,} chars)...")
+            seq_bytes = str_to_bytes(phi_structural)
+
+            length_counts, entropy_stats, num_absolutes, sum_lengths, sum_sq_lengths = \
+                _analyze_containment_numba(seq_bytes)
+
+            # Convert length_counts array to dict
+            length_distribution = {int(length): int(count)
+                                  for length, count in enumerate(length_counts) if count > 0}
+
+            # Calculate mean and std from sums
+            if num_absolutes > 0:
+                mean_length = sum_lengths / num_absolutes
+                if num_absolutes > 1:
+                    variance = (sum_sq_lengths - sum_lengths * sum_lengths / num_absolutes) / (num_absolutes - 1)
+                    std_length = np.sqrt(max(0, variance))
+                else:
+                    std_length = 0.0
+            else:
+                mean_length = 0.0
+                std_length = 0.0
+
+            # Extract entropy stats
+            entropy_count = int(entropy_stats[0])
+            entropy_mean = float(entropy_stats[1])
+            entropy_m2 = float(entropy_stats[2])
+            if entropy_count > 1:
+                entropy_std = np.sqrt(entropy_m2 / (entropy_count - 1))
+            else:
+                entropy_std = 0.0
+
+            self._log(f"      [containment] Complete: {num_absolutes:,} absolutes (Numba)")
+
+            # Build patterns
+            patterns.append({
+                'pattern_id': 'containment_length_distribution',
+                'pattern_type': 'containment',
+                'num_absolutes': int(num_absolutes),
+                'length_distribution': length_distribution,
+                'mean_length': mean_length,
+                'std_length': std_length,
+                'method': 'containment_analysis_numba'
+            })
+
+            if entropy_count > 0:
+                patterns.append({
+                    'pattern_id': 'containment_entropy_distribution',
+                    'pattern_type': 'containment',
+                    'mean_entropy': entropy_mean,
+                    'std_entropy': entropy_std,
+                    'num_samples': entropy_count,
+                    'method': 'entropy_analysis_numba'
+                })
+
+            # Note: Recurring content patterns not available in Numba version
+            # (would require hash maps which Numba doesn't support efficiently)
+
+            return patterns
+
+        # Fallback to pure Python with progress bar
+        log_interval = max(1, n // 20)
+        stack = []
         depth = 0
-
-        # Accumulators for statistics (memory-efficient)
         length_distribution = Counter()
         length_accumulator = WelfordAccumulator()
         entropy_accumulator = WelfordAccumulator()
-        content_counts = Counter()  # For recurring patterns
+        content_counts = Counter()
         num_absolutes = 0
 
-        self._log(f"      [containment] Processing {n:,} characters...")
+        self._log(f"      [containment] Processing {n:,} characters (Python)...")
 
-        for i, char in enumerate(phi_structural):
-            # Progress logging
-            if i % log_interval == 0 and i > 0:
+        if TQDM_AVAILABLE and n > 1_000_000:
+            iterator = tqdm(enumerate(phi_structural), total=n,
+                           desc="      [containment]", unit="char", leave=True, ncols=100)
+        else:
+            iterator = enumerate(phi_structural)
+
+        for i, char in iterator:
+            if not TQDM_AVAILABLE and i % log_interval == 0 and i > 0:
                 pct = 100 * i // n
                 self._log(f"      [containment] {i:,}/{n:,} ({pct}%) - absolutes={num_absolutes:,}")
 
             if char == '(':
                 depth += 1
-                # Use list for O(1) append instead of string concatenation
                 stack.append({'start': i, 'depth': depth, 'chars': []})
-
             elif char == ')':
                 if stack:
                     absolute = stack.pop()
-                    # Join chars only once at the end (O(n) total, not O(n²))
                     observable_content = ''.join(absolute['chars'])
                     content_len = len(observable_content)
-
-                    # Update length statistics
                     length_distribution[content_len] += 1
                     length_accumulator.update(content_len)
-
-                    # Calculate and accumulate entropy
                     if content_len > 0:
                         counts = Counter(observable_content)
                         probs = np.array([counts.get(c, 0) / content_len for c in '01'])
                         probs = probs[probs > 0]
                         ent = entropy(probs, base=2) if len(probs) > 0 else 0
                         entropy_accumulator.update(ent)
-
-                    # Track content for recurrence (limit to reasonable lengths)
-                    if content_len <= 100:  # Only track short patterns for recurrence
+                    if content_len <= 100:
                         content_counts[observable_content] += 1
-
                     num_absolutes += 1
                 depth -= 1
-
             else:
-                # Add character to all open absolutes using O(1) append
                 for abs_info in stack:
                     abs_info['chars'].append(char)
 
@@ -324,7 +418,6 @@ class StructuralPatternDetector:
         if num_absolutes == 0:
             return patterns
 
-        # Pattern 1: Length distribution
         patterns.append({
             'pattern_id': 'containment_length_distribution',
             'pattern_type': 'containment',
@@ -335,7 +428,6 @@ class StructuralPatternDetector:
             'method': 'containment_analysis'
         })
 
-        # Pattern 2: Entropy distribution (using accumulated stats, not full list)
         if entropy_accumulator.count > 0:
             patterns.append({
                 'pattern_id': 'containment_entropy_distribution',
@@ -346,12 +438,9 @@ class StructuralPatternDetector:
                 'method': 'entropy_analysis'
             })
 
-        # Pattern 3: Recurring content patterns
         recurring_contents = {content: count for content, count in content_counts.items()
                             if count >= self.min_occurrences and len(content) > 0}
-
         if recurring_contents:
-            # Limit to top 1000 most frequent for memory
             top_recurring = dict(Counter(recurring_contents).most_common(1000))
             patterns.append({
                 'pattern_id': 'containment_recurring_contents',
@@ -368,7 +457,7 @@ class StructuralPatternDetector:
         """
         Detect how order emerges through stratified containment.
 
-        v33.1: Optimized - computes statistics on-the-fly without storing sequences.
+        v33.2: Uses Numba JIT for 3-5x speedup.
 
         Analyzes:
         - Entropy at each nesting level
@@ -377,67 +466,89 @@ class StructuralPatternDetector:
         """
         patterns = []
         n = len(phi_structural)
-        log_interval = max(1, n // 20)  # Log every 5%
 
-        # Accumulators per depth (memory efficient: only store counts, not sequences)
-        # depth -> {'zeros': int, 'ones': int, 'sequence_count': int}
-        depth_stats = defaultdict(lambda: {'zeros': 0, 'ones': 0, 'sequence_count': 0, 'total_chars': 0})
+        # Use Numba-optimized version if available
+        if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000:
+            self._log(f"      [stratified] Using Numba acceleration ({n:,} chars)...")
+            seq_bytes = str_to_bytes(phi_structural)
 
-        depth = 0
-        current_chars = []  # Use list for O(1) append
+            depth_zeros, depth_ones, depth_seq_counts = _analyze_stratified_numba(seq_bytes)
 
-        self._log(f"      [stratified] Processing {n:,} characters...")
+            # Build depth_stats from numpy arrays
+            depth_stats = {}
+            for d in range(len(depth_zeros)):
+                zeros = int(depth_zeros[d])
+                ones = int(depth_ones[d])
+                seq_count = int(depth_seq_counts[d])
+                if zeros > 0 or ones > 0:
+                    depth_stats[d] = {
+                        'zeros': zeros,
+                        'ones': ones,
+                        'sequence_count': seq_count,
+                        'total_chars': zeros + ones
+                    }
 
-        for i, char in enumerate(phi_structural):
-            # Progress logging
-            if i % log_interval == 0 and i > 0:
-                pct = 100 * i // n
-                self._log(f"      [stratified] {i:,}/{n:,} ({pct}%)")
+            self._log(f"      [stratified] Complete: {len(depth_stats)} depths (Numba)")
+        else:
+            # Fallback to pure Python with progress bar
+            log_interval = max(1, n // 20)
+            depth_stats = defaultdict(lambda: {'zeros': 0, 'ones': 0, 'sequence_count': 0, 'total_chars': 0})
+            depth = 0
+            current_chars = []
 
-            if char == '(':
-                # Flush current sequence to current depth stats
-                if current_chars and depth > 0:
-                    seq = ''.join(current_chars)
-                    depth_stats[depth]['zeros'] += seq.count('0')
-                    depth_stats[depth]['ones'] += seq.count('1')
-                    depth_stats[depth]['total_chars'] += len(seq)
-                    depth_stats[depth]['sequence_count'] += 1
-                    current_chars = []
-                depth += 1
+            self._log(f"      [stratified] Processing {n:,} characters (Python)...")
 
-            elif char == ')':
-                # Flush current sequence
-                if current_chars and depth > 0:
-                    seq = ''.join(current_chars)
-                    depth_stats[depth]['zeros'] += seq.count('0')
-                    depth_stats[depth]['ones'] += seq.count('1')
-                    depth_stats[depth]['total_chars'] += len(seq)
-                    depth_stats[depth]['sequence_count'] += 1
-                    current_chars = []
-                depth -= 1
-
+            if TQDM_AVAILABLE and n > 1_000_000:
+                iterator = tqdm(enumerate(phi_structural), total=n,
+                               desc="      [stratified]", unit="char", leave=True, ncols=100)
             else:
-                current_chars.append(char)
+                iterator = enumerate(phi_structural)
 
-        # Flush final sequence
-        if current_chars and depth > 0:
-            seq = ''.join(current_chars)
-            depth_stats[depth]['zeros'] += seq.count('0')
-            depth_stats[depth]['ones'] += seq.count('1')
-            depth_stats[depth]['total_chars'] += len(seq)
-            depth_stats[depth]['sequence_count'] += 1
+            for i, char in iterator:
+                if not TQDM_AVAILABLE and i % log_interval == 0 and i > 0:
+                    pct = 100 * i // n
+                    self._log(f"      [stratified] {i:,}/{n:,} ({pct}%)")
+
+                if char == '(':
+                    if current_chars and depth > 0:
+                        seq = ''.join(current_chars)
+                        depth_stats[depth]['zeros'] += seq.count('0')
+                        depth_stats[depth]['ones'] += seq.count('1')
+                        depth_stats[depth]['total_chars'] += len(seq)
+                        depth_stats[depth]['sequence_count'] += 1
+                        current_chars = []
+                    depth += 1
+                elif char == ')':
+                    if current_chars and depth > 0:
+                        seq = ''.join(current_chars)
+                        depth_stats[depth]['zeros'] += seq.count('0')
+                        depth_stats[depth]['ones'] += seq.count('1')
+                        depth_stats[depth]['total_chars'] += len(seq)
+                        depth_stats[depth]['sequence_count'] += 1
+                        current_chars = []
+                    depth -= 1
+                else:
+                    current_chars.append(char)
+
+            if current_chars and depth > 0:
+                seq = ''.join(current_chars)
+                depth_stats[depth]['zeros'] += seq.count('0')
+                depth_stats[depth]['ones'] += seq.count('1')
+                depth_stats[depth]['total_chars'] += len(seq)
+                depth_stats[depth]['sequence_count'] += 1
+
+            depth_stats = dict(depth_stats)
 
         if not depth_stats:
             return patterns
 
         # Calculate metrics from accumulated stats
         depth_metrics = {}
-        for depth, stats in sorted(depth_stats.items()):
+        for d, stats in sorted(depth_stats.items()):
             total = stats['total_chars']
             if total == 0:
                 continue
 
-            # Calculate entropy from counts (without storing sequences)
             zeros = stats['zeros']
             ones = stats['ones']
             if zeros + ones > 0:
@@ -449,7 +560,7 @@ class StructuralPatternDetector:
 
             density = total / n if n > 0 else 0
 
-            depth_metrics[depth] = {
+            depth_metrics[d] = {
                 'entropy': float(ent),
                 'density': float(density),
                 'sequence_count': stats['sequence_count'],
@@ -458,12 +569,13 @@ class StructuralPatternDetector:
                 'one_count': ones
             }
 
+        method = 'stratified_analysis_numba' if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000 else 'stratified_analysis'
         patterns.append({
             'pattern_id': 'stratified_order_metrics',
             'pattern_type': 'stratified_order',
             'depth_metrics': depth_metrics,
             'num_depths': len(depth_metrics),
-            'method': 'stratified_analysis'
+            'method': method
         })
 
         self._log(f"      [stratified] Complete: {len(depth_metrics)} depth levels analyzed")

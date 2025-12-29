@@ -33,6 +33,13 @@ hsi_agents_project/
 ├── level1_view_results.py            # Level 1: View/analyze JSON results
 │
 ├── ════════════════════════════════════════════════════════════
+│   LEVEL 2: ADVANCED COMPLEXITY ANALYSIS
+├── ════════════════════════════════════════════════════════════
+├── level2_complexity_analysis.py     # LZ, Shannon, Logical Depth, BDM comparison
+├── level2_takens_tda.py              # Takens embedding + Topological Data Analysis
+├── level2_transfer_entropy.py        # Multi-scale Transfer Entropy (causal flow)
+│
+├── ════════════════════════════════════════════════════════════
 │   HIDDEN φ DISCOVERY TOOLS (Level 1+)
 ├── ════════════════════════════════════════════════════════════
 ├── level1_scale_ratios.py            # Phase 1: MSRA (find φ in scale proportions)
@@ -147,6 +154,14 @@ All scripts can be run directly from the project root:
 | `level1_trend_analysis.py` | Trend analysis across iterations with extrapolation | `python level1_trend_analysis.py --variants B E I --plot` |
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
 | `level1_view_results.py` | View/analyze Level 1 results | `python level1_view_results.py results/level1_*.json` |
+
+### Level 2: Advanced Complexity Analysis
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `level2_complexity_analysis.py` | Compare variants using algorithmic complexity (LZ, Shannon, Logical Depth, BDM) | `python level2_complexity_analysis.py --variants A B D E --iteration 18` |
+| `level2_takens_tda.py` | Takens embedding + Persistent Homology (Betti numbers β₀, β₁, β₂) | `python level2_takens_tda.py --variant B --iteration 18 --visualize` |
+| `level2_transfer_entropy.py` | Multi-scale Transfer Entropy (detect causal flow direction) | `python level2_transfer_entropy.py --variant B --iteration 18 --plot` |
 
 ### Hidden φ Discovery Tools
 
@@ -558,6 +573,57 @@ For large Φ sequences, the pattern detector uses sampling mode to avoid memory 
 - **More accuracy**: Increase `sample_size` to 5,000,000
 
 These values balance memory usage vs. analysis thoroughness. The defaults work well for systems with 8-16GB RAM.
+
+### Adaptive Sampling (Default Behavior)
+
+The Level 1 analysis automatically calculates optimal sample sizes based on the `max_pattern_length` parameter. This ensures **statistically valid results** regardless of sequence size.
+
+#### How It Works
+
+The required sample size grows exponentially with pattern length:
+
+| max_pattern_length | Optimal Sample Size | Notes |
+|-------------------|---------------------|-------|
+| 20 bits | ~52M bits | Very efficient |
+| 30 bits | ~54G bits | Moderate requirements |
+| 40 bits | ~55T bits | Often exceeds sequence size |
+| 50 bits | ~56P bits | Requires 100% coverage |
+
+**Formula:** `optimal_sample ≈ (min_occurrences × 2) / (2^(-k) × structure_factor)`
+
+Where `k` = max_pattern_length and `structure_factor` ≈ 50 for HSI structured data.
+
+#### Coverage Recommendations
+
+| Coverage | Statistical Validity | Use Case |
+|----------|---------------------|----------|
+| < 5% | ⚠️ Low confidence | Not recommended |
+| 5-20% | ✅ Adequate for short patterns | Quick exploratory analysis |
+| 20-80% | ✅ Good for most patterns | Standard analysis |
+| 80-100% | ✅ Optimal | Complete scientific analysis |
+
+#### Memory Requirements
+
+Approximate RAM needed for analysis:
+
+```
+RAM (GB) ≈ (bits_analyzed × 2) / (1024³)
+```
+
+| Bits Analyzed | RAM Required |
+|---------------|--------------|
+| 1G bits | ~2 GB |
+| 10G bits | ~20 GB |
+| 50G bits | ~100 GB |
+| 100G bits | ~200 GB |
+
+#### Practical Recommendations
+
+1. **For demonstrations**: Use `--max-len 30` with 10G bits (adequate coverage)
+2. **For rigorous analysis**: Use `--max-len 50` with maximum available RAM
+3. **For pattern-specific studies**: Adjust `--max-len` to match patterns of interest
+
+The system will display a warning if coverage is below the minimum (5%) for the specified pattern length.
 
 ## Level 1 Analysis (Structural Format)
 
@@ -1031,6 +1097,170 @@ icc                  -0.006801   0.222    0.5215
 phi_tendency         +0.011082   0.607    0.4045
 ```
 
+### Algorithmic Complexity Analysis (`level2_complexity_analysis.py`)
+
+Compares variants using multiple complexity metrics to distinguish "noise" from "music" (organized structure).
+
+**Metrics calculated:**
+- **Shannon Entropy**: Bit-level and 8-bit block entropy
+- **Lempel-Ziv Complexity**: Normalized LZ76 (0=trivial, 1=random)
+- **Logical Depth Proxy**: Compression time / compressed size (approximates Bennett's Logical Depth)
+- **BDM**: Block Decomposition Method (requires `pybdm` library)
+
+**HSI-Specific Scoring:**
+
+Traditional complexity metrics reward high entropy + high LZ, which incorrectly favors chaotic sequences.
+For HSI, we want **structured compressibility** (low LZ, moderate entropy, high depth).
+
+The HSI score rewards:
+1. High compressibility (structure exists)
+2. Moderate entropy (0.25-0.55) — variety without chaos
+3. Low but non-zero LZ (0.01-0.1) — detectable patterns
+
+**Usage:**
+```bash
+# Single variant analysis
+python level2_complexity_analysis.py --variant B --iteration 18
+
+# Multi-variant comparison (recommended)
+python level2_complexity_analysis.py --variants A B D E --iteration 18 --verbose
+
+# With custom sample size
+python level2_complexity_analysis.py --variants B D E --iteration 18 --max-bits 100000
+
+# Output saved to: results/complexity_analysis/complexity_*.json
+```
+
+**Example Output:**
+```
+📊 COMPARISON SUMMARY
+══════════════════════════════════════════════════════════════════════
+   Variant  Entropy    LZ         Depth        Compress   Class
+   A        0.4998     0.5420     2.2159       0.0892     ORGANIZED COMPLEXITY
+   B        0.2895     0.0141     0.2080       0.0093     TRIVIAL
+   D        0.3722     0.0174     0.2150       0.0089     INTERMEDIATE
+
+   🏆 RANKING (by HSI Score):
+   🥇 1. Variant D: Score = 0.996
+   🥈 2. Variant B: Score = 0.996
+   🥉 3. Variant A: Score = 0.699   ← High LZ penalized (chaotic)
+```
+
+### Takens Embedding & TDA (`level2_takens_tda.py`)
+
+Discovers emergent geometry in Φ sequences using phase space reconstruction and persistent homology.
+
+**Method:**
+1. **Takens' Embedding**: Convert 1D binary sequence to 3D/nD point cloud: `v_t = (s_t, s_{t+τ}, s_{t+2τ})`
+2. **Persistent Homology**: Compute Betti numbers using Vietoris-Rips complexes:
+   - **β₀**: Connected components (clusters)
+   - **β₁**: 1D cycles (orbital loops, recurring patterns)
+   - **β₂**: 2D cavities (enclosed surfaces - strong emergence!)
+
+**Scientific Value:**
+If we detect **β₂ > 0**, we've demonstrated that Level 1 generates a REAL geometric surface (emergence of space).
+
+**Requirements:**
+```bash
+pip install ripser  # Fast persistent homology
+# or
+pip install giotto-tda  # Full TDA suite
+```
+
+**Usage:**
+```bash
+# Single variant analysis
+python level2_takens_tda.py --variant B --iteration 18
+
+# With 3D visualization
+python level2_takens_tda.py --variant B --iteration 18 --visualize
+
+# Higher dimensional embedding
+python level2_takens_tda.py --variant B --iteration 18 --dim 4 --delay 2
+
+# Multi-variant comparison
+python level2_takens_tda.py --variants B D E --iteration 18 --compare
+
+# Output saved to:
+#   results/tda_analysis/tda_B_iter18.json
+#   results/tda_analysis/takens_3d_B_iter18.png
+```
+
+**Example Output:**
+```
+🌀 HSI TAKENS/TDA ANALYSIS
+══════════════════════════════════════════════════════════════════════
+   Variant: B
+   Iteration: 18
+   Embedding dim: 3
+   Max points: 10,000
+
+   📊 Computing Persistent Homology...
+      🟢 β₀ = 1 significant (connected structure)
+      🟢 β₁ = 3 significant (orbital loops)
+      ⚪ β₂ = 0 significant (no closed surface)
+
+   🔮 TOPOLOGICAL INTERPRETATION:
+      β₀=1: ✓ Single connected component (unified structure)
+      β₁=3: 🌀 3 persistent loops detected (ORBITAL STRUCTURE)
+      β₂=0: No 2D cavities (no enclosed surfaces)
+
+   📋 SUMMARY:
+      🔶 MODERATE EMERGENCE: Multiple orbital structures detected
+```
+
+### Transfer Entropy Multi-Scale (`level2_transfer_entropy.py`)
+
+Measures directed information flow between different scales of the Φ sequence to detect causal relationships.
+
+**Method:**
+1. **Coarse-Graining**: Create representations at multiple scales (2^k block sizes)
+2. **Transfer Entropy**: Compute TE between all pairs of scales
+   - TE(X→Y) = H(Y_future | Y_past) - H(Y_future | Y_past, X_past)
+3. **Directional Analysis**:
+   - If TE(fine → coarse) > TE(coarse → fine): **Bottom-up emergence**
+   - If TE(coarse → fine) > TE(fine → coarse): **Top-down causation**
+
+**Scientific Value:**
+This reveals whether HSI has genuine multi-scale causal structure (like living systems) vs pure noise.
+
+**Usage:**
+```bash
+# Single variant analysis
+python level2_transfer_entropy.py --variant B --iteration 18
+
+# Custom scales
+python level2_transfer_entropy.py --variant B --iteration 18 --scales 1 2 4 8 16 32
+
+# Multi-variant comparison with heatmap
+python level2_transfer_entropy.py --variants B D E --iteration 18 --plot
+
+# Output saved to:
+#   results/transfer_entropy/te_B_iter18.json
+#   results/transfer_entropy/te_heatmap_B_iter18.png
+```
+
+**Example Output:**
+```
+🔀 HSI TRANSFER ENTROPY ANALYSIS
+══════════════════════════════════════════════════════════════════════
+   Variant: B
+   Scales: [1, 2, 4, 8, 16, 32]
+
+   📊 TRANSFER ENTROPY MATRIX (bits):
+              →1    →2    →4    →8   →16   →32
+        1 →   ---  0.012 0.008 0.005 0.003 0.002
+        2 →  0.010  ---  0.015 0.010 0.006 0.004
+        ...
+
+   🔮 DIRECTIONAL ANALYSIS:
+      Avg TE (fine → coarse): 0.0082 bits
+      Avg TE (coarse → fine): 0.0045 bits
+      Asymmetry: +0.0037 bits
+
+      🔼 BOTTOM-UP EMERGENCE: Fine scales causally influence coarse scales
+```
+
 ## Visualizations
 ### Spectral Analysis (Welch Streaming)
 
@@ -1108,18 +1338,139 @@ hsi_agents_project/reports/
 
 ## Usage Examples
 
-### Quick Start
+### 🚀 Quick Start (5 minutes)
 
 ```bash
-# Level 0: Generate Φ sequences
-python level0_generate.py --variant B --iterations 18
+# 1. Generate data (creates Hilbert visualization + Φ snapshot)
+python level0_generate.py --variant B --iterations 15
 
-# Level 1: Analyze patterns
-python level1_analyze_patterns.py --variant B --iteration 18 --report
+# 2. Analyze patterns
+python level1_analyze_patterns.py --variant B --iteration 15 --report
 
-# Level 1: Calculate Emergence Index
-python level1_emergence_index.py --variant B --iteration 18
+# 3. Calculate Emergence Index
+python level1_emergence_index.py --variant B --iteration 15
 ```
+
+---
+
+### 📋 Complete Execution Guide (Recommended Order)
+
+This guide provides a sequential workflow from data generation to advanced analysis.
+
+#### **PHASE 0: Data Generation**
+
+Generate Φ sequences for the variants you want to analyze. **Start with iteration 15 for quick tests**, then increase.
+
+```bash
+# Step 0.1: Generate candidate variants (B, D, E are top candidates)
+python level0_generate.py --variant B --iterations 18  # ~30min, ~180MB
+python level0_generate.py --variant D --iterations 18
+python level0_generate.py --variant E --iterations 18
+
+# Step 0.2: (Optional) Generate control variant A (chaotic/random)
+python level0_generate.py --variant A --iterations 18  # Much larger, more chaotic
+
+# Step 0.3: Verify what's available
+python level0_generate.py --list-snapshots
+```
+
+**📁 Output:** `results/phi_snapshots/var_{X}/phi_iteration_{N}.bin.gz`
+
+#### **PHASE 1: Pattern & Rule Analysis**
+
+Analyze structural patterns and infer rules. **Run in order of importance**.
+
+```bash
+# Step 1.1: Pattern Detection (MOST IMPORTANT - generates base data)
+python level1_analyze_patterns.py -v B -i 18 --report
+python level1_analyze_patterns.py -v D -i 18 --report
+python level1_analyze_patterns.py -v E -i 18 --report
+
+# Step 1.2: Emergence Index (Level 2 potential score)
+python level1_emergence_index.py -v B -i 18
+python level1_emergence_index.py -v D -i 18
+python level1_emergence_index.py -v E -i 18
+
+# Step 1.3: SCI & ICC Metrics (requires emergence data)
+python level1_sci_icc.py --from-emergence results/emergence_B_iter18.json
+
+# Step 1.4: Trend Analysis (requires multiple iterations)
+python level1_trend_analysis.py --variants B D E --plot
+
+# Step 1.5: Generate Visualizations
+python level1_visualize.py --all
+```
+
+**📁 Output:** `results/level1_*.json`, `reports/*.md`, `results/figures/`
+
+#### **PHASE 1+: Hidden φ Discovery (Advanced)**
+
+These scripts search for hidden golden ratio relationships.
+
+```bash
+# Step 1+.1: Scale Ratios (MSRA)
+python level1_scale_ratios.py -v B -i 18
+
+# Step 1+.2: Nesting Tree (PCSA)
+python level1_nesting_tree.py -v B -i 18
+
+# Step 1+.3: Hilbert Multi-Resolution (HMRC)
+python level1_hilbert_multires.py -v B -i 18
+
+# Step 1+.4: Deep Analysis (Wavelet + Recurrence + LZ)
+python level1_deep_analysis.py -v B -i 18
+```
+
+#### **PHASE 2: Advanced Complexity Analysis**
+
+These scripts provide deeper insights into the mathematical structure.
+
+```bash
+# Step 2.1: Algorithmic Complexity Comparison (LZ, Shannon, Logical Depth)
+python level2_complexity_analysis.py --variants A B D E --iteration 18
+
+# Step 2.2: Takens Embedding & TDA (detect emergent geometry)
+pip install ripser  # Install first if needed
+python level2_takens_tda.py --variant B --iteration 18 --visualize
+
+# Step 2.3: Transfer Entropy (detect causal flow direction)
+python level2_transfer_entropy.py --variants B D E --iteration 18 --plot
+```
+
+**📁 Output:** `results/complexity_analysis/`, `results/tda_analysis/`, `results/transfer_entropy/`
+
+---
+
+### 📊 Suggested Analysis Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  PHASE 0: GENERATE DATA                                             │
+│  level0_generate.py → Creates Φ snapshots + Hilbert visualizations │
+└─────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│  PHASE 1: PATTERN ANALYSIS (Core)                                   │
+│  level1_analyze_patterns.py → Patterns, rules, structural metrics   │
+│  level1_emergence_index.py  → Level 2 potential score               │
+│  level1_sci_icc.py          → Self-organization metrics             │
+└─────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│  PHASE 1+: HIDDEN φ DISCOVERY (Optional but recommended)            │
+│  level1_scale_ratios.py     → φ in scale proportions                │
+│  level1_deep_analysis.py    → Wavelet + Recurrence analysis         │
+└─────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│  PHASE 2: ADVANCED ANALYSIS                                         │
+│  level2_complexity_analysis.py → Distinguish noise from structure   │
+│  level2_takens_tda.py          → Detect emergent geometry (Betti)   │
+│  level2_transfer_entropy.py    → Detect causal flow direction       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
 
 ### Basic Experiment (Programmatic)
 
@@ -1274,6 +1625,28 @@ This project is developed by Iban Borràs in collaboration with Augment Agent (C
 - **Machine Learning** to discover non-obvious ISH patterns
 - **Neural networks** trained on Φ sequences
 - **Time series analysis** of informational evolution
+
+#### **Memory-Aware Streaming Analysis (Future)**
+
+For researchers needing to analyze sequences larger than available RAM:
+
+**Planned implementation:**
+1. **Chunked streaming analysis**: Process data in memory-efficient chunks
+2. **Pattern count merging**: Aggregate counts across chunks with statistical confidence
+3. **Distributed processing**: Support for cluster computing environments
+
+**Current workarounds:**
+- Reduce `--max-len` to require smaller samples
+- Use `--max-chars` to analyze manageable portions
+- Run multiple analyses with different random seeds and average results
+
+**RAM Estimation Tool** (coming soon):
+```bash
+python level1_estimate_resources.py --variant B --iteration 25 --max-len 50
+# Output: Estimated RAM: 480GB, Time: ~48 hours, Coverage: 100%
+```
+
+For contributions to streaming implementation, see `docs/ADAPTIVE_SAMPLING_PROPOSAL.md`.
 
 #### **Interdisciplinary Applications**
 - **Biology**: ISH patterns in DNA and evolution

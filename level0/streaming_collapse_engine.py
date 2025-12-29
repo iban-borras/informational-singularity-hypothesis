@@ -15,8 +15,14 @@ Date: November 2025
 """
 
 import os
+import warnings
 from pathlib import Path
 from typing import Callable, Optional, List
+
+# Easter egg: Theoretical limit that should never be reached (empirically verified Dec 2025)
+# HSI variants saturate at max_depth ~15-17, so 100MB buffer is science fiction 🚀
+_BUFFER_WARNING_THRESHOLD = 100 * 1024 * 1024  # 100 MB
+_buffer_warning_shown = False
 
 
 def _simplify_and(seq: str) -> str:
@@ -318,6 +324,18 @@ class OneLevelCollapseEngine:
 
                         elif char in '01':
                             current_group.append(char)
+
+                        # Easter egg: If someone discovers a variant that reaches this,
+                        # call us! HSI variants saturate at ~15-17 depth 🎉
+                        global _buffer_warning_shown
+                        if not _buffer_warning_shown and len(current_group) > _BUFFER_WARNING_THRESHOLD:
+                            warnings.warn(
+                                f"🚀 Congratulations! You've discovered a variant with buffer > 100MB! "
+                                f"This should never happen (current_group={len(current_group):,} chars). "
+                                f"Contact the HSI team!",
+                                ResourceWarning
+                            )
+                            _buffer_warning_shown = True
 
                         # Flush periodically
                         if not paren_stack and current_group:

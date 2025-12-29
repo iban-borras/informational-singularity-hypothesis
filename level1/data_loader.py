@@ -2,7 +2,7 @@
 Level 1 Data Loader — HSI v33
 
 This module provides functions to load Level 0 data for Level 1 analysis.
-Supports both v32 (clean bits only) and v33 (structural format with parentheses).
+Supports both v32 (observable bits only) and v33 (structural format with parentheses).
 
 Key functions:
 - load_phi_for_level1(): Load Φ data with both structural and observable versions
@@ -53,8 +53,8 @@ def extract_observable_phi(phi_structural: str) -> str:
         phi_structural: Φ string with structure (e.g., "((01)1)")
         
     Returns:
-        Clean binary string (e.g., "011")
-        
+        Observable binary string without parentheses (e.g., "011")
+
     Example:
         >>> extract_observable_phi("((01)1)")
         '011'
@@ -119,20 +119,20 @@ def load_phi_for_level1(
 ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
     """
     Load Φ data for Level 1 analysis with format auto-detection.
-    
-    Supports both v32 (clean bits) and v33 (structural) formats.
-    
+
+    Supports both v32 (observable bits) and v33 (structural) formats.
+
     Args:
         data_dir: Path to Level 0 results directory (e.g., 'results/var_B')
         iteration: Iteration number to load
         return_structural: Return Φ with parentheses (only for v33)
-        return_observable: Return clean Φ without parentheses
+        return_observable: Return observable Φ without parentheses
         return_metadata: Return metadata dictionary
-        
+
     Returns:
         Tuple of (phi_structural, phi_observable, metadata)
         - phi_structural: None if not requested or v32 format
-        - phi_observable: Clean binary string
+        - phi_observable: Observable binary string (0s and 1s only)
         - metadata: None if not requested
 
     Example:
@@ -180,7 +180,7 @@ def load_phi_for_level1(
             phi_observable = extract_observable_phi(phi_structural_full)
 
     else:
-        # v32 format: Load clean bits only
+        # v32 format: Load observable bits only (no structural info)
         bin_path = Path(data_dir) / f"phi_iter{iteration}.bin.gz"
 
         if not bin_path.exists():

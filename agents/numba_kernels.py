@@ -337,3 +337,224 @@ def compute_autosimilarity(pattern: np.ndarray) -> float:
 
     return matches / half
 
+
+# ============================================================================
+# STRUCTURAL PATTERN DETECTION KERNELS
+# ============================================================================
+
+# Character codes for fast comparison
+CHAR_OPEN = np.uint8(ord('('))
+CHAR_CLOSE = np.uint8(ord(')'))
+CHAR_ZERO = np.uint8(ord('0'))
+CHAR_ONE = np.uint8(ord('1'))
+
+
+@njit(cache=True)
+def _analyze_nesting_numba(seq: np.ndarray) -> Tuple[np.int64, np.int64, np.ndarray, np.ndarray]:
+    """
+    Numba-optimized nesting analysis.
+
+    Returns:
+        max_depth: Maximum nesting depth encountered
+        total_parens: Total number of parentheses
+        depth_dist: Array of counts per depth level (index = depth)
+        transitions: Flattened array of transition counts (from_depth * MAX + to_depth)
+    """
+    n = len(seq)
+    # MAX_DEPTH = 256: Verified sufficient for all HSI variants (Dec 2025)
+    # Empirical max_depth: F=9, B=9, E=13, H=9, A=0 (see scripts/check_depth.py)
+    MAX_DEPTH = 256
+
+    depth = np.int64(0)
+    max_depth = np.int64(0)
+    prev_depth = np.int64(0)
+    total_parens = np.int64(0)
+
+    depth_dist = np.zeros(MAX_DEPTH, dtype=np.int64)
+    # Transitions stored as flat array: transitions[from * MAX_DEPTH + to]
+    transitions = np.zeros(MAX_DEPTH * MAX_DEPTH, dtype=np.int64)
+
+    for i in range(n):
+        char = seq[i]
+
+        if char == CHAR_OPEN:
+            depth += 1
+            if depth > max_depth:
+                max_depth = depth
+            if depth < MAX_DEPTH:
+                depth_dist[depth] += 1
+            total_parens += 1
+
+            # Track transition
+            if total_parens > 1:
+                if prev_depth < MAX_DEPTH and depth < MAX_DEPTH:
+                    transitions[prev_depth * MAX_DEPTH + depth] += 1
+            prev_depth = depth
+
+        elif char == CHAR_CLOSE:
+            total_parens += 1
+            # Track transition before decreasing
+            if prev_depth < MAX_DEPTH and depth < MAX_DEPTH:
+                transitions[prev_depth * MAX_DEPTH + depth] += 1
+            prev_depth = depth
+            depth -= 1
+
+    return max_depth, total_parens, depth_dist, transitions
+
+
+@njit(cache=True)
+def _analyze_containment_numba(seq: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.int64, np.float64, np.float64]:
+    """
+    Numba-optimized containment analysis - single pass.
+
+    Key insight: Instead of storing chars in lists, we track positions and
+    compute lengths/entropy directly using marker arrays.
+
+    Returns:
+        length_counts: Array where length_counts[len] = count of absolutes with that length
+        content_stats: Array of [zeros_count, ones_count] per absolute (flattened)
+        num_absolutes: Total number of absolutes found
+        sum_lengths: Sum of all lengths (for mean calculation)
+        sum_sq_lengths: Sum of squared lengths (for std calculation)
+    """
+    n = len(seq)
+    MAX_LENGTH = 10000  # Max length to track in distribution
+    MAX_DEPTH = 256
+
+    # Stack to track open parentheses positions
+    # stack[i] = (start_pos, zeros_so_far, ones_so_far)
+    stack_starts = np.zeros(MAX_DEPTH, dtype=np.int64)
+    stack_zeros = np.zeros(MAX_DEPTH, dtype=np.int64)
+    stack_ones = np.zeros(MAX_DEPTH, dtype=np.int64)
+    stack_ptr = np.int64(0)  # Stack pointer
+
+    # Results
+    length_counts = np.zeros(MAX_LENGTH, dtype=np.int64)
+    num_absolutes = np.int64(0)
+
+    # Welford's algorithm accumulators for entropy
+    entropy_count = np.int64(0)
+    entropy_mean = np.float64(0.0)
+    entropy_m2 = np.float64(0.0)
+
+    # Length statistics
+    sum_lengths = np.float64(0.0)
+    sum_sq_lengths = np.float64(0.0)
+
+    for i in range(n):
+        char = seq[i]
+
+        if char == CHAR_OPEN:
+            # Push new frame to stack
+            if stack_ptr < MAX_DEPTH:
+                stack_starts[stack_ptr] = i
+                stack_zeros[stack_ptr] = 0
+                stack_ones[stack_ptr] = 0
+                stack_ptr += 1
+
+        elif char == CHAR_CLOSE:
+            if stack_ptr > 0:
+                stack_ptr -= 1
+                # Pop and analyze
+                zeros = stack_zeros[stack_ptr]
+                ones = stack_ones[stack_ptr]
+                content_len = zeros + ones
+
+                # Update length distribution
+                if content_len < MAX_LENGTH:
+                    length_counts[content_len] += 1
+
+                # Update length stats (Welford-style)
+                sum_lengths += content_len
+                sum_sq_lengths += content_len * content_len
+
+                # Calculate entropy and update accumulator
+                if content_len > 0:
+                    p0 = zeros / content_len
+                    p1 = ones / content_len
+                    ent = np.float64(0.0)
+                    if p0 > 0:
+                        ent -= p0 * np.log2(p0)
+                    if p1 > 0:
+                        ent -= p1 * np.log2(p1)
+
+                    # Welford update for entropy
+                    entropy_count += 1
+                    delta = ent - entropy_mean
+                    entropy_mean += delta / entropy_count
+                    delta2 = ent - entropy_mean
+                    entropy_m2 += delta * delta2
+
+                num_absolutes += 1
+
+        elif char == CHAR_ZERO:
+            # Add to all open absolutes
+            for j in range(stack_ptr):
+                stack_zeros[j] += 1
+
+        elif char == CHAR_ONE:
+            # Add to all open absolutes
+            for j in range(stack_ptr):
+                stack_ones[j] += 1
+
+    # Pack entropy stats into a small array
+    entropy_stats = np.array([
+        np.float64(entropy_count),
+        entropy_mean,
+        entropy_m2
+    ], dtype=np.float64)
+
+    return length_counts, entropy_stats, num_absolutes, sum_lengths, sum_sq_lengths
+
+
+@njit(cache=True)
+def _analyze_stratified_numba(seq: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Numba-optimized stratified order analysis.
+
+    Returns:
+        depth_zeros: Array of zero counts per depth
+        depth_ones: Array of one counts per depth
+        depth_seq_counts: Array of sequence counts per depth
+    """
+    n = len(seq)
+    MAX_DEPTH = 256
+
+    depth = np.int64(0)
+    current_zeros = np.int64(0)
+    current_ones = np.int64(0)
+
+    depth_zeros = np.zeros(MAX_DEPTH, dtype=np.int64)
+    depth_ones = np.zeros(MAX_DEPTH, dtype=np.int64)
+    depth_seq_counts = np.zeros(MAX_DEPTH, dtype=np.int64)
+
+    for i in range(n):
+        char = seq[i]
+
+        if char == CHAR_OPEN:
+            # Flush current sequence to current depth
+            if (current_zeros > 0 or current_ones > 0) and depth > 0 and depth < MAX_DEPTH:
+                depth_zeros[depth] += current_zeros
+                depth_ones[depth] += current_ones
+                depth_seq_counts[depth] += 1
+            current_zeros = 0
+            current_ones = 0
+            depth += 1
+
+        elif char == CHAR_CLOSE:
+            # Flush current sequence to current depth
+            if (current_zeros > 0 or current_ones > 0) and depth > 0 and depth < MAX_DEPTH:
+                depth_zeros[depth] += current_zeros
+                depth_ones[depth] += current_ones
+                depth_seq_counts[depth] += 1
+            current_zeros = 0
+            current_ones = 0
+            depth -= 1
+
+        elif char == CHAR_ZERO:
+            current_zeros += 1
+
+        elif char == CHAR_ONE:
+            current_ones += 1
+
+    return depth_zeros, depth_ones, depth_seq_counts

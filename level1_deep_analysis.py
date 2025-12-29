@@ -47,7 +47,8 @@ except ImportError:
         return decorator
 
 sys.path.insert(0, str(Path(__file__).parent))
-from level1.data_loader import load_phi_for_level1
+from level1.data_loader import load_phi_for_level1, load_metadata
+from utils.streaming_phi_loader import load_phi_for_agents
 
 PHI = (1 + math.sqrt(5)) / 2
 
@@ -780,12 +781,42 @@ def run_deep_analysis(
         print(f"📥 Loading Φ data...", flush=True)
 
     load_start = time.time()
-    _, phi_observable, metadata = load_phi_for_level1(
-        data_dir, iteration,
-        return_structural=False,
-        return_observable=True,
-        return_metadata=True
-    )
+
+    # Try streaming loader with progress bar (for v33 format)
+    struct_path = Path(data_dir) / f"phi_iter{iteration}.struct.gz"
+    if struct_path.exists():
+        # Load metadata first to get accurate size for progress bar
+        metadata = load_metadata(data_dir, iteration)
+        # Use sequence_length as safe upper bound (structural length >= observable length)
+        total_chars_hint = metadata.get('sequence_length')
+
+        # Determine how many chars to load:
+        # - In multiscale mode: load all (Nyquist subsampling handles memory)
+        # - In standard mode: only load max_bits (saves memory!)
+        if use_multiscale:
+            load_max_chars = None  # Load everything
+        else:
+            # Load slightly more than max_bits to account for structural overhead
+            # (parentheses in structural format don't count as observable bits)
+            load_max_chars = max_bits * 2  # Safety margin for parentheses
+
+        # Use streaming loader with progress bar
+        phi_observable, _ = load_phi_for_agents(
+            str(struct_path),
+            max_chars=load_max_chars,
+            observable_only=True,
+            show_progress=verbose,
+            total_chars_hint=total_chars_hint if use_multiscale else load_max_chars
+        )
+    else:
+        # Fallback to standard loader (v32 format or other)
+        _, phi_observable, metadata = load_phi_for_level1(
+            data_dir, iteration,
+            return_structural=False,
+            return_observable=True,
+            return_metadata=True
+        )
+
     load_elapsed = time.time() - load_start
 
     if verbose:
@@ -915,16 +946,21 @@ def run_deep_analysis(
         def convert(obj):
             if isinstance(obj, (np.integer, np.floating)):
                 return float(obj)
+            elif isinstance(obj, np.bool_):
+                return bool(obj)
             elif isinstance(obj, np.ndarray):
                 return obj.tolist()
             elif isinstance(obj, dict):
                 return {str(k): convert(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
+            elif isinstance(obj, (list, tuple)):
                 return [convert(x) for x in obj]
+            elif hasattr(obj, '__class__') and obj.__class__.__module__ == 'numpy':
+                # Catch any other numpy type
+                return str(obj)
             return obj
 
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(convert(results), f, indent=2)
+            json.dump(convert(results), f, indent=2, default=str)
         if verbose:
             print(f"\n📁 Results saved to: {output_path}")
 
@@ -959,18 +995,46 @@ Examples:
                         help="Use Nyquist-based subsampling to analyze ALL bits (100G+ capable)")
     parser.add_argument("--compare", "-c", type=str, default=None,
                         help="Compare with another variant (e.g., --compare F)")
-    parser.add_argument("--output", "-o", type=str, default=None, help="Output JSON file")
+    parser.add_argument("--output", "-o", type=str, default=None,
+                        help="Output JSON file (default: auto-generated in results/level1/analysis/)")
+    parser.add_argument("--no-save", action="store_true",
+                        help="Don't save results to file")
 
     args = parser.parse_args()
 
     analyses = args.analysis.split(",") if args.analysis != "all" else ["all"]
+
+    # Generate default output path if not specified
+    if args.output:
+        output_path = args.output
+    elif args.no_save:
+        output_path = None
+    else:
+        # Auto-generate descriptive filename
+        from utils.file_saver import get_output_path
+        if args.multiscale:
+            sample_info = "multiscale"
+        else:
+            # Format max_bits nicely (e.g., 100000 -> 100k, 1000000 -> 1M)
+            mb = args.max_bits
+            if mb >= 1_000_000_000:
+                sample_info = f"{mb // 1_000_000_000}G"
+            elif mb >= 1_000_000:
+                sample_info = f"{mb // 1_000_000}M"
+            elif mb >= 1_000:
+                sample_info = f"{mb // 1_000}k"
+            else:
+                sample_info = str(mb)
+
+        filename = f"deep_analysis_var_{args.variant}_iter{args.iteration}_{sample_info}.json"
+        output_path = str(get_output_path(1, "analysis", filename))
 
     try:
         results = run_deep_analysis(
             args.variant, args.iteration,
             analyses=analyses,
             max_bits=args.max_bits,
-            output_path=args.output,
+            output_path=output_path,
             use_multiscale=args.multiscale
         )
 

@@ -74,3 +74,8 @@ htmlcov/
 .coverage
 *.coverage
 
+Documentation/ADAPTIVE_SAMPLING_PROPOSAL.md
+Documentation/peer_review_checklist.md
+Documentation/peer_review_report.md
+Documentation/scientific_gap_analysis.md
+Documentation/technical_audit_analysis.md

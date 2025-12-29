@@ -25,6 +25,17 @@ bitarray>=2.8.0
 # Optional: Advanced libraries for fractal analysis
 # fractal-dimension>=0.1.0
 
+# ═══════════════════════════════════════════════════════════════════
+# LEVEL 2: Advanced Analysis (Optional but recommended)
+# ═══════════════════════════════════════════════════════════════════
+
+# Topological Data Analysis (TDA)
+ripser>=0.6.0             # Fast persistent homology (lightweight, ~5MB)
+# giotto-tda>=0.6.0       # Full TDA suite (heavy ~500MB, use if need more features)
+
+# Transfer Entropy (optional, we have built-in histogram implementation)
+# pyinform>=0.2.0         # Only if you need advanced TE methods
+
 # JIT Compilation for performance
 numba>=0.58.0
 

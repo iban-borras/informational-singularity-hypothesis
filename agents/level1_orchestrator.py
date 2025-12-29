@@ -98,7 +98,69 @@ class Level1Orchestrator:
             'validator': {
                 'validation_ratio': 0.2,
                 'confidence_threshold': 0.8
+            },
+            'adaptive_sampling': {
+                'min_coverage_percent': 5.0,
+                'structure_factor': 50.0,
+                'target_confidence': 0.95
             }
+        }
+
+    def calculate_optimal_sample_size(
+        self,
+        full_sequence_length: int,
+        max_pattern_length: int,
+        min_occurrences: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Calculate optimal sample size for reliable pattern detection.
+
+        Args:
+            full_sequence_length: Total bits in the sequence
+            max_pattern_length: Longest patterns to detect
+            min_occurrences: Minimum occurrences to count as detected
+
+        Returns:
+            Dictionary with sampling recommendations
+        """
+        import math
+
+        config = self.config.get('adaptive_sampling', {})
+        min_coverage = config.get('min_coverage_percent', 5.0) / 100.0
+        structure_factor = config.get('structure_factor', 50.0)
+
+        # Expected frequency of rarest pattern (with HSI structure factor)
+        # For random: 2^(-k), for structured HSI: 2^(-k) * structure_factor
+        rarest_freq = (2 ** (-max_pattern_length)) * structure_factor
+
+        # Poisson lambda needed for reliable detection (5 expected occurrences)
+        poisson_lambda = max(min_occurrences * 2, 5)
+
+        # Theoretical optimal sample (may exceed sequence length)
+        theoretical_optimal = int(poisson_lambda / rarest_freq) if rarest_freq > 0 else full_sequence_length
+
+        # Practical limits
+        optimal_sample = min(theoretical_optimal, full_sequence_length)
+        minimum_sample = int(full_sequence_length * min_coverage)
+
+        # Memory estimation (2 bytes per bit for processing)
+        memory_optimal_gb = (optimal_sample * 2) / (1024**3)
+        memory_minimum_gb = (minimum_sample * 2) / (1024**3)
+
+        # Coverage percentages
+        optimal_coverage = (optimal_sample / full_sequence_length) * 100 if full_sequence_length > 0 else 100
+
+        return {
+            'full_sequence_length': full_sequence_length,
+            'max_pattern_length': max_pattern_length,
+            'optimal_sample': optimal_sample,
+            'optimal_coverage_percent': optimal_coverage,
+            'minimum_sample': minimum_sample,
+            'minimum_coverage_percent': min_coverage * 100,
+            'memory_optimal_gb': memory_optimal_gb,
+            'memory_minimum_gb': memory_minimum_gb,
+            'theoretical_optimal': theoretical_optimal,
+            'exceeds_sequence': theoretical_optimal > full_sequence_length
         }
 
     def _get_cache_path(self, struct_gz_path: str, max_chars: int) -> Path:
@@ -187,6 +249,76 @@ class Level1Orchestrator:
         print(f"   Observable length: {len(phi_observable):,}")
         print(f"   Metadata format: {metadata.get('format', 'unknown')}")
 
+        # Adaptive Sampling Analysis
+        full_sequence_length = metadata.get('sequence_length', len(phi_observable))
+        pd_config = self.config.get('pattern_detector', {})
+        max_pattern_len = pd_config.get('max_pattern_length', 32)
+        min_occurrences = pd_config.get('min_occurrences', 3)
+
+        sampling_info = self.calculate_optimal_sample_size(
+            full_sequence_length, max_pattern_len, min_occurrences
+        )
+
+        actual_analyzed = len(phi_observable)
+        actual_coverage = (actual_analyzed / full_sequence_length * 100) if full_sequence_length > 0 else 100
+
+        print(f"\n📐 Adaptive Sampling Analysis")
+        print(f"   Full sequence: {full_sequence_length:,} bits ({full_sequence_length/1e9:.1f}G)")
+        print(f"   Bits analyzed: {actual_analyzed:,} ({actual_analyzed/1e9:.1f}G)")
+        print(f"   Coverage: {actual_coverage:.2f}%")
+        print(f"   Max pattern length: {max_pattern_len} bits")
+
+        # Calculate maximum reliable pattern length for current sample
+        import math
+        config = self.config.get('adaptive_sampling', {})
+        structure_factor = config.get('structure_factor', 50.0)
+        min_coverage_percent = config.get('min_coverage_percent', 5.0)
+
+        # k_max where sample is statistically valid: sample >= (min_occ * 2) / (2^(-k) * factor)
+        # Solving for k: k = log2(sample * factor / (min_occ * 2))
+        if actual_analyzed > 0 and min_occurrences > 0:
+            max_reliable_k = math.log2(actual_analyzed * structure_factor / (min_occurrences * 2))
+            max_reliable_k = int(max_reliable_k)
+        else:
+            max_reliable_k = max_pattern_len
+
+        # Confidence assessment with specific pattern length guidance
+        if max_reliable_k < max_pattern_len:
+            print(f"\n   ⚠️  STATISTICAL COVERAGE WARNING")
+            print(f"   Reliable detection up to: {max_reliable_k} bits")
+            print(f"   Requested max pattern: {max_pattern_len} bits")
+            print(f"   Patterns of {max_reliable_k+1}-{max_pattern_len} bits: MAY BE UNDERDETECTED")
+
+            # Calculate what would be needed for full coverage
+            needed_sample = self.calculate_optimal_sample_size(
+                full_sequence_length, max_pattern_len, min_occurrences
+            )
+            needed_bits = min(needed_sample['optimal_sample'], full_sequence_length)
+            needed_ram = (needed_bits * 2) / (1024**3)
+
+            print(f"\n   For {max_pattern_len}-bit reliability:")
+            print(f"   └─ Need: {needed_bits:,} bits ({needed_bits/1e9:.1f}G)")
+            print(f"   └─ RAM: ~{needed_ram:.1f}GB")
+            print(f"   └─ Coverage: {(needed_bits/full_sequence_length)*100:.1f}%")
+        elif actual_coverage < min_coverage_percent:
+            print(f"\n   ⚠️  Coverage below minimum {min_coverage_percent}%")
+            print(f"   Recommended sample: {sampling_info['minimum_sample']:,} bits")
+        else:
+            print(f"\n   ✅ Coverage optimal for {max_pattern_len}-bit pattern detection")
+            print(f"   Reliable detection up to: {max_reliable_k} bits")
+
+        # Store sampling info for results
+        self._sampling_info = {
+            'full_sequence_length': full_sequence_length,
+            'analyzed_length': actual_analyzed,
+            'coverage_percent': actual_coverage,
+            'optimal_coverage_percent': sampling_info['optimal_coverage_percent'],
+            'min_coverage_percent': min_coverage_percent,
+            'max_pattern_length': max_pattern_len,
+            'max_reliable_pattern_length': max_reliable_k,
+            'extrapolation_factor': full_sequence_length / actual_analyzed if actual_analyzed > 0 else 1.0
+        }
+
         # Phase 1: Pattern Detection
         if 'patterns' in cache_data and 'structural_patterns' in cache_data:
             print("\n🔍 Phase 1: Pattern Detection... [CACHED]")
@@ -259,6 +391,12 @@ class Level1Orchestrator:
                 'method': coverage_info.get('method', 'full_sequential'),
                 'sequence_length': coverage_info.get('sequence_length', len(phi_observable))
             },
+            'sampling': getattr(self, '_sampling_info', {
+                'full_sequence_length': len(phi_observable),
+                'analyzed_length': len(phi_observable),
+                'coverage_percent': 100.0,
+                'extrapolation_factor': 1.0
+            }),
             'char_counts': {
                 'structural': len(phi_structural),
                 'observable': len(phi_observable)
@@ -393,6 +531,15 @@ class Level1Orchestrator:
                 continue
 
         return sorted(iterations)
+
+    def _find_phi_file(self, variant: str, iteration: int) -> Optional[str]:
+        """Find the phi file path for a given variant and iteration."""
+        base_path = Path(__file__).parent.parent / "results" / "level0" / "phi_snapshots" / f"var_{variant}"
+        phi_path = base_path / f"phi_iter{iteration}.struct.gz"
+
+        if phi_path.exists():
+            return str(phi_path)
+        return None
 
     def save_results(self, output_path: str) -> None:
         """Save results to JSON file."""
@@ -559,10 +706,58 @@ EXAMPLES:
     print(f"📋 Available iterations for variant {args.variant}: {iterations}")
     print(f"📌 Selected iteration: {iteration}")
 
-    # Run analysis
-    # 0 means no limit - use a very large number
-    max_chars = args.max_chars if args.max_chars > 0 else 10_000_000_000  # 10 billion
+    # Run analysis with adaptive sample sizing
+    user_specified_max_chars = args.max_chars > 0
+
+    if user_specified_max_chars:
+        # User explicitly set max_chars - respect it but warn if insufficient
+        max_chars = args.max_chars
+        print(f"📊 Using user-specified max_chars: {max_chars:,}")
+    else:
+        # Auto-calculate optimal sample for max_pattern_length
+        # First, we need to know the sequence length - get from latest phi file
+        phi_path = orchestrator._find_phi_file(args.variant, iteration)
+        if phi_path:
+            from utils.streaming_phi_loader import StreamingPhiLoader
+            loader = StreamingPhiLoader(phi_path)
+            metadata = loader.metadata  # Property that loads from .json file
+            full_seq_length = metadata.get('sequence_length', 10_000_000_000)
+
+            pd_config = orchestrator.config.get('pattern_detector', {})
+            max_pattern_len = pd_config.get('max_pattern_length', 32)
+            min_occurrences = pd_config.get('min_occurrences', 3)
+
+            # Calculate optimal sample
+            sampling_info = orchestrator.calculate_optimal_sample_size(
+                full_seq_length, max_pattern_len, min_occurrences
+            )
+
+            optimal_sample = sampling_info['optimal_sample']
+            min_sample = sampling_info['minimum_sample']
+
+            # Use optimal sample, but cap at full sequence and reasonable RAM limit
+            max_ram_gb = 64  # Reasonable default, could be made configurable
+            max_bits_for_ram = int(max_ram_gb * (1024**3) / 2)  # 2 bytes per bit
+
+            # Choose the most practical sample size
+            max_chars = min(optimal_sample, full_seq_length, max_bits_for_ram)
+            max_chars = max(max_chars, min_sample)  # At least minimum coverage
+
+            print(f"\n🔧 AUTO-ADAPTIVE SAMPLING")
+            print(f"   Sequence length: {full_seq_length:,} bits")
+            print(f"   Max pattern length: {max_pattern_len} bits")
+            print(f"   Optimal sample: {optimal_sample:,} bits")
+            if optimal_sample > full_seq_length:
+                print(f"   └─ Capped to sequence length: {full_seq_length:,}")
+            if optimal_sample > max_bits_for_ram:
+                print(f"   └─ Capped to RAM limit ({max_ram_gb}GB): {max_bits_for_ram:,}")
+            print(f"   Selected sample: {max_chars:,} bits ({max_chars/1e9:.1f}G)")
+        else:
+            max_chars = 10_000_000_000
+            print(f"⚠️  Could not determine sequence length, using default: {max_chars:,}")
+
     orchestrator.config['max_chars_in_memory'] = max_chars
+    orchestrator.config['user_specified_max_chars'] = user_specified_max_chars
     use_cache = not args.no_cache
     results = orchestrator.analyze_variant(args.variant, iteration, use_cache=use_cache)
 

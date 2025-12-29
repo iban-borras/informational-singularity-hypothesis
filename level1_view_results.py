@@ -49,8 +49,62 @@ class ResultsReporter:
         self.rules = self.data.get('rules', [])
         self.validation = self.data.get('validation', {})
 
+        # Calculate extrapolation factor for sampled data
+        self._calculate_extrapolation()
+
         # Parse variant and iteration from filename if not in metadata
         self._parse_file_info()
+
+    def _calculate_extrapolation(self):
+        """Calculate extrapolation factor and statistical reliability for sampled data."""
+        import math
+
+        # Full sequence length from source file metadata
+        full_length = self.metadata.get('sequence_length', 0)
+
+        # Bits actually analyzed (from coverage or char_counts)
+        coverage = self.data.get('coverage', {})
+        analyzed_length = coverage.get('sequence_length', 0)
+
+        # Fallback to char_counts if coverage doesn't have it
+        if analyzed_length == 0:
+            char_counts = self.data.get('char_counts', {})
+            analyzed_length = char_counts.get('observable', 0)
+
+        # Calculate factor
+        if full_length > 0 and analyzed_length > 0:
+            self.full_sequence_length = full_length
+            self.analyzed_length = analyzed_length
+            self.extrapolation_factor = full_length / analyzed_length
+            self.coverage_percentage = (analyzed_length / full_length) * 100
+        else:
+            self.full_sequence_length = analyzed_length
+            self.analyzed_length = analyzed_length
+            self.extrapolation_factor = 1.0
+            self.coverage_percentage = 100.0
+
+        # Calculate max_reliable_pattern_length retroactively if not in data
+        sampling = self.data.get('sampling', {})
+        if 'max_reliable_pattern_length' not in sampling and self.analyzed_length > 0:
+            # Formula: k_max = log2(sample * structure_factor / (min_occurrences * 2))
+            structure_factor = 50.0  # HSI structure factor
+            config = self.data.get('config', {})
+            min_occurrences = config.get('min_occurrences', 3)
+            max_pattern_length = config.get('max_pattern_length', 50)
+
+            try:
+                max_reliable_k = int(math.log2(
+                    self.analyzed_length * structure_factor / (min_occurrences * 2)
+                ))
+            except (ValueError, ZeroDivisionError):
+                max_reliable_k = max_pattern_length
+
+            # Store calculated values in sampling dict for later use
+            if 'sampling' not in self.data:
+                self.data['sampling'] = {}
+            self.data['sampling']['max_reliable_pattern_length'] = max_reliable_k
+            self.data['sampling']['max_pattern_length'] = max_pattern_length
+            self.data['sampling']['calculated_retroactively'] = True
 
     def _parse_file_info(self):
         """Extract variant and iteration from filename."""
@@ -339,10 +393,33 @@ class ResultsReporter:
         print(f'   Observable sequence: {char_counts.get("observable", "N/A"):,} chars')
         print(f'   Analysis time: {self.data.get("analysis_time_seconds", 0):,.1f}s')
 
+        # Sampling info (if partial coverage)
+        if self.extrapolation_factor > 1.01:  # More than 1% difference
+            print(f'\n📐 SAMPLING INFO')
+            print(f'   Full sequence: {self.full_sequence_length:,} bits ({self.full_sequence_length/1e9:.1f}G)')
+            print(f'   Bits analyzed: {self.analyzed_length:,} bits ({self.analyzed_length/1e9:.1f}G)')
+            print(f'   Coverage: {self.coverage_percentage:.2f}%')
+            print(f'   Extrapolation factor: {self.extrapolation_factor:.2f}x')
+
+            # Show max reliable pattern length if available
+            sampling = self.data.get('sampling', {})
+            max_reliable = sampling.get('max_reliable_pattern_length', 0)
+            max_requested = sampling.get('max_pattern_length', 0)
+            if max_reliable > 0 and max_reliable < max_requested:
+                print(f'\n   ⚠️ Statistical reliability:')
+                print(f'   └─ Reliable detection up to: {max_reliable} bits')
+                print(f'   └─ Patterns {max_reliable+1}-{max_requested} bits: may be underdetected')
+
         # Patterns
         print(f'\n🔍 PATTERNS DETECTED')
-        print(f'   Observable: {pattern_stats.get("total_observable", 0):,}')
-        print(f'   Structural: {pattern_stats.get("total_structural", 0)}')
+        obs_count = pattern_stats.get("total_observable", 0)
+        struct_count = pattern_stats.get("total_structural", 0)
+        if self.extrapolation_factor > 1.01:
+            est_obs = int(obs_count * self.extrapolation_factor)
+            print(f'   Observable: {obs_count:,} (estimated global: ~{est_obs:,})')
+        else:
+            print(f'   Observable: {obs_count:,}')
+        print(f'   Structural: {struct_count}')
         print(f'   Length range: {pattern_stats.get("min_length", 0)}-{pattern_stats.get("max_length", 0)} bits')
         print(f'   Average length: {pattern_stats.get("avg_length", 0):.1f} bits')
 
@@ -450,6 +527,49 @@ class ResultsReporter:
         md.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         md.append(f"**Source file:** `{self.results_path.name}`")
         md.append(f"")
+
+        # Sampling Information (if partial coverage)
+        if self.extrapolation_factor > 1.01:
+            md.append("---")
+            md.append("## Sampling Information")
+            md.append("")
+            md.append("| Parameter | Value |")
+            md.append("|-----------|-------|")
+            md.append(f"| **Full sequence length** | {self.full_sequence_length:,} bits ({self.full_sequence_length/1e9:.1f}G) |")
+            md.append(f"| **Bits analyzed** | {self.analyzed_length:,} bits ({self.analyzed_length/1e9:.1f}G) |")
+            md.append(f"| **Coverage** | {self.coverage_percentage:.2f}% |")
+            md.append(f"| **Extrapolation factor** | {self.extrapolation_factor:.2f}x |")
+            md.append("")
+
+            # Statistical reliability info
+            sampling = self.data.get('sampling', {})
+            max_reliable = sampling.get('max_reliable_pattern_length', 0)
+            max_requested = sampling.get('max_pattern_length', 0)
+            if max_reliable > 0 and max_reliable < max_requested:
+                md.append(f"### Statistical Reliability Warning")
+                md.append("")
+                md.append(f"| Reliability | Pattern Length |")
+                md.append(f"|-------------|----------------|")
+                md.append(f"| ✅ **Reliable** | 1-{max_reliable} bits |")
+                md.append(f"| ⚠️ **Underdetected** | {max_reliable+1}-{max_requested} bits |")
+                md.append("")
+                md.append(f"> With {self.coverage_percentage:.2f}% coverage, patterns longer than {max_reliable} bits")
+                md.append(f"> may not have enough statistical representation to be reliably detected.")
+                md.append("")
+            else:
+                md.append(f"> ⚠️ **Partial sampling**: Results based on {self.coverage_percentage:.2f}% of the full sequence.")
+                md.append("> Absolute counts should be multiplied by the extrapolation factor for global estimates.")
+                md.append("")
+
+            md.append("### Extrapolated Global Estimates")
+            md.append("")
+            md.append("| Metric (sample) | Sample Value | Estimated Global |")
+            md.append("|-----------------|--------------|------------------|")
+            obs_count = pattern_stats.get('total_observable', 0)
+            rules_validated = self.validation.get('validated_rules', 0)
+            md.append(f"| Patterns detected | {obs_count:,} | ~{int(obs_count * self.extrapolation_factor):,} |")
+            md.append(f"| Rules validated | {rules_validated:,} | ~{int(rules_validated * self.extrapolation_factor):,} |")
+            md.append("")
 
         # Executive Summary
         md.append("---")

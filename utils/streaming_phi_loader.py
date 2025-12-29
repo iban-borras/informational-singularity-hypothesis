@@ -203,7 +203,8 @@ def load_phi_for_agents(
     struct_gz_path: str,
     max_chars: Optional[int] = None,
     observable_only: bool = False,
-    show_progress: bool = False
+    show_progress: bool = False,
+    total_chars_hint: Optional[int] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Convenience function to load Φ for agent analysis.
@@ -216,6 +217,7 @@ def load_phi_for_agents(
         max_chars: Maximum characters to load (None = all)
         observable_only: If True, return only 0/1 bits (no parentheses)
         show_progress: If True, show loading progress bar
+        total_chars_hint: Optional hint for total chars (for accurate progress bar)
 
     Returns:
         Tuple of (phi_string, metadata)
@@ -224,9 +226,9 @@ def load_phi_for_agents(
 
     loader = StreamingPhiLoader(struct_gz_path)
 
-    # Determine total size for progress (from metadata or file size estimate)
-    total_chars = None
-    if show_progress:
+    # Determine total size for progress (from hint, metadata, or file size estimate)
+    total_chars = total_chars_hint
+    if show_progress and not total_chars:
         meta = loader.metadata
         if observable_only:
             total_chars = meta.get('observable_len') or meta.get('phi_length')
@@ -282,8 +284,8 @@ def load_phi_for_agents(
             last_update = current_count
 
             if pbar:
-                # Update tqdm bar
-                pbar.n = current_count / 1e9
+                # Update tqdm bar (clamp to avoid >100% warning)
+                pbar.n = min(current_count / 1e9, pbar.total)
                 pbar.refresh()
             else:
                 # Fallback to print-based progress
@@ -305,7 +307,7 @@ def load_phi_for_agents(
 
     # Close progress bar
     if pbar:
-        pbar.n = len(chars) / 1e9
+        pbar.n = pbar.total  # Set to 100% on completion
         pbar.refresh()
         pbar.close()
 

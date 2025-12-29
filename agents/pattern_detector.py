@@ -130,6 +130,12 @@ def _wait_for_ram(target_percent: float = 70.0, max_wait: int = 120,
 # PARALLEL CHUNK PROCESSING HELPER (module-level for pickling)
 # =============================================================================
 
+# Límit de patrons únics per chunk - evita OOM amb soroll pur
+# Amb soroll aleatori, cada patró és únic → diccionari explota
+# 100K patrons × ~100 bytes/entrada ≈ 10MB/chunk (segur)
+MAX_UNIQUE_PATTERNS_PER_CHUNK = 100_000
+
+
 def _process_pattern_chunk(args: tuple) -> dict:
     """
     Process a single chunk for pattern detection.
@@ -139,12 +145,14 @@ def _process_pattern_chunk(args: tuple) -> dict:
         args: (chunk_str, chunk_idx, start_offset, min_len, max_len, overlap, is_first_chunk)
 
     Returns:
-        dict with patterns found in this chunk
+        dict with patterns found in this chunk, plus saturation metrics
     """
     chunk, chunk_idx, start_offset, min_len, max_len, overlap, is_first = args
 
     if not NUMBA_AVAILABLE:
-        return {'chunk_idx': chunk_idx, 'patterns': {}}
+        return {'chunk_idx': chunk_idx, 'patterns': {},
+                'saturation_metrics': {'patterns_processed': 0, 'unique_patterns': 0,
+                                       'saturation_ratio': 0.0, 'is_saturated': False}}
 
     chunk_bytes = str_to_bytes(chunk)
 
@@ -155,7 +163,16 @@ def _process_pattern_chunk(args: tuple) -> dict:
     chunk_patterns = {}  # hash -> {'pattern': str, 'count': int, 'positions': list}
     MAX_POSITIONS = 100  # Fewer positions per chunk to save memory
 
+    # Saturation tracking
+    patterns_processed = 0
+    is_saturated = False
+
     for i in range(len(hashes)):
+        # Early exit si hem arribat al límit de patrons únics
+        if len(chunk_patterns) >= MAX_UNIQUE_PATTERNS_PER_CHUNK:
+            is_saturated = True
+            break
+
         h = int(hashes[i])
         pos = int(starts[i])
         length = int(lengths[i])
@@ -164,6 +181,7 @@ def _process_pattern_chunk(args: tuple) -> dict:
         if not is_first and pos < overlap:
             continue
 
+        patterns_processed += 1
         global_pos = start_offset + pos
 
         if h in chunk_patterns:
@@ -177,7 +195,21 @@ def _process_pattern_chunk(args: tuple) -> dict:
                 'positions': [global_pos]
             }
 
-    return {'chunk_idx': chunk_idx, 'patterns': chunk_patterns}
+    # Calcular mètriques de saturació
+    unique_patterns = len(chunk_patterns)
+    # Ratio = únics / processats (1.0 = soroll pur, 0.0 = tot repetit)
+    saturation_ratio = unique_patterns / patterns_processed if patterns_processed > 0 else 0.0
+
+    return {
+        'chunk_idx': chunk_idx,
+        'patterns': chunk_patterns,
+        'saturation_metrics': {
+            'patterns_processed': patterns_processed,
+            'unique_patterns': unique_patterns,
+            'saturation_ratio': saturation_ratio,
+            'is_saturated': is_saturated
+        }
+    }
 
 
 def _process_block_chunk(args: tuple) -> dict:
@@ -568,8 +600,10 @@ class PatternDetector:
         # Limiting max_len creates scientific artifacts by detecting different patterns
         # at different iterations, making results incomparable.
 
-        # Chunk size: 5M chars (reduced for memory safety)
-        CHUNK_SIZE = 5_000_000
+        # Chunk size: 500K chars (reduced from 5M to prevent RAM explosion)
+        # With patterns 10-50 bits: 500K chunk generates ~20M hashes × 16 bytes = 320MB/chunk
+        # Much safer than 5M which generated 3.3GB/chunk!
+        CHUNK_SIZE = 500_000
         OVERLAP = max_len  # Overlap to catch patterns at boundaries
 
         # For small sequences, use direct processing
@@ -603,6 +637,11 @@ class PatternDetector:
         BATCH_SIZE = 50  # Process 50 chunks per batch, then recreate pool
         MAX_RETRIES = 2
 
+        # Saturation tracking (for noise detection)
+        total_patterns_processed = 0
+        total_unique_patterns = 0
+        saturated_chunks = 0
+
         # Create progress bar if tqdm available
         pbar = None
         if TQDM_AVAILABLE:
@@ -634,6 +673,13 @@ class PatternDetector:
                         result = future.result(timeout=300)  # 5 min timeout
                         chunk_patterns = result['patterns']
 
+                        # Aggregate saturation metrics
+                        sat_metrics = result.get('saturation_metrics', {})
+                        total_patterns_processed += sat_metrics.get('patterns_processed', 0)
+                        total_unique_patterns += sat_metrics.get('unique_patterns', 0)
+                        if sat_metrics.get('is_saturated', False):
+                            saturated_chunks += 1
+
                         # Merge into global patterns
                         for h, data in chunk_patterns.items():
                             if h in global_patterns:
@@ -644,10 +690,11 @@ class PatternDetector:
                             else:
                                 global_patterns[h] = data
 
-                        # Update progress bar
+                        # Update progress bar with saturation info
                         if pbar:
                             pbar.update(1)
-                            pbar.set_postfix_str(f"{len(global_patterns):,} patterns")
+                            sat_pct = (saturated_chunks / completed * 100) if completed > 0 else 0
+                            pbar.set_postfix_str(f"{len(global_patterns):,} pat, {sat_pct:.0f}% sat")
 
                     except Exception as e:
                         error_msg = str(e)
@@ -697,6 +744,27 @@ class PatternDetector:
         if failed_chunks:
             print(f"   [sliding] ⚠️ {len(failed_chunks)} chunks failed permanently", flush=True)
 
+        # Report saturation metrics (scientifically valuable for noise detection)
+        global_saturation_ratio = (total_unique_patterns / total_patterns_processed
+                                   if total_patterns_processed > 0 else 0.0)
+        saturation_pct = saturated_chunks / num_chunks * 100 if num_chunks > 0 else 0
+
+        print(f"   [sliding] 📊 Saturation metrics:")
+        print(f"      - Patterns processed: {total_patterns_processed:,}")
+        print(f"      - Unique patterns (pre-merge): {total_unique_patterns:,}")
+        print(f"      - Global saturation ratio: {global_saturation_ratio:.4f}")
+        print(f"      - Saturated chunks: {saturated_chunks}/{num_chunks} ({saturation_pct:.1f}%)")
+
+        # Scientific interpretation
+        if global_saturation_ratio > 0.9:
+            print(f"   [sliding] ⚠️ HIGH SATURATION DETECTED (ratio={global_saturation_ratio:.3f})")
+            print(f"             This indicates near-random/noise-like data (control variant?)")
+            print(f"             Few repeating patterns expected - scientifically valid result.")
+        elif global_saturation_ratio > 0.5:
+            print(f"   [sliding] 📈 Moderate pattern diversity (ratio={global_saturation_ratio:.3f})")
+        else:
+            print(f"   [sliding] ✓ Good pattern recurrence (ratio={global_saturation_ratio:.3f})")
+
         # Filter patterns with enough occurrences
         print(f"   [sliding] Filtering {len(global_patterns):,} unique patterns...")
         patterns = []
@@ -708,8 +776,21 @@ class PatternDetector:
                     'pattern_data': pattern_str,
                     'positions': data['positions'],
                     'method': 'sliding_window_numba_parallel',
-                    'recurrence': data['count']
+                    'recurrence': data['count'],
+                    'saturation_ratio': global_saturation_ratio  # Add to each pattern
                 })
+
+        # Store saturation metrics in class for later retrieval
+        self._last_saturation_metrics = {
+            'patterns_processed': total_patterns_processed,
+            'unique_patterns_pre_merge': total_unique_patterns,
+            'global_saturation_ratio': global_saturation_ratio,
+            'saturated_chunks': saturated_chunks,
+            'total_chunks': num_chunks,
+            'saturation_percentage': saturation_pct,
+            'interpretation': 'noise' if global_saturation_ratio > 0.9 else
+                            ('mixed' if global_saturation_ratio > 0.5 else 'structured')
+        }
 
         print(f"   [sliding] Done. {len(patterns):,} patterns after filtering.")
         return patterns
@@ -860,12 +941,19 @@ class PatternDetector:
         total_cores = os.cpu_count() or 4
         n_workers = max(1, int(total_cores * max_cpu_percent / 100))
 
-        print(f"      [block_chunked] Processing {num_chunks} chunks with {n_workers} workers...",
-              flush=True)
-
         all_patterns = {}  # pattern_data -> {'positions': [], 'count': 0}
         completed = 0
         BATCH_SIZE = 20
+
+        # Create progress bar
+        pbar = None
+        if TQDM_AVAILABLE:
+            pbar = tqdm(total=num_chunks, desc="      [block_chunked]",
+                       unit="chunk", leave=True, ncols=100,
+                       bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+        else:
+            print(f"      [block_chunked] Processing {num_chunks} chunks with {n_workers} workers...",
+                  flush=True)
 
         for batch_start in range(0, num_chunks, BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, num_chunks)
@@ -893,11 +981,23 @@ class PatternDetector:
                                     'positions': p['positions'],
                                     'count': p['count']
                                 }
+                        # Update progress bar
+                        if pbar:
+                            pbar.update(1)
+                            pbar.set_postfix({'patterns': len(all_patterns)}, refresh=False)
                     except Exception as e:
-                        print(f"      [block_chunked] Chunk error: {str(e)[:60]}", flush=True)
+                        if pbar:
+                            pbar.update(1)
+                        else:
+                            print(f"      [block_chunked] Chunk error: {str(e)[:60]}", flush=True)
 
-            print(f"      [block_chunked] {completed}/{num_chunks} chunks, "
-                  f"{len(all_patterns):,} patterns", flush=True)
+            # Fallback progress for non-tqdm
+            if not pbar:
+                print(f"      [block_chunked] {completed}/{num_chunks} chunks, "
+                      f"{len(all_patterns):,} patterns", flush=True)
+
+        if pbar:
+            pbar.close()
 
         # Convert to final pattern format
         patterns = []

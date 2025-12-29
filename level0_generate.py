@@ -658,16 +658,16 @@ def _welch_psd_from_gz(iterations: int, cfg: dict, max_bits_cap: int | None = No
         format_label = "v33" if is_v33 else "v32"
         print(f"[plot] {label}: streaming PSD via Welch from {rel} ({format_label}) | window={w_eff}, overlap={ov*100:.0f}%, max_windows={max_windows}")
 
-    # For v33, load and clean first
+    # For v33, load structural and extract observable
     if is_v33:
         from hsi_agents_project.level0.phi_snapshot_manager import PhiSnapshotManager
         manager = PhiSnapshotManager(data_dir=base)
         phi_structural, _ = manager.load_phi_state_structural(iterations)
-        phi_clean = phi_structural.replace('(', '').replace(')', '')
+        phi_observable = phi_structural.replace('(', '').replace(')', '')
 
         # Apply cap if needed
         if limit_samples is not None:
-            phi_clean = phi_clean[:limit_samples]
+            phi_observable = phi_observable[:limit_samples]
 
         # Process windows
         buf = []
@@ -675,9 +675,9 @@ def _welch_psd_from_gz(iterations: int, cfg: dict, max_bits_cap: int | None = No
         nwin = 0
         t0 = time.perf_counter()
         i = 0
-        N = len(phi_clean)
+        N = len(phi_observable)
         while i + w_eff <= N and nwin < max_windows:
-            window_bits = phi_clean[i:i+w_eff]
+            window_bits = phi_observable[i:i+w_eff]
             a = _bits_to_float64(window_bits)
             a = a - a.mean()
             spec = _np.fft.rfft(a)
@@ -794,25 +794,25 @@ def _sampling_psd_from_gz(iterations: int, cfg: dict, max_bits_cap: int | None =
         cap_txt = f", cap={limit_samples:,}" if limit_samples else ""
         print(f"[plot] {label}: sampling PSD from {rel} ({format_label}) | window={w_eff}, max_windows={max_windows}{cap_txt}")
 
-    # For v33, load and clean first
+    # For v33, load structural and extract observable
     if is_v33:
         from hsi_agents_project.level0.phi_snapshot_manager import PhiSnapshotManager
         manager = PhiSnapshotManager(data_dir=base)
         phi_structural, _ = manager.load_phi_state_structural(iterations)
-        phi_clean = phi_structural.replace('(', '').replace(')', '')
+        phi_observable = phi_structural.replace('(', '').replace(')', '')
 
         # Apply cap if needed
         if limit_samples is not None:
-            phi_clean = phi_clean[:limit_samples]
+            phi_observable = phi_observable[:limit_samples]
 
         # Process windows
         psd_acc = None
         nwin = 0
         t0 = time.perf_counter()
         i = 0
-        N = len(phi_clean)
+        N = len(phi_observable)
         while i + w_eff <= N and nwin < max_windows:
-            window_bits = phi_clean[i:i+w_eff]
+            window_bits = phi_observable[i:i+w_eff]
             a = _bits_to_float64(window_bits)
             a = a - a.mean()
             spec = _np.fft.rfft(a)
@@ -919,12 +919,12 @@ def _decide_spectral_method_auto(iterations: int, spec_cfg: dict, var: str | Non
         got = 0
 
         if is_v33:
-            # For v33, load structural and clean
+            # For v33, load structural and extract observable
             from hsi_agents_project.level0.phi_snapshot_manager import PhiSnapshotManager
             manager = PhiSnapshotManager(data_dir=base)
             phi_structural, _ = manager.load_phi_state_structural(iterations)
-            phi_clean = phi_structural.replace('(', '').replace(')', '')
-            got = min(len(phi_clean), limit)
+            phi_observable = phi_structural.replace('(', '').replace(')', '')
+            got = min(len(phi_observable), limit)
         else:
             # For v32, stream from gzip
             with gzip.open(gz_path, 'rt', encoding='utf-8') as f:

@@ -283,6 +283,114 @@ class OrderMetrics:
         }
 
     @staticmethod
+    def sensitivity_analysis_oei(
+        phi_structural: str,
+        variations: List[float] = None,
+        verbose: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Analyze OEI sensitivity to weight variations.
+
+        Tests how robust the OEI is when weights are perturbed ±10%, ±20%, etc.
+        Useful for demonstrating that results don't depend critically on
+        arbitrary weight choices.
+
+        Args:
+            phi_structural: Φ with parentheses structure
+            variations: List of weight deltas to test (default: [-0.1, 0, +0.1])
+            verbose: Print detailed output
+
+        Returns:
+            Dictionary with:
+            - base_oei: OEI with default weights
+            - components: The 4 component values (fixed, don't depend on weights)
+            - variations: List of {weights, oei} for each combination
+            - oei_range: (min, max) OEI across all variations
+            - oei_std: Standard deviation of OEI across variations
+            - robustness: 1 - (std / mean), measure of stability
+        """
+        if variations is None:
+            variations = [-0.1, 0.0, +0.1]
+
+        # Calculate components once (they don't depend on weights)
+        base_result = OrderMetrics.calculate_order_emergence_index(phi_structural)
+        components = {
+            'depth_organization': base_result['depth_organization'],
+            'entropy_gradient': base_result['entropy_gradient'],
+            'containment_regularity': base_result['containment_regularity'],
+            'balance_score': base_result['balance_score']
+        }
+        base_weights = base_result['weights']
+        base_oei = base_result['order_index']
+
+        # Generate all weight combinations
+        weight_keys = ['depth_organization', 'entropy_gradient',
+                       'containment_regularity', 'balance_score']
+
+        all_oeis = []
+        variation_results = []
+
+        # Test each weight independently
+        for key in weight_keys:
+            for delta in variations:
+                if delta == 0:
+                    continue  # Skip base case (already calculated)
+
+                # Create modified weights
+                modified = base_weights.copy()
+                modified[key] = max(0.05, modified[key] + delta)  # Min 5% weight
+
+                # Renormalize to sum to 1.0
+                total = sum(modified.values())
+                modified = {k: v/total for k, v in modified.items()}
+
+                # Calculate OEI with modified weights
+                oei = (
+                    modified['depth_organization'] * components['depth_organization'] +
+                    modified['entropy_gradient'] * components['entropy_gradient'] +
+                    modified['containment_regularity'] * components['containment_regularity'] +
+                    modified['balance_score'] * components['balance_score']
+                )
+
+                all_oeis.append(oei)
+                variation_results.append({
+                    'varied_component': key,
+                    'delta': delta,
+                    'weights': modified,
+                    'oei': oei,
+                    'diff_from_base': oei - base_oei
+                })
+
+        # Add base case
+        all_oeis.append(base_oei)
+
+        # Statistics
+        oei_array = np.array(all_oeis)
+        oei_min, oei_max = float(oei_array.min()), float(oei_array.max())
+        oei_mean = float(oei_array.mean())
+        oei_std = float(oei_array.std())
+        robustness = 1.0 - (oei_std / oei_mean) if oei_mean > 0 else 0.0
+
+        if verbose:
+            print(f"\n📊 OEI Sensitivity Analysis")
+            print(f"   Base OEI: {base_oei:.4f}")
+            print(f"   Range: [{oei_min:.4f}, {oei_max:.4f}]")
+            print(f"   Std: {oei_std:.4f}")
+            print(f"   Robustness: {robustness:.1%}")
+
+        return {
+            'base_oei': base_oei,
+            'base_weights': base_weights,
+            'components': components,
+            'variations': variation_results,
+            'oei_range': (oei_min, oei_max),
+            'oei_mean': oei_mean,
+            'oei_std': oei_std,
+            'robustness': robustness,
+            'num_variations_tested': len(all_oeis)
+        }
+
+    @staticmethod
     def calculate_containment_complexity(phi_structural: str) -> Dict[str, Any]:
         """
         Calculate complexity metrics for what Absolutes contain.
@@ -541,6 +649,106 @@ def create_order_report(phi_structural: str, output_path: Optional[str] = None) 
         print(f"✅ Order report saved to {output_path}")
 
     return report
+
+
+def compare_variants_oei_sensitivity(
+    variant_data: Dict[str, str],
+    variations: List[float] = None,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Compare OEI across variants with sensitivity analysis.
+
+    Tests whether the ranking of variants is robust to weight changes.
+    This is critical for scientific validity: if Variant B beats Control A
+    only with specific weights, the result is fragile.
+
+    Args:
+        variant_data: Dict mapping variant name to phi_structural string
+        variations: Weight deltas to test (default: [-0.1, 0, +0.1])
+        verbose: Print detailed output
+
+    Returns:
+        Dictionary with:
+        - variant_results: Per-variant sensitivity results
+        - ranking_stability: % of variations where ranking is preserved
+        - base_ranking: Ranking with default weights
+        - robustness_summary: Overall assessment
+    """
+    if variations is None:
+        variations = [-0.1, 0.0, +0.1]
+
+    # Calculate sensitivity for each variant
+    variant_results = {}
+    for name, phi_s in variant_data.items():
+        if phi_s:
+            variant_results[name] = OrderMetrics.sensitivity_analysis_oei(
+                phi_s, variations, verbose=False
+            )
+
+    if len(variant_results) < 2:
+        return {'error': 'Need at least 2 variants to compare'}
+
+    # Base ranking (with default weights)
+    base_ranking = sorted(
+        variant_results.keys(),
+        key=lambda v: variant_results[v]['base_oei'],
+        reverse=True
+    )
+
+    # Count how many weight variations preserve the ranking
+    # We check if the order A > B > C is preserved
+    num_variations = len(variant_results[base_ranking[0]]['variations'])
+    rankings_preserved = 0
+    total_tests = num_variations + 1  # +1 for base case
+
+    # Check base case (always preserved by definition)
+    rankings_preserved += 1
+
+    # For each variation, reconstruct OEIs and check ranking
+    for var_idx in range(num_variations):
+        var_ranking = sorted(
+            variant_results.keys(),
+            key=lambda v: variant_results[v]['variations'][var_idx]['oei']
+                          if var_idx < len(variant_results[v]['variations'])
+                          else variant_results[v]['base_oei'],
+            reverse=True
+        )
+        if var_ranking == base_ranking:
+            rankings_preserved += 1
+
+    ranking_stability = rankings_preserved / total_tests
+
+    # Summary statistics
+    summary = {
+        'ranking_stability': ranking_stability,
+        'base_ranking': base_ranking,
+        'variants_compared': len(variant_results),
+        'variations_tested': total_tests
+    }
+
+    if verbose:
+        print(f"\n📊 OEI Cross-Variant Sensitivity Analysis")
+        print(f"   Variants: {', '.join(base_ranking)}")
+        print(f"   Base ranking (by OEI): {' > '.join(base_ranking)}")
+        print(f"\n   Per-variant OEI:")
+        for v in base_ranking:
+            r = variant_results[v]
+            print(f"     {v}: {r['base_oei']:.4f} (range: {r['oei_range'][0]:.4f}-{r['oei_range'][1]:.4f})")
+        print(f"\n   Ranking stability: {ranking_stability:.1%} ({rankings_preserved}/{total_tests} variations)")
+
+        if ranking_stability >= 0.9:
+            print(f"   ✅ ROBUST: Ranking preserved in ≥90% of weight variations")
+        elif ranking_stability >= 0.7:
+            print(f"   ⚠️ MODERATE: Ranking preserved in 70-90% of variations")
+        else:
+            print(f"   ❌ FRAGILE: Ranking changes frequently with weight variations")
+
+    return {
+        'variant_results': variant_results,
+        'summary': summary,
+        'is_robust': ranking_stability >= 0.9
+    }
 
 
 if __name__ == "__main__":
