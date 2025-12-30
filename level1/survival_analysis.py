@@ -71,10 +71,16 @@ def load_patterns_from_data(analysis_data: dict) -> Dict[str, dict]:
     return patterns
 
 
-def compute_survival_stats(patterns_by_iter: Dict[int, Dict[str, dict]]) -> dict:
+def compute_survival_stats(patterns_by_iter: Dict[int, Dict[str, dict]],
+                           true_counts: Optional[Dict[int, int]] = None) -> dict:
     """Compute survival statistics between iterations.
 
     Dynamically handles any set of iterations (not necessarily consecutive).
+
+    Args:
+        patterns_by_iter: Dict mapping iteration -> pattern dict
+        true_counts: Optional dict of true pattern counts (before truncation).
+                     If provided, uses these for display instead of len(patterns).
     """
     iterations = sorted(patterns_by_iter.keys())
     if len(iterations) < 2:
@@ -113,8 +119,14 @@ def compute_survival_stats(patterns_by_iter: Dict[int, Dict[str, dict]]) -> dict
         lost_patterns[key] = lost
         new_patterns[str(i_to)] = new
 
+    # Use true_counts if provided, otherwise fall back to len(patterns)
+    if true_counts:
+        counts = {i: true_counts.get(i, len(sets[i])) for i in iterations}
+    else:
+        counts = {i: len(s) for i, s in sets.items()}
+
     return {
-        'counts': {i: len(s) for i, s in sets.items()},
+        'counts': counts,
         'core': core,
         'core_count': len(core),
         'transitions': transitions,
@@ -299,19 +311,28 @@ def run_survival_analysis(
             print(f"   ⚠️  Need at least 2 iterations for survival analysis (found {len(iterations)})")
         return generated
 
-    # Load patterns from each iteration
+    # Load patterns from each iteration and extract true_pattern_count
     patterns_by_iter = {}
+    true_counts = {}
     for iter_num in iterations:
         data = variant_data[iter_num].get('data', {})
         patterns_by_iter[iter_num] = load_patterns_from_data(data)
+
+        # Extract true_pattern_count from sampling_metadata if available
+        sampling_meta = data.get('patterns', {}).get('sampling_metadata', {})
+        true_count = sampling_meta.get('true_pattern_count', 0)
+        if true_count > 0:
+            true_counts[iter_num] = true_count
+            if verbose:
+                print(f"   📊 Iter {iter_num}: true_pattern_count = {true_count:,}")
 
     if not all(patterns_by_iter.values()):
         if verbose:
             print(f"   ⚠️  Some iterations have no pattern data")
         return generated
 
-    # Compute statistics
-    stats = compute_survival_stats(patterns_by_iter)
+    # Compute statistics with true counts if available
+    stats = compute_survival_stats(patterns_by_iter, true_counts if true_counts else None)
     threshold_analysis = find_threshold_hypothesis(patterns_by_iter, stats)
 
     # Create output subdirectory
@@ -381,45 +402,165 @@ def generate_survival_figures(
     generated = []
     iterations = sorted(patterns_by_iter.keys())
 
-    # Figure 1: Pattern Flow
-    fig, ax = plt.subplots(figsize=(12, 6))
-
+    # Figure 1: Pattern Flow - Sankey-style Diagram
     counts = stats['counts']
     trans = stats['transitions']
-
     n_iters = len(iterations)
-    x_positions = np.linspace(0.15, 0.85, n_iters)
 
+    # Calculate figure dimensions based on iterations
+    fig_width = max(12, 3 * n_iters)
+    fig, ax = plt.subplots(figsize=(fig_width, 8))
+
+    # Color palette
+    COLOR_SURVIVED = '#2ecc71'  # Emerald green
+    COLOR_LOST = '#e74c3c'      # Alizarin red
+    COLOR_NEW = '#3498db'       # Peter River blue
+    COLOR_NODE = '#34495e'      # Wet Asphalt
+
+    # Layout parameters
+    x_positions = np.linspace(0.08, 0.92, n_iters)
+    node_height = 0.5
+    node_width = 0.06
+    y_center = 0.5
+
+    # Find max count for normalization
+    max_count = max(counts.values()) if counts else 1
+
+    # Draw nodes (rectangles proportional to pattern count)
     for i, (iter_num, x) in enumerate(zip(iterations, x_positions)):
-        circle = plt.Circle((x, 0.5), 0.12, color='steelblue', alpha=0.7)
-        ax.add_patch(circle)
-        ax.text(x, 0.5, f"Iter {iter_num}\n{counts[iter_num]:,}",
-                ha='center', va='center', fontsize=12, fontweight='bold', color='white')
+        count = counts[iter_num]
+        # Height proportional to count (min 0.15, max 0.5)
+        h = max(0.15, 0.5 * (count / max_count))
 
-    # Draw arrows between consecutive iterations
+        rect = plt.Rectangle((x - node_width/2, y_center - h/2),
+                              node_width, h,
+                              facecolor=COLOR_NODE, edgecolor='white',
+                              linewidth=2, zorder=3)
+        ax.add_patch(rect)
+
+        # Label above node
+        ax.text(x, y_center + h/2 + 0.05, f'Iter {iter_num}',
+                ha='center', va='bottom', fontsize=11, fontweight='bold')
+        # Count inside/below node
+        ax.text(x, y_center, f'{count:,}',
+                ha='center', va='center', fontsize=10,
+                fontweight='bold', color='white', zorder=4)
+
+    # Draw flows between nodes
     for i in range(n_iters - 1):
         x1, x2 = x_positions[i], x_positions[i + 1]
         iter1, iter2 = iterations[i], iterations[i + 1]
         trans_key = f"{iter1}→{iter2}"
 
-        if trans_key in trans:
-            t = trans[trans_key]
-            ax.annotate('', xy=(x2 - 0.15, 0.5), xytext=(x1 + 0.15, 0.5),
-                        arrowprops=dict(arrowstyle='->', color='green', lw=2))
-            mid_x = (x1 + x2) / 2
-            ax.text(mid_x, 0.68, f"Survived: {t['survived']:,}\n({t['survival_rate']:.1f}%)",
-                    ha='center', fontsize=9, color='green')
-            ax.text(mid_x, 0.32, f"Lost: {t['lost']:,}\nNew: {t['new']:,}",
-                    ha='center', fontsize=9, color='red')
+        if trans_key not in trans:
+            continue
 
-    ax.text(0.5, 0.92, f"Core Patterns (all iters): {stats['core_count']:,}",
-            ha='center', fontsize=14, fontweight='bold', color='darkgreen')
+        t = trans[trans_key]
+        survived = t['survived']
+        lost = t['lost']
+        new = t['new']
+        total_from = counts[iter1]
+        total_to = counts[iter2]
+
+        # Normalize flow heights
+        h1 = max(0.15, 0.5 * (total_from / max_count))
+        h2 = max(0.15, 0.5 * (total_to / max_count))
+
+        # Calculate proportional heights for flows
+        if total_from > 0:
+            surv_h1 = h1 * (survived / total_from)
+            lost_h1 = h1 * (lost / total_from)
+        else:
+            surv_h1 = lost_h1 = 0
+
+        if total_to > 0:
+            surv_h2 = h2 * (survived / total_to)
+            new_h2 = h2 * (new / total_to)
+        else:
+            surv_h2 = new_h2 = 0
+
+        # Flow coordinates
+        x_start = x1 + node_width/2
+        x_end = x2 - node_width/2
+        x_mid = (x_start + x_end) / 2
+
+        # Draw SURVIVED flow (green, center band)
+        if survived > 0:
+            from matplotlib.patches import FancyBboxPatch, PathPatch
+            from matplotlib.path import Path as MPath
+
+            # Curved flow using bezier
+            verts = [
+                (x_start, y_center + surv_h1/2),  # top-left
+                (x_mid, y_center + surv_h1/2),
+                (x_mid, y_center + surv_h2/2),
+                (x_end, y_center + surv_h2/2),    # top-right
+                (x_end, y_center - surv_h2/2),    # bottom-right
+                (x_mid, y_center - surv_h2/2),
+                (x_mid, y_center - surv_h1/2),
+                (x_start, y_center - surv_h1/2),  # bottom-left
+                (x_start, y_center + surv_h1/2),  # close
+            ]
+            codes = [MPath.MOVETO] + [MPath.LINETO] * 7 + [MPath.CLOSEPOLY]
+            path = MPath(verts, codes)
+            patch = PathPatch(path, facecolor=COLOR_SURVIVED, alpha=0.6,
+                              edgecolor=COLOR_SURVIVED, linewidth=1, zorder=2)
+            ax.add_patch(patch)
+
+            # Label - use darker green for better contrast on light green flow
+            COLOR_SURVIVED_DARK = '#145a24'  # Dark forest green
+            ax.text(x_mid, y_center + 0.02, f'{survived:,}',
+                    ha='center', va='bottom', fontsize=10,
+                    color=COLOR_SURVIVED_DARK, fontweight='bold')
+            ax.text(x_mid, y_center - 0.02, f'({t["survival_rate"]:.0f}%)',
+                    ha='center', va='top', fontsize=9, color=COLOR_SURVIVED_DARK,
+                    fontweight='bold')
+
+        # Draw LOST flow (red, going down)
+        if lost > 0:
+            y_lost = y_center - h1/2 - 0.12
+            ax.annotate('', xy=(x_mid, y_lost),
+                        xytext=(x_start + 0.02, y_center - h1/2 + 0.02),
+                        arrowprops=dict(arrowstyle='->', color=COLOR_LOST,
+                                        lw=max(1, 3 * lost/max_count),
+                                        connectionstyle='arc3,rad=-0.2'))
+            ax.text(x_mid - 0.04, y_lost, f'−{lost:,}',
+                    ha='center', va='top', fontsize=10, fontweight='bold',
+                    color=COLOR_LOST)
+
+        # Draw NEW flow (blue, coming from top)
+        if new > 0:
+            y_new = y_center + h2/2 + 0.12
+            ax.annotate('', xy=(x_end - 0.02, y_center + h2/2 - 0.02),
+                        xytext=(x_mid, y_new),
+                        arrowprops=dict(arrowstyle='->', color=COLOR_NEW,
+                                        lw=max(1, 3 * new/max_count),
+                                        connectionstyle='arc3,rad=-0.2'))
+            ax.text(x_mid + 0.04, y_new, f'+{new:,}',
+                    ha='center', va='bottom', fontsize=10, fontweight='bold',
+                    color=COLOR_NEW)
+
+    # Core patterns annotation
+    ax.text(0.5, 0.05, f'Core Patterns (present in all iterations): {stats["core_count"]:,}',
+            ha='center', fontsize=12, fontweight='bold', color=COLOR_SURVIVED,
+            transform=ax.transAxes)
+
+    # Legend
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Patch(facecolor=COLOR_SURVIVED, alpha=0.6, label='Survived'),
+        Line2D([0], [0], color=COLOR_LOST, lw=2, label='Lost'),
+        Line2D([0], [0], color=COLOR_NEW, lw=2, label='New'),
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', frameon=True,
+              fancybox=True, framealpha=0.9)
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_aspect('equal')
+    ax.set_aspect('auto')
     ax.axis('off')
-    ax.set_title(f'Pattern Survival Flow - Variant {variant}', fontsize=14)
+    ax.set_title(f'Pattern Survival Flow - Variant {variant}', fontsize=14, fontweight='bold')
 
     fname = f'survival_flow_{variant}.{fmt}'
     plt.tight_layout()
@@ -563,8 +704,10 @@ def main():
     import re
 
     results_dir.mkdir(parents=True, exist_ok=True)
-    pattern = str(results_dir / f"level1_analysis_var{args.variant}_iter*_min*_max*.json")
-    files = glob.glob(pattern)
+    # Try both naming conventions
+    pattern1 = str(results_dir / f"var_{args.variant}_iter*_min*_max*.json")
+    pattern2 = str(results_dir / f"level1_analysis_var{args.variant}_iter*_min*_max*.json")
+    files = glob.glob(pattern1) + glob.glob(pattern2)
 
     if not files:
         print(f"❌ No analysis files found for variant {args.variant}")

@@ -802,9 +802,13 @@ def find_latest_results(results_dir: str = "results/level1/analysis") -> Optiona
 def find_results_by_variant(variant: str, iteration: int,
                            results_dir: str = "results/level1/analysis") -> Optional[Path]:
     """Find results file for a specific variant and iteration."""
-    pattern = f"level1_analysis_var{variant}_iter{iteration}.json"
-    results_path = Path(results_dir) / pattern
-    return results_path if results_path.exists() else None
+    results_path = Path(results_dir)
+    # Search for pattern: var_X_iterY_*.json
+    matches = list(results_path.glob(f"var_{variant}_iter{iteration}_*.json"))
+    if matches:
+        # Return the most recent one if multiple exist
+        return sorted(matches)[-1]
+    return None
 
 
 def main():

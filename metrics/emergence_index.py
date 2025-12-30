@@ -1,24 +1,40 @@
 """
-🌌 Emergence Index — Metric for Level 2 Potential in HSI
+🌌 Structural Emergence Index (SEI) — Metric for Level 2 Potential in HSI
 
-This module calculates the "Emergence Index", a composite metric that estimates
-the potential of a Φ sequence to exhibit emergent physical-like behavior.
+This module calculates the "Structural Emergence Index" (SEI), a composite metric
+designed to detect the potential for emergence of PHYSICAL LAWS in Φ sequences.
 
-The index combines three fundamental indicators:
-1. Criticality (1/f spectrum): Systems at the "edge of chaos" show 1/f noise
-2. Lempel-Ziv Complexity: Neither pure order nor pure chaos = maximum potential
-3. Long-Range Coherence: Mutual Information between distant regions
+IMPORTANT: Unlike "Edge of Chaos" metrics (Langton 1990), SEI is specifically
+designed for HSI theory where we seek emergence of stable physical laws, not
+maximal computational capacity at the chaos boundary.
 
-A higher Emergence Index suggests the variant has more potential for generating
-complex emergent structures at Level 2 (physical law-like behavior).
+The SEI combines four fundamental indicators:
 
-Theoretical basis:
-- 1/f noise indicates self-organized criticality (Bak et al., 1987)
-- Intermediate complexity indicates optimal computational capacity (Langton, 1990)
-- Long-range correlations indicate coherent global structure
+1. ORDER (30%) — Compressibility via Lempel-Ziv
+   Physical laws are compressible (can be described with short equations).
+   A universe with stable laws has LOW LZ complexity, not intermediate.
+   Score = 1 - LZ (order is rewarded, randomness penalized)
+
+2. HIERARCHY (30%) — Multi-scale structure via Hierarchical Block Entropy
+   Physical laws operate across scales (quantum → classical → cosmological).
+   High hierarchy indicates potential for scale-invariant emergent physics.
+
+3. COHERENCE (20%) — Long-range correlations via Mutual Information
+   Physical constants are the same everywhere in the universe.
+   High coherence indicates law constancy across distant regions.
+
+4. NON-RANDOMNESS (20%) — Combined DFA (Hurst) + Spectrum analysis
+   Random sequences cannot sustain stable physical laws.
+   Penalizes systems with H ≈ 0.5 (white noise) or flat spectrum.
+
+Scientific basis:
+- Compressibility ↔ law existence (Chaitin, 1987; Solomonoff, 1964)
+- Multi-scale structure ↔ renormalization group (Wilson, 1971)
+- Long-range order ↔ phase coherence (Anderson, 1972)
+- Non-randomness ↔ deterministic dynamics (Peng et al., 1994)
 
 Author: Iban Borràs with Augment Agent collaboration
-Date: December 2024
+Date: December 2024, reformulated December 2025
 """
 
 import numpy as np
@@ -119,10 +135,23 @@ def _get_adaptive_workers(base_workers: int, ram_threshold: float = 75.0,
 
 def _load_emergence_weights() -> Dict[str, float]:
     """
-    Load Emergence Index component weights from config.json if available.
+    Load Structural Emergence Index (SEI) component weights from config.json.
 
     The weights determine how each component contributes to the final index.
     See the comment block in calculate_emergence_index() for scientific justification.
+
+    STRUCTURAL EMERGENCE INDEX (SEI) - Dec 2025 Reformulation:
+
+    Unlike "Edge of Chaos" metrics (Langton 1990), SEI is designed to detect
+    emergence of PHYSICAL LAWS, which have different characteristics:
+
+    1. Physical laws = Compressibility: A universe with laws is highly compressible
+       (can be described with short equations). Low LZ is GOOD, not bad.
+
+    2. Multi-scale hierarchy: Physical laws operate across scales
+       (quantum → classical → cosmological). Hierarchy is key.
+
+    3. Randomness is the worst case: A random universe cannot have stable laws.
 
     Returns:
         Dictionary with weights for each component, summing to 1.0
@@ -130,13 +159,13 @@ def _load_emergence_weights() -> Dict[str, float]:
     from pathlib import Path
     import json
 
-    # Default weights with scientific justification
+    # Default weights for STRUCTURAL EMERGENCE (not edge-of-chaos)
+    # Scientific justification in calculate_emergence_index() docstring
     defaults = {
-        'dfa': 0.25,         # Hurst exponent - most robust for long-range correlations
-        'criticality': 0.25, # 1/f spectrum - classic SOC signature
-        'coherence': 0.20,   # Long-range MI - direct correlation measure
-        'hierarchy': 0.15,   # HBE - multi-scale structure
-        'complexity': 0.15   # LZ - algorithmic complexity approximation
+        'order': 0.30,       # (1 - LZ) Compressibility = physical laws
+        'hierarchy': 0.30,   # Multi-scale structure = emergent physics
+        'coherence': 0.20,   # Long-range MI = law constancy across space
+        'non_randomness': 0.20  # Penalize random systems (DFA + criticality)
     }
 
     try:
@@ -186,12 +215,17 @@ def _decompress_to_temp(gz_path, verbose: bool = False) -> Optional[str]:
     temp_dir = gz_path.parent
     temp_path = temp_dir / f".tmp_{gz_path.stem}_mmap.bin"
 
+    # Estimate decompressed size (gzip ratio ~7-10x for binary)
+    compressed_size = gz_path.stat().st_size
+    estimated_size = compressed_size * 8  # Conservative estimate
+
     if verbose:
         print(f"   📦 Decompressing to temp file for mmap access...", flush=True)
-        print(f"      Source: {gz_path.name} ({gz_path.stat().st_size / 1e6:.1f} MB)", flush=True)
+        print(f"      Source: {gz_path.name} ({compressed_size / 1e6:.1f} MB)", flush=True)
 
     try:
         import time
+        from tqdm import tqdm
         t0 = time.time()
 
         with gzip.open(gz_path, 'rb') as f_in:
@@ -199,14 +233,25 @@ def _decompress_to_temp(gz_path, verbose: bool = False) -> Optional[str]:
                 # Stream in chunks to avoid loading all in RAM
                 chunk_size = 64 * 1024 * 1024  # 64 MB chunks
                 total_written = 0
+
+                # Progress bar with estimated size
+                pbar = tqdm(total=estimated_size, unit='B', unit_scale=True,
+                           desc="      Decompressing", disable=not verbose,
+                           leave=False)
+
                 while True:
                     chunk = f_in.read(chunk_size)
                     if not chunk:
                         break
                     f_out.write(chunk)
                     total_written += len(chunk)
-                    if verbose and total_written % (256 * 1024 * 1024) == 0:
-                        print(f"      Decompressed: {total_written / 1e9:.1f} GB...", flush=True)
+                    pbar.update(len(chunk))
+
+                # Adjust total if we went over estimate
+                if total_written > estimated_size:
+                    pbar.total = total_written
+                    pbar.refresh()
+                pbar.close()
 
         if verbose:
             elapsed = time.time() - t0
@@ -525,73 +570,79 @@ def _lz76_pure_python(sequence: str, verbose: bool = True) -> int:
     return complexity
 
 
-def calculate_long_range_mutual_info(sequence: str, 
+def calculate_long_range_mutual_info(sequence: str,
                                       block_size: int = 100,
                                       max_distance: int = 10000) -> float:
     """
     Calculate mutual information between distant blocks.
-    
+
     High MI at long distances indicates global coherence.
-    
+    Optimized with numpy vectorization.
+
     Args:
         sequence: Binary string
         block_size: Size of blocks to compare
         max_distance: Maximum distance between blocks
-        
+
     Returns:
         Average MI ratio (actual MI / max possible MI)
     """
     n = len(sequence)
     if n < block_size * 2 + max_distance:
         max_distance = (n - block_size * 2) // 2
-    
+
     if max_distance < block_size:
         return 0.0
-    
+
+    # Convert to numpy array once (much faster for slicing)
+    seq_array = np.frombuffer(sequence.encode('ascii'), dtype=np.uint8) - ord('0')
+
     # Sample multiple block pairs at various distances
-    distances = np.linspace(block_size, max_distance, min(20, max_distance // block_size))
+    n_distances = min(20, max_distance // block_size)
+    distances = np.linspace(block_size, max_distance, n_distances).astype(int)
     mi_values = []
-    
+
     for dist in distances:
-        dist = int(dist)
         # Sample multiple pairs at this distance
         n_samples = min(10, (n - block_size - dist) // (block_size * 2))
-        
+
         for _ in range(max(1, n_samples)):
             start1 = np.random.randint(0, n - block_size - dist)
             start2 = start1 + dist
-            
-            block1 = sequence[start1:start1 + block_size]
-            block2 = sequence[start2:start2 + block_size]
-            
-            # Calculate MI via joint and marginal probabilities
-            mi = _calculate_block_mi(block1, block2)
+
+            block1 = seq_array[start1:start1 + block_size]
+            block2 = seq_array[start2:start2 + block_size]
+
+            # Calculate MI via joint and marginal probabilities (vectorized)
+            mi = _calculate_block_mi_fast(block1, block2)
             mi_values.append(mi)
-    
+
     return np.mean(mi_values) if mi_values else 0.0
 
 
-def _calculate_block_mi(block1: str, block2: str) -> float:
-    """Calculate mutual information between two binary blocks."""
-    # Count joint occurrences of bit pairs
-    joint = np.zeros((2, 2))
-    for b1, b2 in zip(block1, block2):
-        joint[int(b1), int(b2)] += 1
+def _calculate_block_mi_fast(block1: np.ndarray, block2: np.ndarray) -> float:
+    """Calculate mutual information between two binary blocks (vectorized)."""
+    n = len(block1)
 
-    joint /= len(block1)  # Normalize to probabilities
+    # Count joint occurrences vectorized: 2*b1 + b2 gives indices 0,1,2,3
+    combined = 2 * block1 + block2
+    counts = np.bincount(combined, minlength=4)
+    joint = counts.reshape(2, 2) / n
 
     # Marginal probabilities
     p1 = joint.sum(axis=1)
     p2 = joint.sum(axis=0)
 
-    # Mutual Information: I(X;Y) = sum p(x,y) * log(p(x,y) / (p(x)*p(y)))
-    mi = 0.0
-    for i in range(2):
-        for j in range(2):
-            if joint[i, j] > 0 and p1[i] > 0 and p2[j] > 0:
-                mi += joint[i, j] * np.log2(joint[i, j] / (p1[i] * p2[j]))
+    # Outer product for denominator
+    outer = np.outer(p1, p2)
 
-    # Normalize by maximum possible MI (1 bit for binary)
+    # Mutual Information with masking for valid entries
+    valid = (joint > 0) & (outer > 0)
+    if not np.any(valid):
+        return 0.0
+
+    mi = np.sum(joint[valid] * np.log2(joint[valid] / outer[valid]))
+
     return max(0.0, mi)
 
 
@@ -1226,47 +1277,113 @@ def calculate_emergence_index(sequence: str,
         'interpretation': dfa_result['interpretation']
     }
 
-    # Composite Emergence Index (weighted average)
+    # =========================================================================
+    # STRUCTURAL EMERGENCE INDEX (SEI) - Dec 2025 Reformulation
+    # =========================================================================
     #
-    # SCIENTIFIC JUSTIFICATION OF WEIGHTS (Dec 2025 review):
+    # SCIENTIFIC JUSTIFICATION:
     #
-    # 1. DFA (25%): Detrended Fluctuation Analysis - Most robust metric for
-    #    detecting long-range correlations in non-stationary time series.
-    #    Insensitive to local trends and artifacts. (Peng et al., 1994)
-    #    Hurst ≈ 0.5-0.8 indicates persistent correlations typical of complex systems.
+    # Unlike "Edge of Chaos" metrics (Langton 1990), the SEI is designed to
+    # detect emergence of PHYSICAL LAWS, which have different characteristics:
     #
-    # 2. Criticality (25%): Power spectrum slope ≈ -1 (1/f noise) is the classic
-    #    signature of self-organized criticality. (Bak, Tang & Wiesenfeld, 1987)
-    #    Systems at criticality exhibit optimal information processing.
+    # 1. ORDER (30%) - Physical laws = Compressibility
+    #    A universe with stable physical laws is highly compressible because
+    #    it can be described with short equations (Newton, Maxwell, Einstein).
+    #    LZ complexity close to 1.0 means RANDOM = no laws = bad.
+    #    LZ complexity close to 0.0 means ORDERED = compressible = good.
+    #    Score = 1 - LZ (inverted: order is rewarded, not penalized)
     #
-    # 3. Coherence (20%): Long-range Mutual Information measures direct correlations
-    #    between distant regions. Lower weight because it's sample-size sensitive
-    #    and can be partially redundant with DFA.
+    # 2. HIERARCHY (30%) - Multi-scale structure
+    #    Physical laws operate across scales (quantum → classical → cosmological).
+    #    Hierarchical Block Entropy measures if structure exists at multiple
+    #    scales. High hierarchy = emergent physics potential.
     #
-    # 4. Hierarchy (15%): Hierarchical Block Entropy captures multi-scale structure.
-    #    Lower weight because it can be redundant with DFA and is more sensitive
-    #    to block size choices.
+    # 3. COHERENCE (20%) - Long-range correlations
+    #    Physical constants are the same everywhere in the universe.
+    #    Long-range Mutual Information measures if distant regions share
+    #    structure. High coherence = law constancy across space.
     #
-    # 5. Complexity (15%): Lempel-Ziv complexity approximates algorithmic complexity.
-    #    Lowest weight because it cannot distinguish structured complexity from
-    #    pure randomness without additional context (Grassberger, 1986).
+    # 4. NON-RANDOMNESS (20%) - Combined DFA + Criticality
+    #    Random sequences (H ≈ 0.5, white noise spectrum) cannot sustain
+    #    stable physical laws. This component penalizes randomness using:
+    #    - DFA: Hurst exponent (H > 0.5 = persistent correlations)
+    #    - Criticality: Spectrum slope (slope < 0 = structured)
+    #    Score = average of both, rewarding deviation from pure randomness.
     #
     # These weights can be customized via config.json → metrics.emergence_weights
+    # =========================================================================
     weights = _load_emergence_weights()
 
+    # Calculate component scores for SEI
+    order_score = 1.0 - lz  # Invert LZ: low LZ = high order = good
+
+    # Non-randomness: combine DFA and criticality to penalize pure randomness
+    # H = 0.5 is white noise → score 0; H > 0.6 is persistent → score increases
+    # Slope near 0 is white noise → score 0; slope < -0.5 is structured → score increases
+    dfa_nonrandom = max(0, (hurst - 0.5) * 2) if not np.isnan(hurst) else 0  # 0.5→0, 1.0→1
+    crit_nonrandom = max(0, min(1, -slope)) if slope < 0 else 0  # slope -1→1, 0→0
+    non_randomness_score = (dfa_nonrandom + crit_nonrandom) / 2
+
     emergence_index = (
-        weights['criticality'] * criticality_score +
-        weights['complexity'] * complexity_score +
-        weights['coherence'] * coherence_score +
+        weights['order'] * order_score +
         weights['hierarchy'] * hierarchy_score +
-        weights['dfa'] * dfa_score
+        weights['coherence'] * coherence_score +
+        weights['non_randomness'] * non_randomness_score
     )
 
-    results['emergence_index'] = emergence_index
+    # Store detailed scores for analysis
+    results['order'] = {
+        'lz_normalized': lz,
+        'order_score': order_score,
+        'interpretation': f"Order = {order_score:.1%} (LZ={lz:.3f}, lower=more ordered)"
+    }
+    results['non_randomness'] = {
+        'dfa_component': dfa_nonrandom,
+        'criticality_component': crit_nonrandom,
+        'score': non_randomness_score,
+        'interpretation': f"Non-random = {non_randomness_score:.1%} (H={hurst:.2f}, slope={slope:.2f})"
+    }
+
+    # =========================================================================
+    # EDGE OF CHAOS INDEX (ECI) - Original Langton-inspired metric
+    # =========================================================================
+    # Preserved for comparison: seeks the computational "sweet spot" between
+    # order and chaos (Langton 1990, Kauffman 1993).
+    #
+    # Components (original weights):
+    # - Criticality (25%): 1/f spectrum = self-organized criticality
+    # - Complexity (25%): LZ ≈ 0.5 = edge of chaos (penalize both extremes)
+    # - Coherence (20%): Long-range MI = global structure
+    # - Hierarchy (15%): Multi-scale entropy
+    # - DFA (15%): Hurst exponent ≈ 0.8-1.0 = 1/f correlations
+    # =========================================================================
+
+    # LZ score for ECI: peak at 0.5 (edge of chaos)
+    if lz <= 0.3:
+        eci_lz_score = 0.7 + (lz / 0.3) * 0.3  # 0→0.7, 0.3→1.0
+    elif lz <= 0.7:
+        eci_lz_score = 1.0  # Ideal range
+    else:
+        eci_lz_score = max(0, 1.0 - (lz - 0.7) / 0.3)  # 0.7→1.0, 1.0→0
+
+    edge_of_chaos_index = (
+        0.25 * criticality_score +
+        0.25 * eci_lz_score +
+        0.20 * coherence_score +
+        0.15 * hierarchy_score +
+        0.15 * dfa_score
+    )
+
+    results['edge_of_chaos_index'] = edge_of_chaos_index
+    results['eci_interpretation'] = _interpret_eci(edge_of_chaos_index)
+
+    # SEI is the main emergence_index
+    results['emergence_index'] = emergence_index  # SEI
+    results['structural_emergence_index'] = emergence_index  # Alias
     results['component_weights'] = weights
     results['interpretation'] = _interpret_emergence(emergence_index)
 
-    log(f"✅ Emergence Index: {emergence_index:.4f}")
+    log(f"✅ SEI (Structural): {emergence_index:.4f} | ECI (Edge of Chaos): {edge_of_chaos_index:.4f}")
 
     return results
 
@@ -1308,20 +1425,77 @@ def _interpret_mi(mi: float) -> str:
 
 
 def _interpret_emergence(index: float) -> str:
-    """Interpret composite emergence index."""
+    """Interpret Structural Emergence Index (SEI)."""
     if index < 0.3:
-        return "Low emergence potential (random or trivially ordered)"
+        return "Low structure (random, no stable laws possible)"
     elif index < 0.5:
-        return "Moderate emergence potential"
+        return "Moderate structure (some law-like patterns)"
     elif index < 0.7:
-        return "High emergence potential (good candidate for Level 2)"
+        return "High structure (good candidate for physical laws)"
     else:
-        return "Very high emergence potential (strong Level 2 candidate)"
+        return "Very high structure (strong potential for emergent physics)"
+
+
+def _interpret_eci(index: float) -> str:
+    """Interpret Edge of Chaos Index (ECI)."""
+    if index < 0.3:
+        return "Far from criticality (too ordered or too chaotic)"
+    elif index < 0.5:
+        return "Approaching criticality (some computational potential)"
+    elif index < 0.7:
+        return "Near edge of chaos (good computational capacity)"
+    else:
+        return "At edge of chaos (optimal for complex emergence)"
 
 
 # =============================================================================
 # STREAMING ANALYSIS FOR LARGE SEQUENCES
 # =============================================================================
+
+# Numba-accelerated run-length encoding kernel
+_RUN_LENGTH_KERNEL = None
+
+def _get_run_length_numba_kernel():
+    """Get Numba-compiled run-length encoder."""
+    try:
+        from numba import njit
+
+        @njit(cache=True)
+        def run_length_kernel(seq_array):
+            """
+            Calculate run lengths from binary array.
+            Returns array of run lengths.
+            """
+            n = len(seq_array)
+            if n == 0:
+                return np.zeros(0, dtype=np.int32)
+
+            # First pass: count runs
+            n_runs = 1
+            for i in range(1, n):
+                if seq_array[i] != seq_array[i-1]:
+                    n_runs += 1
+
+            # Second pass: fill run lengths
+            runs = np.zeros(n_runs, dtype=np.int32)
+            run_idx = 0
+            run_length = 1
+
+            for i in range(1, n):
+                if seq_array[i] == seq_array[i-1]:
+                    run_length += 1
+                else:
+                    runs[run_idx] = run_length
+                    run_idx += 1
+                    run_length = 1
+            runs[run_idx] = run_length
+
+            return runs
+
+        return run_length_kernel
+    except ImportError:
+        return None
+
 
 def _calculate_phi_ratios_chunk(chunk_str: str, max_ratios: int = 1000) -> dict:
     """
@@ -1329,57 +1503,72 @@ def _calculate_phi_ratios_chunk(chunk_str: str, max_ratios: int = 1000) -> dict:
     Returns partial data that can be aggregated across chunks.
 
     IMPORTANT: Samples at most max_ratios to prevent memory explosion.
-    With 381 chunks × 25M ratios = 9.5B ratios → 72GB memory!
-    Instead: 381 chunks × 1000 ratios = 381K ratios → ~3MB memory.
+    Uses Numba-accelerated run-length encoding for 50-100x speedup.
     """
+    global _RUN_LENGTH_KERNEL
+
     PHI = 1.618033988749895
     n = len(chunk_str)
 
     if n < 100:
         return {'run_ratios': [], 'density_ratios': [], 'phi_close_count': 0, 'total_runs': 0}
 
-    # Method 1: Run-length ratios (SAMPLED to prevent memory explosion)
-    runs = []
-    current_bit = chunk_str[0]
-    run_length = 1
+    # Convert to numpy array once
+    seq_array = np.frombuffer(chunk_str.encode('ascii'), dtype=np.uint8) - ord('0')
 
-    for i in range(1, n):
-        if chunk_str[i] == current_bit:
-            run_length += 1
-        else:
-            runs.append(run_length)
-            current_bit = chunk_str[i]
-            run_length = 1
-    runs.append(run_length)
+    # Try Numba-accelerated version
+    if _RUN_LENGTH_KERNEL is None:
+        _RUN_LENGTH_KERNEL = _get_run_length_numba_kernel()
+
+    if _RUN_LENGTH_KERNEL is not None:
+        # Fast Numba path
+        runs = _RUN_LENGTH_KERNEL(seq_array)
+    else:
+        # Fallback to numpy (still faster than pure Python)
+        # Find transition points
+        transitions = np.where(np.diff(seq_array) != 0)[0] + 1
+        transitions = np.concatenate([[0], transitions, [n]])
+        runs = np.diff(transitions).astype(np.int32)
 
     # Calculate ratios between consecutive runs - SAMPLED
     total_runs = len(runs)
     run_ratios = []
-    phi_close_count = 0  # Count how many are close to φ (for aggregate stats)
+    phi_close_count = 0
 
-    if len(runs) >= 2:
+    if total_runs >= 2:
         # Sample uniformly if too many runs
-        step = max(1, (len(runs) - 1) // max_ratios)
+        step = max(1, (total_runs - 1) // max_ratios)
 
-        for i in range(0, len(runs) - 1, step):
-            if runs[i] > 0:
-                ratio = runs[i + 1] / runs[i]
-                # Only keep ratios in reasonable range
-                if 0.1 < ratio < 10:
-                    run_ratios.append(ratio)
-                    # Count φ-proximity for aggregate stats
-                    if abs(ratio - PHI) < 0.3 or abs(ratio - 1/PHI) < 0.2:
-                        phi_close_count += 1
+        # Vectorized ratio calculation for sampled indices
+        indices = np.arange(0, total_runs - 1, step)
+        if len(indices) > 0:
+            numerators = runs[indices + 1].astype(np.float64)
+            denominators = runs[indices].astype(np.float64)
 
-    # Method 2: Density ratios in nested regions
+            # Avoid division by zero
+            valid = denominators > 0
+            ratios = np.zeros(len(indices))
+            ratios[valid] = numerators[valid] / denominators[valid]
+
+            # Filter to reasonable range
+            mask = (ratios > 0.1) & (ratios < 10)
+            run_ratios = ratios[mask].tolist()
+
+            # Count φ-proximity
+            phi_close = np.abs(ratios[mask] - PHI) < 0.3
+            inv_phi_close = np.abs(ratios[mask] - 1/PHI) < 0.2
+            phi_close_count = int(np.sum(phi_close | inv_phi_close))
+
+    # Method 2: Density ratios (already efficient with numpy)
     density_ratios = []
-    # Check density at φ-related positions
     phi_pos = int(n / PHI)
     if phi_pos > 10 and phi_pos < n - 10:
-        left_density = chunk_str[:phi_pos].count('1') / phi_pos
-        right_density = chunk_str[phi_pos:].count('1') / (n - phi_pos)
-        if right_density > 0:
-            density_ratios.append(left_density / right_density if right_density > 0.01 else 0)
+        left_ones = np.sum(seq_array[:phi_pos])
+        right_ones = np.sum(seq_array[phi_pos:])
+        left_density = left_ones / phi_pos
+        right_density = right_ones / (n - phi_pos)
+        if right_density > 0.01:
+            density_ratios.append(left_density / right_density)
 
     return {
         'run_ratios': run_ratios,
@@ -1478,6 +1667,7 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
     from pathlib import Path
     from bitarray import bitarray
     from concurrent.futures import ProcessPoolExecutor, as_completed
+    from tqdm import tqdm
 
     def log(msg):
         if verbose:
@@ -1577,7 +1767,13 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             completed = start_chunk
             base_workers = n_workers  # Store original worker count for adaptive scaling
 
-            for batch_start in range(start_chunk, n_chunks, batch_size):
+            # Single unified progress bar for all chunks
+            pbar_main = tqdm(total=n_chunks, initial=start_chunk,
+                            desc="      Processing chunks", unit="chunk",
+                            disable=not verbose, leave=True)
+
+            n_batches = (n_chunks - start_chunk + batch_size - 1) // batch_size
+            for batch_idx, batch_start in enumerate(range(start_chunk, n_chunks, batch_size)):
                 batch_end = min(batch_start + batch_size, n_chunks)
 
                 # Adaptive worker adjustment based on RAM usage
@@ -1600,8 +1796,8 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                 with ProcessPoolExecutor(max_workers=current_workers) as executor:
                     futures = {executor.submit(_process_chunk, args): args for args in chunk_args}
 
+                    # Process futures as they complete, update main progress bar
                     for future in as_completed(futures):
-                        completed += 1
                         chunk_info = futures[future]
                         try:
                             result = future.result(timeout=300)  # 5 min timeout per chunk
@@ -1627,6 +1823,10 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                                 batch_failed.append(chunk_info)
                             if verbose:
                                 log(f"   ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
+
+                        # Update main progress bar per chunk (not per batch)
+                        completed += 1
+                        pbar_main.update(1)
 
                 # Retry failed chunks sequentially (safer) - wait for RAM first
                 if batch_failed:
@@ -1660,12 +1860,6 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                                     failed_chunks.append(args[1])
                                     log(f"   ❌ Chunk {args[1]} failed permanently")
 
-                # Progress log after each batch
-                pct = completed / n_chunks * 100
-                elapsed = time.time() - t0
-                eta = (elapsed / completed) * (n_chunks - completed) if completed > 0 else 0
-                log(f"   📊 Progress: {completed}/{n_chunks} ({pct:.1f}%) - ETA: {eta/60:.1f} min")
-
                 # Save checkpoint every CHECKPOINT_INTERVAL chunks
                 if completed % CHECKPOINT_INTERVAL < batch_size and completed > start_chunk:
                     try:
@@ -1688,6 +1882,9 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
 
                 # Clear chunk_args to free memory
                 del chunk_args
+
+            # Close main progress bar
+            pbar_main.close()
 
             # Remove checkpoint file on successful completion (outside for loop)
             if checkpoint_path.exists() and not failed_chunks:
@@ -1750,14 +1947,14 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             with ProcessPoolExecutor(max_workers=current_workers) as executor:
                 futures = {executor.submit(_process_chunk, args): args for args in batch_args}
 
-                for future in as_completed(futures):
+                # Progress bar for chunks - leave=True to keep the bar visible after completion
+                pbar = tqdm(as_completed(futures), total=len(futures),
+                            desc="      Processing chunks",
+                            unit="chunk", leave=True, disable=not verbose)
+
+                for future in pbar:
                     completed += 1
                     chunk_info = futures[future]
-                    if verbose and (completed % max(1, n_chunks // 10) == 0 or completed == n_chunks):
-                        pct = completed / n_chunks * 100
-                        elapsed = time.time() - t0
-                        eta = (elapsed / completed) * (n_chunks - completed) if completed > 0 else 0
-                        log(f"      Progress: {completed}/{n_chunks} ({pct:.0f}%) - ETA: {eta/60:.1f} min")
 
                     try:
                         result = future.result(timeout=300)
@@ -1782,6 +1979,7 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                             failed_chunks.append(chunk_info)
                         if verbose:
                             log(f"   ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
+                pbar.close()
 
         # Retry failed chunks sequentially - wait for RAM first
         if failed_chunks:
@@ -1851,36 +2049,31 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
     # Compute scores (same logic as calculate_emergence_index)
     criticality_score = max(0, 1 - abs(avg_slope + 1) / 2) if not np.isnan(avg_slope) else 0
 
-    if np.isnan(avg_lz):
-        complexity_score = 0
-    elif avg_lz <= 0.3:
-        complexity_score = 0.7 + (avg_lz / 0.3) * 0.3
-    elif avg_lz <= 0.7:
-        complexity_score = 1.0
-    else:
-        complexity_score = max(0, 1.0 - (avg_lz - 0.7) / 0.3)
+    # === SEI Component Scores (aligned with non-streaming mode) ===
 
-    coherence_score = min(1.0, avg_mi * 10) if not np.isnan(avg_mi) else 0
+    # ORDER: 1 - LZ (low LZ = high order = good for physical laws)
+    order_score = 1.0 - avg_lz if not np.isnan(avg_lz) else 0
 
+    # HIERARCHY: normalized to 0-1
     hierarchy_score_normalized = min(1.0, avg_hierarchy * 2) if not np.isnan(avg_hierarchy) else 0
 
-    if np.isnan(avg_hurst):
-        dfa_score = 0
-    elif 0.5 <= avg_hurst <= 0.85:
-        dfa_score = avg_hurst
-    else:
-        dfa_score = max(0, 1 - abs(avg_hurst - 0.7))
+    # COHERENCE: MI-based, scaled
+    coherence_score = min(1.0, avg_mi * 10) if not np.isnan(avg_mi) else 0
+
+    # NON-RANDOMNESS: penalize pure random (H~0.5, slope~0)
+    dfa_nonrandom = max(0, (avg_hurst - 0.5) * 2) if not np.isnan(avg_hurst) else 0
+    crit_nonrandom = max(0, min(1, -avg_slope)) if avg_slope < 0 else 0
+    non_randomness_score = (dfa_nonrandom + crit_nonrandom) / 2
 
     # Composite Emergence Index - use centralized weights for consistency
     # Both normal and streaming modes now use the same weights from config
     weights = _load_emergence_weights()
 
     emergence_index = (
-        weights['criticality'] * criticality_score +
-        weights['complexity'] * complexity_score +
-        weights['coherence'] * coherence_score +
+        weights['order'] * order_score +
         weights['hierarchy'] * hierarchy_score_normalized +
-        weights['dfa'] * dfa_score
+        weights['coherence'] * coherence_score +
+        weights['non_randomness'] * non_randomness_score
     )
 
     return {
@@ -1896,30 +2089,35 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             'density_ratios_count': len(all_phi_density_ratios),
             'phi_strength': phi_strength
         },
-        'criticality': {
-            'avg_slope': avg_slope,
-            'score': criticality_score,
-            'n_samples': len(power_slopes)
-        },
-        'complexity': {
-            'avg_lz': avg_lz,
-            'score': complexity_score,
+        # SEI components (new structure)
+        'order': {
+            'lz_normalized': avg_lz,
+            'order_score': order_score,
             'n_samples': len(lz_values)
-        },
-        'coherence': {
-            'avg_mi': avg_mi,
-            'score': coherence_score,
-            'n_samples': len(mi_values)
         },
         'hierarchy': {
             'avg_hierarchy': avg_hierarchy,
             'score': hierarchy_score_normalized,
             'n_samples': len(hierarchy_scores)
         },
+        'coherence': {
+            'avg_mi': avg_mi,
+            'score': coherence_score,
+            'n_samples': len(mi_values)
+        },
+        'non_randomness': {
+            'dfa_component': dfa_nonrandom,
+            'criticality_component': crit_nonrandom,
+            'score': non_randomness_score,
+        },
+        # Raw metrics for reference
         'dfa': {
             'avg_hurst': avg_hurst,
-            'score': dfa_score,
             'n_samples': len(dfa_hursts)
+        },
+        'criticality': {
+            'avg_slope': avg_slope,
+            'n_samples': len(power_slopes)
         }
     }
 
@@ -1957,9 +2155,37 @@ def load_phi_sequence(variant: str, iteration: int,
     if struct_path.exists():
         try:
             from bitarray import bitarray
+            import threading
+            import time as time_module
+
+            file_size_mb = struct_path.stat().st_size / (1024 * 1024)
+            # Estimate: ~10-20 MB/s decompression speed
+            est_seconds = int(file_size_mb / 15)
+            print(f"   📂 File: {struct_path.name} ({file_size_mb:.1f} MB)", flush=True)
+            print(f"   ⏳ Decompressing (~{est_seconds}s estimated)...", flush=True)
+
+            # Progress indicator in background thread
+            stop_spinner = threading.Event()
+            def spinner():
+                start = time_module.time()
+                chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+                i = 0
+                while not stop_spinner.is_set():
+                    elapsed = int(time_module.time() - start)
+                    print(f"\r      {chars[i % len(chars)]} {elapsed}s elapsed...", end="", flush=True)
+                    time_module.sleep(0.2)
+                    i += 1
+                print(f"\r      ✓ Decompression complete ({elapsed}s)   ", flush=True)
+
+            spinner_thread = threading.Thread(target=spinner, daemon=True)
+            spinner_thread.start()
+
             with gzip.open(struct_path, 'rb') as f:
-                # Read file to get total size first
                 data = f.read()
+
+            stop_spinner.set()
+            spinner_thread.join(timeout=1)
+
             ba = bitarray()
             ba.frombytes(data)
             total_bits = len(ba)
@@ -1968,9 +2194,10 @@ def load_phi_sequence(variant: str, iteration: int,
             if total_bits > max_bits:
                 start = (total_bits - max_bits) // 2
                 sample = ba[start:start + max_bits].to01()
-                print(f"   Sampled {max_bits:,} bits from middle of {total_bits:,} total bits")
+                print(f"   ✓ Sampled {max_bits:,} bits from middle of {total_bits:,} total", flush=True)
                 return sample
             else:
+                print(f"   ✓ Loaded {total_bits:,} bits", flush=True)
                 return ba.to01()
         except Exception as e:
             print(f"Warning: Could not load {struct_path}: {e}")
@@ -1980,8 +2207,35 @@ def load_phi_sequence(variant: str, iteration: int,
     if bin_path.exists():
         try:
             from bitarray import bitarray
+            import threading
+            import time as time_module
+
+            file_size_mb = bin_path.stat().st_size / (1024 * 1024)
+            est_seconds = int(file_size_mb / 15)
+            print(f"   📂 File: {bin_path.name} ({file_size_mb:.1f} MB)", flush=True)
+            print(f"   ⏳ Decompressing (~{est_seconds}s estimated)...", flush=True)
+
+            stop_spinner = threading.Event()
+            def spinner():
+                start = time_module.time()
+                chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+                i = 0
+                while not stop_spinner.is_set():
+                    elapsed = int(time_module.time() - start)
+                    print(f"\r      {chars[i % len(chars)]} {elapsed}s elapsed...", end="", flush=True)
+                    time_module.sleep(0.2)
+                    i += 1
+                print(f"\r      ✓ Decompression complete ({elapsed}s)   ", flush=True)
+
+            spinner_thread = threading.Thread(target=spinner, daemon=True)
+            spinner_thread.start()
+
             with gzip.open(bin_path, 'rb') as f:
                 data = f.read()
+
+            stop_spinner.set()
+            spinner_thread.join(timeout=1)
+
             ba = bitarray()
             ba.frombytes(data)
             total_bits = len(ba)
@@ -1989,9 +2243,10 @@ def load_phi_sequence(variant: str, iteration: int,
             if total_bits > max_bits:
                 start = (total_bits - max_bits) // 2
                 sample = ba[start:start + max_bits].to01()
-                print(f"   Sampled {max_bits:,} bits from middle of {total_bits:,} total bits")
+                print(f"   ✓ Sampled {max_bits:,} bits from middle of {total_bits:,} total", flush=True)
                 return sample
             else:
+                print(f"   ✓ Loaded {total_bits:,} bits", flush=True)
                 return ba.to01()
         except Exception as e:
             print(f"Warning: Could not load {bin_path}: {e}")
@@ -2133,18 +2388,21 @@ Examples:
                 return
         else:
             # SAMPLE MODE: Load sequence and sample
+            print(f"   Loading Φ sequence...", flush=True)
             seq = load_phi_sequence(args.variant, args.iteration)
             if seq is None:
                 print(f"❌ Could not load variant {args.variant} iteration {args.iteration}")
                 return
 
-            print(f"   Loaded {len(seq):,} bits")
-            results = calculate_emergence_index(seq, args.sample_size)
+            print(f"   ✓ Loaded {len(seq):,} bits", flush=True)
+            print(f"\n   Calculating emergence metrics...", flush=True)
+            results = calculate_emergence_index(seq, args.sample_size, verbose=True)
 
-        # Print detailed results
-        print("\n" + "=" * 50)
-        print("🌌 EMERGENCE INDEX ANALYSIS")
-        print("=" * 50)
+        # Print detailed results - STRUCTURAL EMERGENCE INDEX (SEI)
+        print("\n" + "=" * 60)
+        print("🌌 STRUCTURAL EMERGENCE INDEX (SEI) ANALYSIS")
+        print("=" * 60)
+        print("   [Designed to detect emergence of PHYSICAL LAWS, not edge-of-chaos]")
 
         if args.streaming:
             print(f"\n📏 Full sequence: {results.get('total_bits', 'N/A'):,} bits")
@@ -2152,47 +2410,144 @@ Examples:
         else:
             print(f"\n📏 Sample: {results['sample_size']:,} / {results['sequence_length']:,} bits")
 
-        c = results['criticality']
-        print(f"\n⚡ CRITICALITY (1/f spectrum)")
-        print(f"   Slope: {c['slope']:.3f} (target: {c['target']})")
-        print(f"   R²: {c['r_squared']:.3f}")
-        print(f"   Score: {c['score']:.3f}")
-        print(f"   → {c['interpretation']}")
+        # 1. ORDER (30%) - Compressibility = physical laws
+        if 'order' in results:
+            o = results['order']
+            print(f"\n📐 ORDER (30%) — Compressibility = Physical Laws")
+            print(f"   LZ normalized: {o['lz_normalized']:.3f}")
+            print(f"   Order score: {o['order_score']:.3f} (1 - LZ)")
+            print(f"   → Lower LZ = more ordered = potential for stable laws")
+        else:
+            x = results['complexity']
+            order_score = 1.0 - x['lz_normalized']
+            print(f"\n📐 ORDER (30%) — Compressibility = Physical Laws")
+            print(f"   LZ normalized: {x['lz_normalized']:.3f}")
+            print(f"   Order score: {order_score:.3f} (1 - LZ)")
+            print(f"   → {x['interpretation']}")
 
-        x = results['complexity']
-        print(f"\n🧩 COMPLEXITY (Lempel-Ziv)")
-        print(f"   LZ normalized: {x['lz_normalized']:.3f} (ideal: {x['ideal_range']})")
-        print(f"   Score: {x['score']:.3f}")
-        print(f"   → {x['interpretation']}")
-
-        h = results['coherence']
-        print(f"\n🔗 COHERENCE (Long-range MI)")
-        print(f"   MI ratio: {h['mi_ratio']:.4f}")
-        print(f"   Score: {h['score']:.3f}")
-        print(f"   → {h['interpretation']}")
-
-        # Hierarchy
+        # 2. HIERARCHY (30%) - Multi-scale structure
         if 'hierarchy' in results:
             hr = results['hierarchy']
-            print(f"\n📊 HIERARCHY (Multi-scale entropy)")
+            print(f"\n📊 HIERARCHY (30%) — Multi-scale Structure")
             print(f"   Hierarchy score: {hr['raw_hierarchy_score']:.4f}")
             print(f"   Mean entropy: {hr['mean_entropy']:.3f}")
             print(f"   Score: {hr['score']:.3f}")
             print(f"   → {hr['interpretation']}")
 
-        # DFA (Hurst exponent)
-        if 'dfa' in results:
-            dfa = results['dfa']
-            print(f"\n📈 DFA (Hurst exponent)")
-            print(f"   Hurst H: {dfa['hurst_exponent']:.3f}")
-            print(f"   R²: {dfa['r_squared']:.3f}")
-            print(f"   Score: {dfa['score']:.3f}")
-            print(f"   → {dfa['interpretation']}")
+        # 3. COHERENCE (20%) - Long-range correlations
+        h = results['coherence']
+        print(f"\n🔗 COHERENCE (20%) — Long-range Correlations")
+        print(f"   MI ratio: {h['mi_ratio']:.4f}")
+        print(f"   Score: {h['score']:.3f}")
+        print(f"   → {h['interpretation']}")
 
-        print(f"\n{'=' * 50}")
-        print(f"🌌 EMERGENCE INDEX: {results['emergence_index']:.4f}")
+        # 4. NON-RANDOMNESS (20%) - DFA + Criticality combined
+        if 'non_randomness' in results:
+            nr = results['non_randomness']
+            print(f"\n🎲 NON-RANDOMNESS (20%) — Penalizes Pure Random")
+            print(f"   DFA component: {nr['dfa_component']:.3f}")
+            print(f"   Criticality component: {nr['criticality_component']:.3f}")
+            print(f"   Score: {nr['score']:.3f}")
+            print(f"   → {nr['interpretation']}")
+        else:
+            # Fallback to old format
+            c = results['criticality']
+            print(f"\n⚡ CRITICALITY (spectrum analysis)")
+            print(f"   Slope: {c['slope']:.3f} (target: {c['target']})")
+            print(f"   → {c['interpretation']}")
+            if 'dfa' in results:
+                dfa = results['dfa']
+                print(f"\n📈 DFA (Hurst exponent)")
+                print(f"   Hurst H: {dfa['hurst_exponent']:.3f}")
+                print(f"   → {dfa['interpretation']}")
+
+        # Final scores: SEI and ECI
+        print(f"\n{'=' * 60}")
+        print("📊 DUAL INDEX SUMMARY")
+        print("=" * 60)
+
+        sei = results['emergence_index']
+        eci = results.get('edge_of_chaos_index', 0)
+
+        # SEI interpretation
+        if sei >= 0.7:
+            sei_emoji = "🌟"
+        elif sei >= 0.5:
+            sei_emoji = "✨"
+        elif sei >= 0.3:
+            sei_emoji = "📐"
+        else:
+            sei_emoji = "⚠️"
+
+        # ECI interpretation
+        if eci >= 0.7:
+            eci_emoji = "🔥"
+        elif eci >= 0.5:
+            eci_emoji = "⚡"
+        elif eci >= 0.3:
+            eci_emoji = "〰️"
+        else:
+            eci_emoji = "❄️"
+
+        print(f"\n{sei_emoji} SEI (Structural Emergence): {sei:.4f}")
         print(f"   → {results['interpretation']}")
-        print("=" * 50)
+        print(f"   [Measures: order + hierarchy + coherence → physical laws potential]")
+
+        print(f"\n{eci_emoji} ECI (Edge of Chaos): {eci:.4f}")
+        print(f"   → {results.get('eci_interpretation', 'N/A')}")
+        print(f"   [Measures: criticality + complexity balance → computational capacity]")
+
+        # Combined interpretation - more descriptive and honest
+        print(f"\n{'─' * 60}")
+        print("📋 ANALYSIS:")
+
+        # Get non-randomness score
+        nr_score = results.get('non_randomness', {}).get('score', 0)
+        order_score = results.get('order', {}).get('order_score', 1 - results['complexity']['lz_normalized'])
+
+        # Describe structure quality
+        if order_score > 0.9:
+            print(f"   • Order: Very high (LZ={1-order_score:.3f}) — highly compressible")
+        elif order_score > 0.7:
+            print(f"   • Order: High — significant compressibility")
+        elif order_score > 0.5:
+            print(f"   • Order: Moderate — some structure")
+        else:
+            print(f"   • Order: Low (LZ={1-order_score:.3f}) — near-random, incompressible")
+
+        # Describe randomness
+        if nr_score < 0.05:
+            hurst = results.get('dfa', {}).get('hurst_exponent', 0.5)
+            if hurst < 0.4:
+                print(f"   • Dynamics: Anti-persistent (H={hurst:.2f}) — fluctuations revert")
+            elif hurst > 0.6:
+                print(f"   • Dynamics: Persistent (H={hurst:.2f}) — trends continue")
+            else:
+                print(f"   • Dynamics: White noise (H={hurst:.2f}) — no memory")
+        else:
+            print(f"   • Dynamics: Non-random ({nr_score:.0%}) — deterministic patterns")
+
+        # Final assessment
+        print(f"\n{'─' * 60}")
+        if sei >= 0.6 and eci >= 0.5 and nr_score > 0.05:
+            print("🎯 PROFILE: Structured + Dynamic + Non-random")
+            print("   Strong candidate for emergent physical laws")
+        elif sei >= 0.6 and eci >= 0.5 and nr_score <= 0.05:
+            print("📐 PROFILE: Structured + Dynamic, but determinism unclear")
+            print("   Has order and complexity, but dynamics may be stochastic")
+        elif sei >= 0.5 and eci >= 0.6 and order_score < 0.6:
+            print("🌀 PROFILE: Edge-of-chaos dynamics, but low structure")
+            print("   Computational capacity high, but may be organized noise")
+        elif sei >= 0.7 and eci < 0.5:
+            print("❄️ PROFILE: Highly ordered but static")
+            print("   Strong structure, but possibly too rigid for emergence")
+        elif sei < 0.5 and eci < 0.5:
+            print("❓ PROFILE: Low structure and low dynamics")
+            print("   Unlikely to generate meaningful emergence")
+        else:
+            print(f"📊 PROFILE: Mixed (SEI={sei:.2f}, ECI={eci:.2f})")
+            print("   Requires further analysis to characterize")
+        print("=" * 60)
 
         # Statistical significance test against null model
         if args.null_test and not args.streaming:

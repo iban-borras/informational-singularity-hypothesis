@@ -179,7 +179,7 @@ def generate_control_variant(
         json.dump(meta, f, indent=2)
 
     # Also create a report file for the pipeline to find
-    report_dir = ROOT / "results" / "reports"
+    report_dir = ROOT / "results" / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_name = f"variant_A_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report = {

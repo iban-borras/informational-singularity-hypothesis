@@ -2202,7 +2202,7 @@ def main():
         # Load results if execution was successful
         if success:
             print(f"\n📂 Loading results for variant {variant_code}...", flush=True)
-            results_path = find_variant_result_file(variant_code)
+            results_path = find_variant_result_file(variant_code, args.iterations)
             results = load_variant_results(results_path)
             # Try to keep a back-pointer to the report path for enrichment
             if results is not None:

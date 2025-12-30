@@ -294,7 +294,8 @@ def generate_confidence_distribution(data: dict, variant: str, iteration: int,
     fig, ax = plt.subplots(figsize=(10, 6))
 
     color = COLORS.get(variant, '#333333')
-    ax.hist(confidences, bins=50, color=color, alpha=0.7, edgecolor='white')
+    ax.hist(confidences, bins=50, color=color, alpha=0.7,
+            edgecolor='black', linewidth=0.5)
 
     ax.axvline(x=99, color='red', linestyle='--', linewidth=2, label='99% threshold')
     ax.axvline(x=50, color='gray', linestyle=':', linewidth=2, label='Random (50%)')
@@ -399,15 +400,18 @@ def generate_confidence_histogram_comparison(data1: dict, data2: dict,
     plt.rcParams.update(STYLE)
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    ax.hist(conf1, bins=50, alpha=0.6, label=VARIANT_LABELS.get(v1, v1), color=COLORS.get(v1, '#333'))
-    ax.hist(conf2, bins=50, alpha=0.6, label=VARIANT_LABELS.get(v2, v2), color=COLORS.get(v2, '#666'))
+    ax.hist(conf1, bins=50, alpha=0.7, label=VARIANT_LABELS.get(v1, v1), 
+            color=COLORS.get(v1, '#333'), edgecolor='black', linewidth=0.5, histtype='stepfilled')
+    ax.hist(conf2, bins=50, alpha=0.7, label=VARIANT_LABELS.get(v2, v2), 
+            color=COLORS.get(v2, '#666'), edgecolor='black', linewidth=0.5, histtype='stepfilled')
 
     ax.axvline(x=50, color='gray', linestyle=':', linewidth=2, label='Random baseline')
 
     ax.set_xlabel('Confidence (%)')
     ax.set_ylabel('Number of Rules')
     ax.set_title(f'Confidence Distribution Comparison - Iteration {iteration}')
-    ax.legend()
+    ax.legend(frameon=True, fancybox=True, framealpha=0.9)
+    ax.grid(True, alpha=0.2)
 
     plt.tight_layout()
 
@@ -451,16 +455,17 @@ def generate_confidence_evolution(variant_data: Dict[int, dict], variant: str,
     ax1.set_xlabel('Iteration')
     ax1.set_ylabel('Average Confidence (%)')
     ax1.set_ylim(0, 105)
+    ax1.grid(True, alpha=0.2)
 
     ax2 = ax1.twinx()
-    ax2.plot(iterations, pct_99s, 's--', color=color, alpha=0.6, linewidth=2, markersize=8, label='% Deterministic (≥99%)')
+    ax2.plot(iterations, pct_99s, 's--', color='#d62728', alpha=0.7, linewidth=2, markersize=8, label='% Deterministic (≥99%)')
     ax2.set_ylabel('% Deterministic Rules')
     ax2.set_ylim(0, 105)
 
     # Combined legend
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='lower right')
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='lower right', frameon=True, fancybox=True, framealpha=0.9)
 
     ax1.set_title(f'Confidence Evolution\n{VARIANT_LABELS.get(variant, variant)}')
     ax1.set_xticks(iterations)
@@ -481,25 +486,53 @@ def generate_patterns_evolution(variant_data: Dict[int, dict], variant: str,
     iterations = sorted(variant_data.keys())
 
     pattern_counts = []
+    is_estimated = []
+
     for it in iterations:
         data = variant_data[it]['data']
-        patterns = data.get('patterns', {}).get('observable', [])
-        pattern_counts.append(len(patterns))
+        # Try to get corrected count first (fix for "50k limit" artifact)
+        patterns_meta = data.get('patterns', {}).get('sampling_metadata', {})
+        if 'true_pattern_count' in patterns_meta:
+            count = patterns_meta['true_pattern_count']
+            est = patterns_meta.get('sampling_applied', False) or patterns_meta.get('is_estimated', False)
+        else:
+            # Fallback to list length
+            patterns = data.get('patterns', {}).get('observable', [])
+            count = len(patterns)
+            est = False
+        
+        pattern_counts.append(count)
+        is_estimated.append(est)
 
     plt.rcParams.update(STYLE)
     fig, ax = plt.subplots(figsize=(10, 6))
 
     color = COLORS.get(variant, '#333')
-    ax.plot(iterations, pattern_counts, 'o-', color=color, linewidth=2, markersize=10)
+    
+    # Plot line
+    ax.plot(iterations, pattern_counts, 'o-', color=color, linewidth=2, markersize=8, alpha=0.8)
+    
+    # Add varying markers based on estimation status
+    for x, y, est in zip(iterations, pattern_counts, is_estimated):
+        marker = 'd' if est else 'o' # Diamond for estimated/sampled, Circle for measured
+        m_color = 'red' if est else color
+        ax.plot(x, y, marker=marker, color=m_color, markersize=10 if est else 8)
 
     ax.set_xlabel('Iteration')
-    ax.set_ylabel('Number of Unique Patterns')
+    ax.set_ylabel('Number of Unique Patterns (Log Scale)' if max(pattern_counts) > 100000 else 'Number of Unique Patterns')
     ax.set_title(f'Pattern Count Evolution\n{VARIANT_LABELS.get(variant, variant)}')
     ax.set_xticks(iterations)
+    ax.grid(True, alpha=0.3)
 
     # Add value labels
-    for x, y in zip(iterations, pattern_counts):
-        ax.annotate(f'{y:,}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center')
+    for x, y, est in zip(iterations, pattern_counts, is_estimated):
+        label = f'{y:,}' + ('*' if est else '')
+        ax.annotate(label, (x, y), textcoords="offset points", xytext=(0, 10), ha='center',
+                   fontsize=9, fontweight='bold' if not est else 'normal')
+
+    if any(is_estimated):
+        ax.annotate('* Estimated/Extrapolated', xy=(0.02, 0.95), xycoords='axes fraction', 
+                   fontsize=9, color='red', fontstyle='italic')
 
     plt.tight_layout()
 
@@ -596,10 +629,10 @@ def generate_all_figures(discovered: Dict[str, Dict[int, dict]],
                 generated.append(fname)
             progress.update()
 
-            # Confidence distribution
-            fname = generate_confidence_distribution(data, variant, iteration, output_dir, fmt, dpi)
-            if fname:
-                generated.append(fname)
+            # Confidence distribution - DISABLED (100% confidence = uninformative)
+            # fname = generate_confidence_distribution(data, variant, iteration, output_dir, fmt, dpi)
+            # if fname:
+            #     generated.append(fname)
             progress.update()
 
     # =========================
@@ -619,10 +652,10 @@ def generate_all_figures(discovered: Dict[str, Dict[int, dict]],
                     generated.append(fname)
                 progress.update()
 
-                # Confidence histogram overlay
-                fname = generate_confidence_histogram_comparison(data1, data2, v1, v2, iteration, output_dir, fmt, dpi)
-                if fname:
-                    generated.append(fname)
+                # Confidence histogram overlay - DISABLED (100% confidence = uninformative)
+                # fname = generate_confidence_histogram_comparison(data1, data2, v1, v2, iteration, output_dir, fmt, dpi)
+                # if fname:
+                #     generated.append(fname)
                 progress.update()
 
     # =========================
@@ -630,10 +663,10 @@ def generate_all_figures(discovered: Dict[str, Dict[int, dict]],
     # =========================
     for variant in variant_list:
         if len(discovered[variant]) >= 2:
-            # Confidence evolution
-            fname = generate_confidence_evolution(discovered[variant], variant, output_dir, fmt, dpi)
-            if fname:
-                generated.append(fname)
+            # Confidence evolution - DISABLED (100% confidence = uninformative)
+            # fname = generate_confidence_evolution(discovered[variant], variant, output_dir, fmt, dpi)
+            # if fname:
+            #     generated.append(fname)
             progress.update()
 
             # Pattern evolution

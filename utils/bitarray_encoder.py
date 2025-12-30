@@ -21,6 +21,12 @@ from bitarray import bitarray
 from typing import Optional
 import gzip
 
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+
 
 # Encoding mapping: character → 2-bit pattern
 ENCODING_MAP = {
@@ -68,8 +74,22 @@ def encode_phi_with_structure(phi_str: str, chunk_size: int = 10_000_000, silent
     # For large strings, process in chunks to avoid MemoryError
     result = bitarray()
     total_chars = len(phi_str)
+    num_chunks = (total_chars + chunk_size - 1) // chunk_size
 
-    for start in range(0, total_chars, chunk_size):
+    # Use tqdm if available and not silent
+    show_progress = not silent and total_chars > 50_000_000 and HAS_TQDM
+    chunk_iter = range(0, total_chars, chunk_size)
+
+    if show_progress:
+        chunk_iter = tqdm(
+            chunk_iter,
+            desc="   Encoding Φ",
+            total=num_chunks,
+            unit="chunk",
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}<{remaining}]"
+        )
+
+    for start in chunk_iter:
         end = min(start + chunk_size, total_chars)
         chunk = phi_str[start:end]
 
@@ -79,14 +99,6 @@ def encode_phi_with_structure(phi_str: str, chunk_size: int = 10_000_000, silent
 
         # Append to result
         result.extend(chunk_bits)
-
-        # Progress indicator for very large strings (every 5% or at end)
-        if not silent and total_chars > 50_000_000:
-            progress = 100 * end / total_chars
-            prev_progress = 100 * start / total_chars
-            # Print only at 5% intervals or at the end
-            if (int(progress / 5) > int(prev_progress / 5)) or end == total_chars:
-                print(f"   [encode] Progress: {progress:.1f}% ({end:,}/{total_chars:,} chars)", flush=True)
 
     return result
 
@@ -173,6 +185,18 @@ def save_phi_structural_gz_from_file(
     input_path = Path(input_path)
     total_size = input_path.stat().st_size
     processed = 0
+    num_chunks = (total_size + chunk_size - 1) // chunk_size
+
+    # Use tqdm if available for large files
+    show_progress = total_size > 100_000_000 and HAS_TQDM
+    pbar = None
+    if show_progress:
+        pbar = tqdm(
+            total=num_chunks,
+            desc="   Encoding Φ (streaming)",
+            unit="chunk",
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}<{remaining}]"
+        )
 
     with open(input_path, 'r', encoding='utf-8') as in_f:
         with gzip.open(output_path, "wb", compresslevel=compresslevel) as out_f:
@@ -189,9 +213,11 @@ def save_phi_structural_gz_from_file(
                 chunk_bits.tofile(out_f)
 
                 processed += len(chunk)
-                if total_size > 100_000_000:  # Only log for large files
-                    pct = (processed / total_size) * 100
-                    print(f"   [encode] Progress: {pct:.1f}% ({processed:,}/{total_size:,} chars)")
+                if pbar:
+                    pbar.update(1)
+
+    if pbar:
+        pbar.close()
 
     return os.path.getsize(output_path)
 

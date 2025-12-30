@@ -61,7 +61,7 @@ from metrics.emergence_index import (
 # ═══════════════════════════════════════════════════════════════════════════════
 
 RESULTS_DIR = Path("results")
-COMPLEXITY_DIR = RESULTS_DIR / "complexity_analysis"
+COMPLEXITY_DIR = RESULTS_DIR / "level2" / "complexity_analysis"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SHANNON ENTROPY

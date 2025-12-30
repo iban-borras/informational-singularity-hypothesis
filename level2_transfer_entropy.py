@@ -66,7 +66,7 @@ from metrics.emergence_index import load_phi_sequence
 # ═══════════════════════════════════════════════════════════════════════════════
 
 RESULTS_DIR = Path("results")
-TE_DIR = RESULTS_DIR / "transfer_entropy"
+TE_DIR = RESULTS_DIR / "level2" / "transfer_entropy"
 
 # Default parameters
 DEFAULT_SCALES = [1, 2, 4, 8, 16, 32]  # Block sizes for coarse-graining

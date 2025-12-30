@@ -392,6 +392,15 @@ class PatternDetector:
         self.structural_patterns = []
         self.pattern_stats = {}
 
+        # Sampling metadata (populated after detect_patterns)
+        self._pattern_sampling_metadata = {
+            'true_pattern_count': 0,
+            'sampled_count': 0,
+            'sampling_applied': False,
+            'sampling_ratio': 1.0,
+            'extrapolation_factor': 1.0
+        }
+
         # Initialize structural detector if available
         if self.enable_structural_analysis and STRUCTURAL_AVAILABLE:
             self.structural_detector = StructuralPatternDetector(
@@ -477,15 +486,32 @@ class PatternDetector:
         all_patterns = sliding_patterns + block_patterns + spectral_patterns
         print(f"   ⏳ Filtering & merging {len(all_patterns):,} patterns...", flush=True)
         filtered_patterns = self._filter_and_merge_patterns(all_patterns, phi_sequence)
-        print(f"   ✓ After filtering: {len(filtered_patterns):,} patterns", flush=True)
 
-        # Limit patterns for very large sequences to avoid excessive computation
+        # Store TRUE pattern count before any truncation
+        true_pattern_count = len(filtered_patterns)
+        print(f"   ✓ After filtering: {true_pattern_count:,} patterns", flush=True)
+
+        # Sampling strategy for very large pattern sets
         MAX_PATTERNS_FOR_METRICS = 50_000
-        if len(filtered_patterns) > MAX_PATTERNS_FOR_METRICS:
-            print(f"   ⚠️ Limiting to top {MAX_PATTERNS_FOR_METRICS:,} patterns by recurrence for metrics calculation")
-            # Sort by recurrence and keep top patterns
+        sampling_applied = False
+        sampling_ratio = 1.0
+
+        if true_pattern_count > MAX_PATTERNS_FOR_METRICS:
+            sampling_applied = True
+            sampling_ratio = MAX_PATTERNS_FOR_METRICS / true_pattern_count
+
+            # Sort by recurrence to keep most significant patterns
             filtered_patterns = sorted(filtered_patterns, key=lambda p: p.get('recurrence', 0), reverse=True)
-            filtered_patterns = filtered_patterns[:MAX_PATTERNS_FOR_METRICS]
+
+            # Keep top patterns for detailed metrics
+            sampled_patterns = filtered_patterns[:MAX_PATTERNS_FOR_METRICS]
+
+            print(f"   📊 Pattern sampling applied:")
+            print(f"      • True count: {true_pattern_count:,} patterns")
+            print(f"      • Sampled: {MAX_PATTERNS_FOR_METRICS:,} patterns ({sampling_ratio*100:.1f}%)")
+            print(f"      • Extrapolation factor: {1/sampling_ratio:.2f}x")
+
+            filtered_patterns = sampled_patterns
 
         # Calculate detailed metrics for each pattern
         print(f"   ⏳ Calculating metrics for {len(filtered_patterns):,} patterns...", flush=True)
@@ -496,6 +522,15 @@ class PatternDetector:
                 print(f"   [metrics] {idx:,}/{total:,} ({100*idx//total}%)", flush=True)
             enriched_pattern = self._calculate_pattern_metrics(pattern, phi_sequence)
             enriched_patterns.append(enriched_pattern)
+
+        # Store metadata about sampling for transparency
+        self._pattern_sampling_metadata = {
+            'true_pattern_count': true_pattern_count,
+            'sampled_count': len(enriched_patterns),
+            'sampling_applied': sampling_applied,
+            'sampling_ratio': sampling_ratio,
+            'extrapolation_factor': 1.0 / sampling_ratio if sampling_ratio > 0 else 1.0
+        }
 
         self.detected_patterns = enriched_patterns
 
@@ -529,6 +564,24 @@ class PatternDetector:
             'sampling_used': False,
             'method': 'unknown'
         })
+
+    def get_pattern_sampling_metadata(self) -> Dict[str, Any]:
+        """
+        Get metadata about pattern sampling/truncation.
+
+        This is critical for scientific transparency: if patterns were sampled,
+        the 'true_pattern_count' reflects the actual number found, while
+        'sampled_count' is what was used for detailed metrics.
+
+        Returns:
+            Dictionary with:
+            - true_pattern_count: Actual patterns found (before any truncation)
+            - sampled_count: Patterns used for metrics calculation
+            - sampling_applied: Whether sampling was needed
+            - sampling_ratio: Fraction of patterns analyzed (0-1)
+            - extrapolation_factor: Multiply sampled stats by this for estimates
+        """
+        return self._pattern_sampling_metadata
     
     def _detect_sliding_window_patterns(self, sequence: str) -> List[Dict[str, Any]]:
         """Detect patterns using sliding windows with hashing."""

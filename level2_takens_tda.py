@@ -68,7 +68,7 @@ from metrics.emergence_index import load_phi_sequence
 # ═══════════════════════════════════════════════════════════════════════════════
 
 RESULTS_DIR = Path("results")
-TDA_DIR = RESULTS_DIR / "tda_analysis"
+TDA_DIR = RESULTS_DIR / "level2" / "tda_analysis"
 
 # Default parameters
 DEFAULT_EMBEDDING_DIM = 3

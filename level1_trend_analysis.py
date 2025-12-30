@@ -275,7 +275,11 @@ def run_emergence_analysis(variant: str, iteration: int,
 
         # Extract values for SCI/ICC calculation
         emergence_index = result['emergence_index']
-        lz_normalized = result['complexity']['avg_lz']
+        # Support both old ('complexity') and new ('order') key names
+        if 'order' in result:
+            lz_normalized = result['order']['lz_normalized']
+        else:
+            lz_normalized = result['complexity']['avg_lz']
         mi_ratio = result['coherence']['avg_mi']
         hierarchy_score = result['hierarchy']['avg_hierarchy']
         hurst = result['dfa']['avg_hurst']

@@ -718,17 +718,26 @@ order_index = metrics['order_emergence']['order_index']
 
 ### Metric Weights Configuration
 
-Both the **Emergence Index** and **Order Emergence Index (OEI)** are composite metrics with configurable weights. Weights can be adjusted via `config.json → metrics`:
+Both the **Emergence Indices** and **Order Emergence Index (OEI)** are composite metrics with configurable weights. Weights can be adjusted via `config.json → metrics`:
 
-**Emergence Index Weights** (Level 2 potential):
+**SEI Weights** (Structural Emergence — physical laws potential):
 
 | Component | Default | Scientific Justification |
 |-----------|---------|--------------------------|
-| DFA (Hurst) | 25% | Most robust for long-range correlations (Peng et al., 1994) |
+| Order (1-LZ) | 30% | Compressibility = law existence (Chaitin, 1987) |
+| Hierarchy (HBE) | 30% | Multi-scale structure = renormalization (Wilson, 1971) |
+| Coherence (MI) | 20% | Long-range order = phase coherence (Anderson, 1972) |
+| Non-randomness | 20% | Deterministic dynamics (Peng et al., 1994) |
+
+**ECI Weights** (Edge of Chaos — computational capacity):
+
+| Component | Default | Scientific Justification |
+|-----------|---------|--------------------------|
 | Criticality (1/f) | 25% | Classic SOC signature (Bak, Tang & Wiesenfeld, 1987) |
-| Coherence (MI) | 20% | Direct correlation measure, but sample-size sensitive |
-| Hierarchy (HBE) | 15% | Multi-scale structure, partially redundant with DFA |
-| Complexity (LZ) | 15% | Cannot distinguish structure from randomness alone |
+| Complexity (LZ) | 25% | LZ ≈ 0.5 = edge of chaos (Langton, 1990) |
+| Coherence (MI) | 20% | Global coherence for information integration |
+| Hierarchy (HBE) | 15% | Multi-scale structure |
+| DFA (Hurst) | 15% | H ≈ 1.0 = 1/f long-range correlations |
 
 **OEI Weights** (Structural order):
 
@@ -742,7 +751,7 @@ Both the **Emergence Index** and **Order Emergence Index (OEI)** are composite m
 To customize, edit `config.json`:
 ```json
 "metrics": {
-  "emergence_weights": { "dfa": 0.30, "criticality": 0.20, ... },
+  "emergence_weights": { "order": 0.30, "hierarchy": 0.30, "coherence": 0.20, "non_randomness": 0.20 },
   "oei_weights": { "depth_organization": 0.40, ... }
 }
 ```
@@ -961,19 +970,47 @@ These advanced metrics implement the research roadmap for discovering hidden φ 
 - **𝓡 HIGH** → Curved geometry, order matters
 - **𝓔 LOW** → Stable, coherent configuration (universe-like)
 
-### Emergence Index (Level 2 Potential)
+### Dual Emergence Indices (Level 2 Potential)
 
-The **Emergence Index** is a composite metric (0-1) that estimates which variant has the highest potential for generating physics-like emergent behavior (Level 2). It combines three scientifically-grounded indicators:
+The system provides **two complementary indices** to evaluate emergence potential from different perspectives:
+
+#### SEI — Structural Emergence Index (Dec 2025)
+
+Designed specifically for HSI theory to detect potential for **emergence of physical laws**. Unlike "edge of chaos" metrics, SEI rewards order and structure.
 
 | Component | Weight | What it measures | Optimal value |
 |-----------|--------|------------------|---------------|
-| **Criticality (1/f)** | 40% | Power spectrum slope ≈ -1 indicates self-organized criticality (Bak et al., 1987) | slope = -1.0 |
-| **Lempel-Ziv Complexity** | 30% | Normalized LZ76 complexity; ~0.5 indicates "edge of chaos" (Langton, 1990) | LZ ≈ 0.5 |
-| **Long-Range Mutual Info** | 30% | Correlation between distant regions; indicates global coherence | High MI ratio |
+| **Order** | 30% | Compressibility (1 - LZ); physical laws are compressible | Low LZ → high score |
+| **Hierarchy** | 30% | Multi-scale structure; laws operate across scales | High HBE score |
+| **Coherence** | 20% | Long-range MI; constants are same everywhere | High MI ratio |
+| **Non-randomness** | 20% | Combined DFA + Criticality; penalizes pure random | H > 0.5, slope < 0 |
+
+**Scientific basis:** Physical laws are compressible (Chaitin, 1987), operate across scales (Wilson, 1971), and require non-random dynamics (Peng et al., 1994).
+
+#### ECI — Edge of Chaos Index (Original)
+
+Based on Langton (1990) and Kauffman (1993), seeks the computational "sweet spot" between order and chaos.
+
+| Component | Weight | What it measures | Optimal value |
+|-----------|--------|------------------|---------------|
+| **Criticality (1/f)** | 25% | Power spectrum slope ≈ -1 (SOC) | slope = -1.0 |
+| **Complexity (LZ)** | 25% | LZ ≈ 0.5 = edge of chaos | LZ ≈ 0.5 |
+| **Coherence** | 20% | Long-range correlations | High MI ratio |
+| **Hierarchy** | 15% | Multi-scale entropy | High HBE |
+| **DFA (Hurst)** | 15% | H ≈ 0.8-1.0 = 1/f correlations | H ≈ 1.0 |
+
+#### Combined Interpretation
+
+| SEI | ECI | Verdict |
+|-----|-----|---------|
+| High | High | 🎯 **Best candidate** — structured AND dynamic |
+| High | Low | 📐 Ordered but static — stable laws, less emergence |
+| Low | High | 🌀 Dynamic but chaotic — complex but unstable laws |
+| Low | Low | ❓ Neither — unlikely to generate meaningful emergence |
 
 **Usage:**
 ```bash
-# Single variant analysis
+# Single variant analysis (shows both SEI and ECI)
 python level1_emergence_index.py --variant B --iteration 18
 
 # Compare multiple variants
@@ -988,7 +1025,7 @@ python level1_emergence_index.py --variant B --iteration 18 --null-test --null-s
 
 **Statistical Significance Testing:**
 
-The `--null-test` flag enables comparison against a null model to determine if the observed Emergence Index is statistically significant. This is critical for scientific rigor—it answers: "Is this result meaningful, or could random data produce similar values?"
+The `--null-test` flag enables comparison against a null model to determine if the observed indices are statistically significant.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -999,11 +1036,6 @@ The `--null-test` flag enables comparison against a null model to determine if t
 - **p-value**: Probability of observing this result by chance (p < 0.05 = significant)
 - **z-score**: Standard deviations from null mean (|z| > 2 = significant)
 - **Null mean/std**: Statistics of the null distribution
-
-**Interpretation:**
-- **High Emergence Index (>0.7)**: Strong potential for Level 2 emergence; shows characteristics of complex systems at the edge of chaos
-- **Medium (0.4-0.7)**: Moderate potential; some emergent properties present
-- **Low (<0.4)**: Limited potential; either too ordered or too chaotic
 
 ### Structured Complexity Index (SCI) & Cosmological Coherence Index (ICC)
 

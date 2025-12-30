@@ -404,7 +404,8 @@ class Level1Orchestrator:
             'patterns': {
                 'observable': self._limit_pattern_positions(patterns),
                 'structural': self._limit_pattern_positions(structural_patterns),
-                'total': len(patterns) + len(structural_patterns)
+                'total': len(patterns) + len(structural_patterns),
+                'sampling_metadata': self.pattern_detector.get_pattern_sampling_metadata()
             },
             'rules': self._limit_rules_for_storage(rules),
             'rules_total_count': len(rules),  # Store original count for reference
@@ -568,9 +569,21 @@ class Level1Orchestrator:
         print(f"   Observable: {counts.get('observable', 0):,}")
 
         patterns = self.results.get('patterns', {})
+        sampling_meta = patterns.get('sampling_metadata', {})
+
         print(f"\n🔍 Patterns detected:")
         print(f"   Observable: {len(patterns.get('observable', []))}")
         print(f"   Structural: {len(patterns.get('structural', []))}")
+
+        # Show sampling info if truncation occurred
+        if sampling_meta.get('sampling_applied', False):
+            true_count = sampling_meta.get('true_pattern_count', 0)
+            sampled = sampling_meta.get('sampled_count', 0)
+            factor = sampling_meta.get('extrapolation_factor', 1.0)
+            print(f"   ⚠️  SAMPLING APPLIED:")
+            print(f"      • True pattern count: {true_count:,}")
+            print(f"      • Analyzed (sampled): {sampled:,}")
+            print(f"      • Extrapolation factor: {factor:.2f}x")
 
         rules = self.results.get('rules', [])
         print(f"\n🧠 Rules inferred: {len(rules)}")
