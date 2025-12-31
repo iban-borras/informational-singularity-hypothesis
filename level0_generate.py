@@ -1292,12 +1292,16 @@ def plot_fft(results_list, max_bits: int, skip: bool):
             else:
                 method_eff = method
             prog.update(message=f"Computing ({method_eff})...")
-            if method_eff == 'welch':
-                freqs, power = _welch_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft", var=var)
-            elif method_eff == 'sampling':
-                freqs, power = _sampling_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft-sampling", var=var)
-            else:
-                freqs = power = None
+            try:
+                if method_eff == 'welch':
+                    freqs, power = _welch_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft", var=var)
+                elif method_eff == 'sampling':
+                    freqs, power = _sampling_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="fft-sampling", var=var)
+                else:
+                    freqs = power = None
+            except MemoryError:
+                print(f"[WARN] FFT skipped for {var} i={iters}: sequence too large for memory.")
+                continue
             if freqs is None:
                 prog.update(message="Reading prefix fallback...")
                 bits = _stream_phi_prefix_from_gz(iters, max_bits, show_progress=True, label="fft", var=var)
@@ -1347,12 +1351,17 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
         if not r: out_metrics.append(None); continue
         iters = r.get('iterations'); var = r.get('variant','?')
         method = spec_cfg['method']
-        if method == 'welch':
-            freqs, power = _welch_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="beta", var=var)
-        elif method == 'sampling':
-            freqs, power = _sampling_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="beta-sampling", var=var)
-        else:
-            freqs = power = None
+        try:
+            if method == 'welch':
+                freqs, power = _welch_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="beta", var=var)
+            elif method == 'sampling':
+                freqs, power = _sampling_psd_from_gz(iters, spec_cfg, max_bits_cap=max_bits, label="beta-sampling", var=var)
+            else:
+                freqs = power = None
+        except MemoryError:
+            print(f"[WARN] Spectrum beta skipped for {var} i={iters}: sequence too large for memory.")
+            out_metrics.append(None)
+            continue
         if freqs is None:
             bits = _stream_phi_prefix_from_gz(iters, max_bits, var=var)
             if not bits:
@@ -1464,11 +1473,16 @@ def plot_spectrum_beta_fit_enhanced(results_list, max_bits: int, skip: bool):
 
         print(f"[spectrum-enhanced] Processing {var} i={iters}...", flush=True)
 
-        # Get PSD with more windows
-        freqs, power = _welch_psd_from_gz(
-            iters, enhanced_cfg, max_bits_cap=max_bits,
-            label="enhanced-beta", var=var
-        )
+        # Get PSD with more windows (with memory protection)
+        try:
+            freqs, power = _welch_psd_from_gz(
+                iters, enhanced_cfg, max_bits_cap=max_bits,
+                label="enhanced-beta", var=var
+            )
+        except MemoryError:
+            print(f"[WARN] Enhanced spectrum skipped for {var} i={iters}: sequence too large for memory.")
+            out_metrics.append(None)
+            continue
 
         if freqs is None or power is None:
             print(f"[WARN] Enhanced spectrum skipped for {var}: no data.")
