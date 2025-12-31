@@ -1436,25 +1436,6 @@ The system can generate:
 - Rule performance charts
 - Comparison plots across variants (if matplotlib is available)
 
-## Results
-
-Results are organized in:
-
-```
-results/
-├── phi_sequences/          # Generated Φ sequences
-├── patterns/               # Detected patterns
-├── rules/                  # Inferred rules
-├── validation/             # Validation results
-├── visualizations/         # Charts and dashboards
-```
-
-Reports for Level 0 generator are now saved under:
-
-```
-hsi_agents_project/reports/
-```
-
 ## Usage Examples
 
 ### 🚀 Quick Start (5 minutes)
