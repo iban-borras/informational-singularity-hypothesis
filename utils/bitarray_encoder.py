@@ -21,11 +21,12 @@ from bitarray import bitarray
 from typing import Optional
 import gzip
 
+# Progress protocol for subprocess communication
 try:
-    from tqdm import tqdm
-    HAS_TQDM = True
+    from hsi_agents_project.utils.progress_protocol import ProgressReporter
+    HAS_PROGRESS_PROTOCOL = True
 except ImportError:
-    HAS_TQDM = False
+    HAS_PROGRESS_PROTOCOL = False
 
 
 # Encoding mapping: character → 2-bit pattern
@@ -76,29 +77,24 @@ def encode_phi_with_structure(phi_str: str, chunk_size: int = 10_000_000, silent
     total_chars = len(phi_str)
     num_chunks = (total_chars + chunk_size - 1) // chunk_size
 
-    # Use tqdm if available and not silent
-    show_progress = not silent and total_chars > 50_000_000 and HAS_TQDM
-    chunk_iter = range(0, total_chars, chunk_size)
+    # Use progress protocol if available and not silent
+    show_progress = not silent and total_chars > 50_000_000 and HAS_PROGRESS_PROTOCOL
+    size_str = f"{total_chars/1e9:.2f}B" if total_chars >= 1e9 else f"{total_chars/1e6:.1f}M"
 
     if show_progress:
-        chunk_iter = tqdm(
-            chunk_iter,
-            desc="   Encoding Φ",
-            total=num_chunks,
-            unit="chunk",
-            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}<{remaining}]"
-        )
-
-    for start in chunk_iter:
-        end = min(start + chunk_size, total_chars)
-        chunk = phi_str[start:end]
-
-        # Encode chunk
-        bit_string = ''.join(ENCODING_MAP[c] for c in chunk)
-        chunk_bits = bitarray(bit_string)
-
-        # Append to result
-        result.extend(chunk_bits)
+        with ProgressReporter(num_chunks, f"Encoding Φ ({size_str})", update_percent=2) as progress:
+            for i, start in enumerate(range(0, total_chars, chunk_size)):
+                end = min(start + chunk_size, total_chars)
+                chunk = phi_str[start:end]
+                bit_string = ''.join(ENCODING_MAP[c] for c in chunk)
+                result.extend(bitarray(bit_string))
+                progress.update(i + 1)
+    else:
+        for start in range(0, total_chars, chunk_size):
+            end = min(start + chunk_size, total_chars)
+            chunk = phi_str[start:end]
+            bit_string = ''.join(ENCODING_MAP[c] for c in chunk)
+            result.extend(bitarray(bit_string))
 
     return result
 
@@ -135,14 +131,15 @@ def decode_phi_with_structure(bits: bitarray) -> str:
     return ''.join(chars)
 
 
-def save_phi_structural_gz(phi_str: str, filepath: str, compresslevel: int = 9) -> int:
+def save_phi_structural_gz(phi_str: str, filepath: str, compresslevel: int = 6, silent: bool = False) -> int:
     """
     Encode and save Φ with structural information to gzip file.
 
     Args:
         phi_str: String containing '0', '1', '(', ')' characters
         filepath: Output file path (should end with .gz)
-        compresslevel: gzip compression level (1-9, default 9)
+        compresslevel: gzip compression level (1-9, default 6 for speed/size balance)
+        silent: If True, suppress progress bar (default: False)
 
     Returns:
         Number of bytes written
@@ -151,14 +148,23 @@ def save_phi_structural_gz(phi_str: str, filepath: str, compresslevel: int = 9) 
         >>> save_phi_structural_gz("(01)1", "phi_iter1.struct.gz")
         42  # bytes written
     """
-    bits = encode_phi_with_structure(phi_str)
+    import os
+
+    bits = encode_phi_with_structure(phi_str, silent=silent)
+
+    # For large files, show compression message
+    data_size_mb = len(bits) / 8 / 1_000_000
+    if data_size_mb > 50 and not silent:
+        print(f"   Compressing {data_size_mb:.1f}MB (level={compresslevel})...", flush=True)
 
     with gzip.open(filepath, "wb", compresslevel=compresslevel) as f:
         bits.tofile(f)
 
-    # Return file size
-    import os
-    return os.path.getsize(filepath)
+    file_size = os.path.getsize(filepath)
+    if data_size_mb > 50 and not silent:
+        print(f"   ✅ Saved: {file_size / 1_000_000:.1f}MB", flush=True)
+
+    return file_size
 
 
 def save_phi_structural_gz_from_file(

@@ -21,8 +21,7 @@ hsi_agents_project/
 ├── ════════════════════════════════════════════════════════════
 │   MAIN SCRIPTS (run from project root)
 ├── ════════════════════════════════════════════════════════════
-├── level0_generate.py                # Level 0: Generate Φ for all ISH variants (A-I)
-├── level0_random_control.py          # Level 0: Random control for comparison
+├── level0_generate.py                # Level 0: Generate Φ for ALL variants (A-M)
 ├── level0_refresh_plots.py           # Level 0: Regenerate plots from cache
 ├── level0_estimate_storage.py        # Level 0: Storage estimation tool
 ├── level1_analyze_patterns.py        # Level 1: Pattern detection and rule inference
@@ -144,8 +143,7 @@ All scripts can be run directly from the project root:
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `level0_generate.py` | Generate Φ sequences for all ISH variants (A-I) | `python level0_generate.py --variant B --iterations 18` |
-| `level0_random_control.py` | Generate random control data | `python level0_random_control.py -i 14` |
+| `level0_generate.py` | Generate Φ sequences for ALL variants (A-M) | `python level0_generate.py --variant B -i 18` |
 | `level0_refresh_plots.py` | Regenerate plots from cached data | `python level0_refresh_plots.py -v B -i 18` |
 | `level0_estimate_storage.py` | Estimate storage needs for high iterations | `python level0_estimate_storage.py --max-iteration 24` |
 | `level1_analyze_patterns.py` | Pattern detection and rule inference | `python level1_analyze_patterns.py -v B -i 18 --report` |
@@ -498,28 +496,15 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Why it survives:** Critical for understanding if order has semantic meaning in collapse dynamics
 - **Key Finding:** Confirms asymmetry — the order of removal IS semantically meaningful for φ emergence
 
-### Control Variant
+### Control Variants
 
-**Variant A — Random Control (PRNG/CSPRNG Baseline)** *(REPURPOSED)*
+To validate that patterns found in ISH variants are genuine emergent structures (not algorithmic artifacts), we include a comprehensive suite of control variants. Variant A serves as the primary random baseline, while additional controls (J, K, L, M) provide diverse sources of complexity for robust hypothesis testing.
+
+**Variant A — Random Control (PRNG/CSPRNG Baseline)** *(Primary Null Control)*
 - **Algorithm:** Pseudo-random bit generation (Mersenne Twister or cryptographic RNG)
 - **Purpose:** Provides a **scientific control** for comparing ISH-generated structures against random baselines
 - **Properties:** No collapse process, no stratified order — pure statistical randomness
 - **Scientific Value:** Any pattern found in ISH variants (B, D, E, F, G, H) but **absent** in Variant A indicates genuine emergent structure, not algorithmic artifacts
-
-**Usage:**
-```powershell
-# Generate random control matching size of Variant B at iteration 14
-python level0_random_control.py --iterations 14 --match-variant B
-
-# Generate with fixed seed for reproducibility
-python level0_random_control.py --iterations 14 --bits 5000000 --seed 42
-
-# Use cryptographic RNG (maximum entropy, no seed)
-python level0_random_control.py --iterations 14 --bits 5000000 --csprng
-
-# Visualize and compare with ISH variants
-python level0_refresh_plots.py -v A -i 14
-```
 
 **Expected Differences (A vs ISH variants):**
 | Metric | Variant A (Random) | ISH Variants (B, D, etc.) |
@@ -529,7 +514,7 @@ python level0_refresh_plots.py -v A -i 14
 | Power spectrum β | ~0 (white noise) | Negative β (unusual structure) |
 | Ones ratio | ~0.500 (statistical) | May deviate systematically |
 
-**Control Variants (A, J, K, L, M) — Hypothesis Testing Suite** *(Updated Dec 2025)*
+**Complete Control Suite (A, J, K, L, M) — Hypothesis Testing** *(Updated Dec 2025)*
 
 | Variant | Source | Purpose | Expected LZ ratio |
 |---------|--------|---------|-------------------|
@@ -550,14 +535,17 @@ python level0_refresh_plots.py -v A -i 14
 
 **Usage:**
 ```powershell
-# Generate all control variants
-python level0_random_control.py --variant A -i 15   # Random (null)
-python level0_random_control.py --variant J -i 15   # π (null, requires mpmath)
-python level0_random_control.py --variant K -i 15   # Rule 30 (null)
-python level0_random_control.py --variant L -i 15   # Logistic Map (null)
-python level0_random_control.py --variant M -i 15   # Fibonacci (positive)
+# Generate control variants (all use level0_generate.py)
+python level0_generate.py --variant A -i 15   # Random (null)
+python level0_generate.py --variant J -i 15   # π (null, requires mpmath)
+python level0_generate.py --variant K -i 15   # Rule 30 (null)
+python level0_generate.py --variant L -i 15   # Logistic Map (null)
+python level0_generate.py --variant M -i 15   # Fibonacci (positive)
 
-# Comparative analysis (all at once)
+# Skip plots for faster generation
+python level0_generate.py --variant M -i 20 --no-plots
+
+# Comparative analysis
 python level1_deep_analysis.py --variants A,B,K,L,M -i 15 --analysis lz
 ```
 
@@ -886,9 +874,9 @@ The system implements an intelligent compression strategy based on `level0_data_
 | 24 | ~23GB | **Compressed** | ~85% |
 | 32 | ~2TB | **Compressed** | ~85% |
 
-### Storage Structure
+### Storage Structure for Experimental Results
 
-The project uses a unified file storage structure organized by processing level:
+All experimental data, analysis outputs, and visualizations are stored in a unified structure organized by processing level:
 
 ```
 results/
@@ -944,6 +932,16 @@ results/
 │           ├── survival_analysis_{var}.json
 │           ├── survival_flow_{var}.png
 │           └── survival_lengths_{var}.png
+│
+├── level2/                                   # ═══ LEVEL 2: Advanced Complexity ═══
+│   │
+│   ├── complexity_analysis/                  # Multi-scale complexity metrics
+│   │   ├── complexity_{variants}_iter{N}.json
+│   │   └── ...
+│   │
+│   └── transfer_entropy/                     # Information flow analysis
+│       ├── te_{var}_iter{N}.json             # Transfer entropy results
+│       └── te_heatmap_{var}_iter{N}.png      # TE visualizations
 │
 ├── cache/                                    # ═══ SHARED: Caches ═══
 │   └── level1_cache_phi_iter*.pkl
@@ -1536,7 +1534,7 @@ python level2_transfer_entropy.py --variants B D E --iteration 18 --plot
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  PHASE 0: GENERATE DATA                                             │
-│  level0_generate.py → Creates Φ snapshots + Hilbert visualizations │
+│  level0_generate.py → Creates Φ snapshots + Hilbert visualizations  │
 └─────────────────────────────────────────────────────────────────────┘
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -1671,7 +1669,7 @@ This project is part of research on the Informational Singularity Hypothesis. Co
 | `Documentation/order_metrics_explained.md` | Scientific explanation of order metrics |
 | `Documentation/variants_spec.md` | Variant specifications |
 | `Documentation/HSI_Variants_Analysis_For_Review.md` | Analysis for peer review |
-| `docs/GPU_ACCELERATION_PROPOSAL.md` | Future GPU integration proposal |
+| `Documentation/GPU_ACCELERATION_PROPOSAL.md` | Future GPU integration proposal |
 | `level1/README.md` | Quick reference for Level 1 module |
 
 ### Code Documentation

@@ -591,8 +591,10 @@ def generate_survival_figures(
         ax = axes[0]
         all_rec = lost_rec + survived_rec
         bins = np.logspace(np.log10(max(1, min(all_rec))), np.log10(max(all_rec)), 50)
-        ax.hist(lost_rec, bins=bins, alpha=0.6, label=f'Lost ({len(lost_rec):,})', color='red')
-        ax.hist(survived_rec, bins=bins, alpha=0.6, label=f'Survived ({len(survived_rec):,})', color='green')
+        ax.hist(lost_rec, bins=bins, alpha=0.7, label=f'Lost ({len(lost_rec):,})', 
+                color=COLOR_LOST, edgecolor='black', linewidth=0.5, histtype='stepfilled')
+        ax.hist(survived_rec, bins=bins, alpha=0.7, label=f'Survived ({len(survived_rec):,})', 
+                color=COLOR_SURVIVED, edgecolor='black', linewidth=0.5, histtype='stepfilled')
 
         # Compute threshold for this specific transition
         all_rec_sorted = sorted(set(lost_rec + survived_rec))

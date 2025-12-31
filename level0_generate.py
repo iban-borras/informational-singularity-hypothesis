@@ -45,6 +45,15 @@ except ImportError:
         def __exit__(self, *a): print(f"[✓ {self.name}] Done", flush=True)
         def update(self, *a, **kw): pass
         def tick(self, *a): pass
+
+# Progress protocol for subprocess communication
+try:
+    from hsi_agents_project.utils.progress_protocol import parse_progress_line
+    from tqdm import tqdm
+    HAS_PROGRESS_PROTOCOL = True
+except ImportError:
+    HAS_PROGRESS_PROTOCOL = False
+    parse_progress_line = lambda x: None
 try:
     from hsi_agents_project.main import load_config as load_project_config
 except Exception:
@@ -165,15 +174,42 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
         )
 
         live_output_lines = []
+        pbar = None  # tqdm progress bar for subprocess progress protocol
+
         while True:
             line = proc.stdout.readline()
             if not line and proc.poll() is not None:
                 break
             if line:
                 live_output_lines.append(line)
+
+                # Check for progress protocol messages first
+                if HAS_PROGRESS_PROTOCOL:
+                    progress_msg = parse_progress_line(line)
+                    if progress_msg:
+                        if progress_msg['type'] == 'start':
+                            # Close any existing progress bar
+                            if pbar:
+                                pbar.close()
+                            pbar = tqdm(
+                                total=progress_msg['total'],
+                                desc=f"   {progress_msg['desc']}",
+                                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
+                                leave=True
+                            )
+                        elif progress_msg['type'] == 'update' and pbar:
+                            pbar.n = progress_msg['current']
+                            pbar.refresh()
+                        elif progress_msg['type'] == 'end' and pbar:
+                            pbar.n = pbar.total  # Ensure 100%
+                            pbar.refresh()
+                            pbar.close()
+                            pbar = None
+                        continue  # Don't print protocol lines
+
                 # Show progress lines and key info
                 stripped = line.lstrip()
-                if (stripped.startswith("[iter") or
+                should_print = (stripped.startswith("[iter") or
                     stripped.startswith("[loop]") or
                     stripped.startswith("[post]") or
                     stripped.startswith("[snapshot]") or
@@ -186,9 +222,13 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
                     "Generated" in line or
                     "✅" in line or
                     "⏳" in line or
-                    "📐" in line or
-                    "%" in line):
+                    "📐" in line)
+                if should_print:
                     print(line.rstrip())
+
+        # Cleanup any remaining progress bar
+        if pbar:
+            pbar.close()
         proc.wait(timeout=600)
         execution_time = time.time() - start_time
 
@@ -361,11 +401,20 @@ def plot_growth_and_time(results_list):
     if not valid_results:
         print("[WARN] Skipping growth/time plots: no valid results.")
         return
+
+    # Check if any variant has growth data (per_iteration with >1 point)
+    results_with_growth = [r for r in valid_results
+                          if r.get('per_iteration') and len(r.get('per_iteration', [])) > 1]
+    if not results_with_growth:
+        skipped = [r.get('variant', '?') for r in valid_results]
+        print(f"[INFO] Skipping growth/time plot: no iterative data (variants: {', '.join(skipped)})")
+        return
+
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     ax1, ax2 = axes
     variants = []
-    for r in valid_results:
+    for r in results_with_growth:
         variant = r.get('variant','?')
         variants.append(variant)
         per_iter = r.get('per_iteration', [])
@@ -2116,6 +2165,7 @@ def parse_args():
     parser.add_argument("--raster-bits", type=int, default=None, help="Override bits for 2D raster plot")
     parser.add_argument("--beta-bits", type=int, default=None, help="Override bits for spectrum β-fit")
     # Skip flags (alternative to env vars HSI_NO_*)
+    parser.add_argument("--no-plots", action="store_true", help="Skip ALL visualizations (data generation only)")
     parser.add_argument("--no-growth", action="store_true", help="Skip growth plots")
     parser.add_argument("--no-raster", action="store_true", help="Skip 2D raster plot")
     parser.add_argument("--no-hilbert", action="store_true", help="Skip Hilbert heatmap")
@@ -2156,15 +2206,15 @@ def main():
     print(f"Start: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Define all available variants
-    # Variant A is Random Control (separate script), others use the main generator
-    # Control variants (A, J, K, L) use level0_random_control module
+    # Control variants (A, J, K, L, M) use level0.control_variants module
     # ISH variants (B-I) use level0.generator module
     all_variants = [
-        # Control variants (null hypothesis / sanity checks)
-        ("-m", "hsi_agents_project.level0_random_control", "Variant A (Random Control)", "variant_A_results.json", "A"),
-        ("-m", "hsi_agents_project.level0_random_control", "Variant J (π Binary Control)", "variant_J_results.json", "J"),
-        ("-m", "hsi_agents_project.level0_random_control", "Variant K (Rule 30 Chaos)", "variant_K_results.json", "K"),
-        ("-m", "hsi_agents_project.level0_random_control", "Variant L (Logistic Map Chaos)", "variant_L_results.json", "L"),
+        # Control variants (null hypothesis / positive control)
+        ("-m", "hsi_agents_project.level0.control_variants", "Variant A (Random Control)", "variant_A_results.json", "A"),
+        ("-m", "hsi_agents_project.level0.control_variants", "Variant J (π Binary Control)", "variant_J_results.json", "J"),
+        ("-m", "hsi_agents_project.level0.control_variants", "Variant K (Rule 30 Chaos)", "variant_K_results.json", "K"),
+        ("-m", "hsi_agents_project.level0.control_variants", "Variant L (Logistic Map Chaos)", "variant_L_results.json", "L"),
+        ("-m", "hsi_agents_project.level0.control_variants", "Variant M (Fibonacci Positive Control)", "variant_M_results.json", "M"),
         # ISH variants (emergent structure hypothesis)
         ("-m", "hsi_agents_project.level0.generator", "Variant B (Stratified Baseline)", "variant_B_results.json", "B"),
         ("-m", "hsi_agents_project.level0.generator", "Variant D (Minimal Asymmetry)", "variant_D_results.json", "D"),
@@ -2176,15 +2226,15 @@ def main():
     ]
 
     # Filter variants based on CLI args
-    control_variants = {'A', 'J', 'K', 'L'}
+    control_variants = {'A', 'J', 'K', 'L', 'M'}
     if args.variant:
         # Run only the specified variant
         variant_code = args.variant.upper()
         variants = [v for v in all_variants if v[4] == variant_code]
         if not variants:
             print(f"❌ ERROR: Unknown variant '{variant_code}'")
-            print(f"   Available variants: A, B, D, E, F, G, H, I, J, K, L")
-            print(f"   Control variants: A=Random, J=Pi, K=Rule30, L=Logistic")
+            print(f"   Available variants: A, B, D, E, F, G, H, I, J, K, L, M")
+            print(f"   Control variants: A=Random, J=Pi, K=Rule30, L=Logistic, M=Fibonacci")
             return
         print(f"🎯 Running only Variant {variant_code}")
     elif args.include_control:
@@ -2235,46 +2285,58 @@ def main():
     best_variant = compare_phi_convergence(variant_results)
 
     # Visualizations (post-generation: minimal set, use plot-only for full control)
-    print("\n🎨 Starting visualization generation...", flush=True)
+    # Check for --no-plots flag (skip all visualizations)
+    skip_all_plots = getattr(args, 'no_plots', False) or os.environ.get("HSI_NO_PLOTS") == "1"
 
-    # Read skip flags from environment
-    skip_growth = os.environ.get("HSI_NO_GROWTH") == "1"
-    skip_raster = os.environ.get("HSI_NO_RASTER") == "1"
-    skip_beta = os.environ.get("HSI_NO_BETA") == "1"
-
-    try:
-        fft_prefix = int(os.environ.get("HSI_FFT_PREFIX", "2000000"))
-    except Exception:
-        fft_prefix = 2_000_000
-
-    print("   [1/5] Comparison visualization...", flush=True)
-    create_comparison_visualization(variant_results)
-
-    if skip_growth:
-        print("   [2/5] Growth plots SKIPPED", flush=True)
+    if skip_all_plots:
+        print("\n🎨 Visualizations SKIPPED (--no-plots)", flush=True)
+        # Still save enriched reports
+        print("   Saving enriched reports...", flush=True)
+        _attach_growth_metrics(variant_results, {})
+        for r in variant_results:
+            if r:
+                _write_enriched_variant_report(r)
     else:
-        print("   [2/5] Growth and time plots...", flush=True)
-        plot_growth_and_time(variant_results)
+        print("\n🎨 Starting visualization generation...", flush=True)
 
-    beta_stats = {}
-    if skip_beta:
-        print("   [3/5] Spectrum β-fit SKIPPED", flush=True)
-    else:
-        print("   [3/5] Spectrum β-fit analysis (enhanced)...", flush=True)
-        beta_stats = plot_spectrum_beta_fit_enhanced(variant_results, max_bits=fft_prefix, skip=False)
+        # Read skip flags from environment or CLI
+        skip_growth = getattr(args, 'no_growth', False) or os.environ.get("HSI_NO_GROWTH") == "1"
+        skip_raster = getattr(args, 'no_raster', False) or os.environ.get("HSI_NO_RASTER") == "1"
+        skip_beta = getattr(args, 'no_beta', False) or os.environ.get("HSI_NO_BETA") == "1"
 
-    # Attach growth and spectral metrics
-    print("   [4/5] Attaching growth metrics & saving enriched reports...", flush=True)
-    _attach_growth_metrics(variant_results, beta_stats)
-    for r in variant_results:
-        if r:
-            _write_enriched_variant_report(r)
+        try:
+            fft_prefix = int(os.environ.get("HSI_FFT_PREFIX", "2000000"))
+        except Exception:
+            fft_prefix = 2_000_000
 
-    if skip_raster:
-        print("   [5/5] 2D raster SKIPPED", flush=True)
-    else:
-        print("   [5/5] 2D raster plot...", flush=True)
-        plot_raster2d(variant_results, max_iter_cap=None)
+        print("   [1/5] Comparison visualization...", flush=True)
+        create_comparison_visualization(variant_results)
+
+        if skip_growth:
+            print("   [2/5] Growth plots SKIPPED", flush=True)
+        else:
+            print("   [2/5] Growth and time plots...", flush=True)
+            plot_growth_and_time(variant_results)
+
+        beta_stats = {}
+        if skip_beta:
+            print("   [3/5] Spectrum β-fit SKIPPED", flush=True)
+        else:
+            print("   [3/5] Spectrum β-fit analysis (enhanced)...", flush=True)
+            beta_stats = plot_spectrum_beta_fit_enhanced(variant_results, max_bits=fft_prefix, skip=False)
+
+        # Attach growth and spectral metrics
+        print("   [4/5] Attaching growth metrics & saving enriched reports...", flush=True)
+        _attach_growth_metrics(variant_results, beta_stats)
+        for r in variant_results:
+            if r:
+                _write_enriched_variant_report(r)
+
+        if skip_raster:
+            print("   [5/5] 2D raster SKIPPED", flush=True)
+        else:
+            print("   [5/5] 2D raster plot...", flush=True)
+            plot_raster2d(variant_results, max_iter_cap=None)
 
     # Save master summary with variants in filename to avoid overwrites
     master_results = {

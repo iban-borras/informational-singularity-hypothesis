@@ -2,28 +2,24 @@
 """
 Control Variants Generator for HSI Comparison
 
-This module generates control sequences for null hypothesis testing:
-  - Variant A: Pseudo-random bits (PRNG/CSPRNG baseline)
-  - Variant J: π (Pi) binary digits (pseudo-random mathematical constant)
-
-These allow direct comparison of metrics (fractal dimension, power spectrum β,
-Hilbert patterns, LZ complexity, etc.) between structured HSI data and known baselines.
+This module generates control sequences for hypothesis testing:
+  - Variant A: Pseudo-random bits (PRNG/CSPRNG baseline) - NULL hypothesis
+  - Variant J: π (Pi) binary digits - NULL hypothesis (deterministic pseudo-random)
+  - Variant K: Rule 30 cellular automaton - NULL hypothesis (deterministic chaos)
+  - Variant L: Logistic map at chaos - NULL hypothesis (deterministic chaos)
+  - Variant M: Fibonacci word - POSITIVE control (known φ-structure)
 
 Rationale:
-  - Any pattern found in HSI variants should be ABSENT in random data
+  - Any pattern found in ISH variants should be ABSENT in null controls (A, J, K, L)
   - If both show similar patterns, we may have algorithmic artifacts
-  - Differences indicate genuine emergent structure in HSI
-  - Variant J (π) serves as a sanity check: if LZ ratio ≈ 0.62, algorithm is biased
+  - Differences indicate genuine emergent structure in ISH
+  - Variant M (Fibonacci) serves as positive control: should show LZ ratio ≈ 0.62
 
-Usage:
-  # Variant A (Random)
-  python -m hsi_agents_project.level0_random_control --iterations 14 --seed 42
-  python -m hsi_agents_project.level0_random_control --match-variant B --iterations 14
+Usage (via level0_generate.py - RECOMMENDED):
+  python -m hsi_agents_project.level0_generate --variant A -i 15   # Random
+  python -m hsi_agents_project.level0_generate --variant M -i 15   # Fibonacci
 
-  # Variant J (Pi binary)
-  python -m hsi_agents_project.level0_random_control --variant J --iterations 14
-
-The generated files are saved in the same format as other variants,
+The generated files are saved in the same format as ISH variants,
 allowing direct use with the analysis pipeline.
 """
 from __future__ import annotations
@@ -40,10 +36,11 @@ from pathlib import Path
 from typing import Optional
 
 # Ensure parent directory is in path for imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 # Project paths - results are inside hsi_agents_project/
-ROOT = Path(__file__).resolve().parent
+# Now we're inside level0/, so go up one level to hsi_agents_project/
+ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = ROOT / "results" / "level0" / "phi_snapshots" / "var_A"
 
 
@@ -246,7 +243,7 @@ def generate_control_variant(
     print(f"[variant_A] 💾 Saving to {struct_path.name}...", flush=True)
 
     t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path))
+    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
     save_time = time.perf_counter() - t1
 
     elapsed = time.perf_counter() - t0
@@ -367,7 +364,7 @@ def generate_pi_variant(num_bits: int, iterations: int) -> dict:
     print(f"[variant_J] 💾 Saving to {struct_path.name}...", flush=True)
 
     t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path))
+    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
     save_time = time.perf_counter() - t1
 
     elapsed = time.perf_counter() - t0
@@ -466,30 +463,76 @@ def generate_rule30_bits(num_bits: int) -> str:
     """
     import numpy as np
 
-    # Width needs to be large enough to avoid edge effects
-    width = max(2 * num_bits + 1, 1001)
+    # Try numba for speed (10-100x faster)
+    try:
+        from numba import njit
+
+        @njit(cache=True)
+        def _rule30_chunk(state: np.ndarray, chunk_size: int, center: int) -> tuple:
+            """Process a chunk of Rule 30 steps. Returns (bits, new_state)."""
+            width = len(state)
+            bits = np.zeros(chunk_size, dtype=np.uint8)
+
+            for step in range(chunk_size):
+                bits[step] = state[center]
+
+                # Rule 30: new = left XOR (center OR right)
+                new_state = np.zeros(width, dtype=np.uint8)
+                for i in range(1, width - 1):
+                    new_state[i] = state[i - 1] ^ (state[i] | state[i + 1])
+                state = new_state
+
+            return bits, state
+
+        width = min(2 * num_bits + 1, 100_001)
+        center = width // 2
+
+        print(f"[variant_K]   Using numba (compiling JIT, wait ~10s first time)...", flush=True)
+
+        # Initialize state
+        state = np.zeros(width, dtype=np.uint8)
+        state[center] = 1
+
+        # Process in chunks to show progress
+        chunk_size = 1_000_000
+        all_bits = []
+        processed = 0
+
+        while processed < num_bits:
+            remaining = num_bits - processed
+            current_chunk = min(chunk_size, remaining)
+            bits_chunk, state = _rule30_chunk(state, current_chunk, center)
+            all_bits.append(bits_chunk)
+            processed += current_chunk
+            print(f"[variant_K]   Rule 30: {100*processed/num_bits:.0f}%...", flush=True)
+
+        result = np.concatenate(all_bits)
+        return ''.join(str(b) for b in result)
+
+    except ImportError:
+        pass  # Fall through to numpy version
+
+    # Fallback: optimized numpy version (no np.roll, use slicing)
+    print(f"[variant_K]   Using numpy (install numba for 10x speed)...", flush=True)
+
+    width = min(2 * num_bits + 1, 100_001)
     center = width // 2
 
-    # Initialize with single 1 in center (numpy for speed)
     state = np.zeros(width, dtype=np.uint8)
     state[center] = 1
 
     bits = []
+    report_interval = max(num_bits // 20, 100_000)
+
     for step in range(num_bits):
-        # Collect center cell
         bits.append(str(state[center]))
 
-        # Rule 30: new = left XOR (center OR right)
-        # Using numpy vectorized operations
-        left = np.roll(state, 1)
-        right = np.roll(state, -1)
-        state = left ^ (state | right)
-        # Fix boundaries
-        state[0] = 0
-        state[-1] = 0
+        # Rule 30 without np.roll (faster)
+        new_state = np.zeros(width, dtype=np.uint8)
+        new_state[1:-1] = state[:-2] ^ (state[1:-1] | state[2:])
+        state = new_state
 
-        # Progress for large sequences
-        if num_bits > 1_000_000 and step % 1_000_000 == 0:
+        if step % report_interval == 0 and step > 0:
             print(f"[variant_K]   Rule 30: {100*step/num_bits:.0f}%...", flush=True)
 
     return ''.join(bits)
@@ -512,20 +555,32 @@ def generate_logistic_map_bits(num_bits: int, r: float = 3.99, x0: float = 0.1) 
     Returns:
         Binary string from logistic map
     """
+    import numpy as np
+    from hsi_agents_project.utils.progress_protocol import ProgressReporter
+
+    # Process in chunks for memory efficiency and progress
+    chunk_size = 10_000_000  # 10M per chunk
+    num_chunks = (num_bits + chunk_size - 1) // chunk_size
+
+    all_bits = []
     x = x0
-    bits = []
 
-    for step in range(num_bits):
-        # Generate next value
-        x = r * x * (1 - x)
-        # Convert to binary
-        bits.append('1' if x >= 0.5 else '0')
+    with ProgressReporter(num_chunks, "[variant_L] Logistic map", update_percent=2) as progress:
+        for chunk_idx in range(num_chunks):
+            start = chunk_idx * chunk_size
+            end = min(start + chunk_size, num_bits)
+            n = end - start
 
-        # Progress for large sequences
-        if num_bits > 10_000_000 and step % 10_000_000 == 0:
-            print(f"[variant_L]   Logistic map: {100*step/num_bits:.0f}%...", flush=True)
+            # Vectorized chunk processing
+            chunk_bits = np.empty(n, dtype=np.uint8)
+            for i in range(n):
+                x = r * x * (1 - x)
+                chunk_bits[i] = 1 if x >= 0.5 else 0
 
-    return ''.join(bits)
+            all_bits.append(''.join(str(b) for b in chunk_bits))
+            progress.update(chunk_idx + 1)
+
+    return ''.join(all_bits)
 
 
 def generate_rule30_variant(num_bits: int, iterations: int) -> dict:
@@ -561,7 +616,7 @@ def generate_rule30_variant(num_bits: int, iterations: int) -> dict:
     print(f"[variant_K] 💾 Saving to {struct_path.name}...", flush=True)
 
     t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path))
+    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
     save_time = time.perf_counter() - t1
 
     elapsed = time.perf_counter() - t0
@@ -646,7 +701,7 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
     print(f"[variant_L] 💾 Saving to {struct_path.name}...", flush=True)
 
     t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path))
+    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
     save_time = time.perf_counter() - t1
 
     elapsed = time.perf_counter() - t0
@@ -745,73 +800,91 @@ def generate_fibonacci_variant(num_bits: int, iterations: int) -> dict:
     Returns:
         Metadata dict with file info
     """
-    print(f"[variant_M] Generating Fibonacci word ({num_bits:,} bits)...", flush=True)
+    from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
 
-    # Generate Fibonacci word
-    bits_str = generate_fibonacci_word(num_bits)
-    actual_bits = len(bits_str)
+    results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_M"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.perf_counter()
+    print(f"[variant_M] 🌻 Generating {num_bits:,} Fibonacci word bits...", flush=True)
+
+    bits = generate_fibonacci_word(num_bits)
+
+    gen_time = time.perf_counter() - t0
+    print(f"[variant_M] ✅ Generated {len(bits):,} bits in {gen_time:.2f}s", flush=True)
 
     # Statistics
-    ones = bits_str.count('1')
-    zeros = actual_bits - ones
+    ones = bits.count('1')
+    zeros = len(bits) - ones
     ratio_01 = zeros / ones if ones > 0 else float('inf')
-
-    print(f"[variant_M] Generated {actual_bits:,} bits", flush=True)
     print(f"[variant_M] 0s: {zeros:,}, 1s: {ones:,}, ratio 0/1: {ratio_01:.6f} (φ≈1.618)", flush=True)
 
-    # Create metadata (v33 format)
+    # Save using v33 bitarray encoder (same as other variants)
+    struct_path = results_dir / f"phi_iter{iterations}.struct.gz"
+    print(f"[variant_M] 💾 Saving to {struct_path.name}...", flush=True)
+
+    t1 = time.perf_counter()
+    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
+    save_time = time.perf_counter() - t1
+
+    elapsed = time.perf_counter() - t0
+    format_info = get_format_info(bits)
+
     meta = {
-        "format_version": 33,
-        "variant": "M",
-        "variant_name": "Fibonacci Word (φ-structured)",
         "iteration": iterations,
-        "total_bits": actual_bits,
-        "generation_method": "fibonacci_word",
-        "description": "Positive control: Fibonacci word with inherent φ structure",
+        "sequence_length": len(bits),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "format": "v33_structural",
+        "variant": "M",
+        "variant_description": "Fibonacci Word - Positive Control (φ-structured)",
+        "source": "Fibonacci word S_n = S_{n-1} + S_{n-2}",
         "expected_lz_ratio": "≈0.62 (1/φ)",
-        "purpose": "Validate φ detection algorithm",
+        "purpose": "Validate that algorithm detects φ where it exists",
         "ones_count": ones,
         "zeros_count": zeros,
-        "ones_ratio": ones / actual_bits if actual_bits > 0 else 0,
+        "ones_ratio": ones / len(bits) if bits else 0.0,
         "zeros_to_ones_ratio": ratio_01,
         "phi_reference": 1.6180339887,
-        "timestamp": datetime.now().isoformat()
+        "compressed_size_bytes": compressed_size,
+        "format_info": format_info,
+        "generation_time_seconds": gen_time
     }
 
-    # Save structure file
-    results_dir = Path("results/level0")
-    results_dir.mkdir(parents=True, exist_ok=True)
-    struct_path = results_dir / f"var_M_iter{iterations}_structure.json"
+    meta_path = results_dir / f"phi_iter{iterations}.json"
+    with open(meta_path, 'w') as f:
+        json.dump(meta, f, indent=2)
 
-    # Pack bits into bytes
-    bit_array = bitarray(bits_str)
-    packed_bytes = bit_array.tobytes()
-    encoded_data = base64.b64encode(packed_bytes).decode('ascii')
-
-    structure = {
-        "metadata": meta,
-        "phi_sequence": {
-            "total_bits": actual_bits,
-            "packed_data_base64": encoded_data,
-            "packed_bytes": len(packed_bytes),
-            "compression": "none",
-            "encoding": "bitarray"
-        }
+    # Report file
+    report_dir = ROOT / "results" / "level0" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report = {
+        "variant": "M",
+        "variant_description": "Fibonacci Word - Positive Control (φ-structured)",
+        "iterations": iterations,
+        "phi_length": len(bits),
+        "total_bits": len(bits),
+        "execution_time": elapsed,
+        "ones_ratio": meta['ones_ratio'],
+        "zeros_to_ones_ratio": ratio_01,
+        "expected_lz_ratio": "≈0.62 (1/φ)"
     }
+    report_path = report_dir / f"variant_M_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
 
-    with open(struct_path, 'w') as f:
-        json.dump(structure, f, indent=2)
+    # phi_metadata for pipeline compatibility
+    phi_meta = {"variant": "M", "max_iterations": iterations, "final_length": len(bits)}
+    with open(report_dir / "phi_metadata_M.json", 'w') as f:
+        json.dump(phi_meta, f, indent=2)
 
-    print(f"[variant_M] ✅ Saved: {struct_path.name}")
+    print(f"[variant_M] ✅ Saved: {struct_path.name}", flush=True)
+    print(f"[variant_M] ✅ Metadata: {meta_path.name}", flush=True)
+    print(f"[variant_M] ✅ Report: {report_path.name}", flush=True)
+    print(f"[variant_M] Stats: {ones:,} ones ({meta['ones_ratio']:.4f}), ratio 0/1 = {ratio_01:.6f}", flush=True)
     return meta
 
 
 def main():
-    # Debug: show that we entered main()
-    print(f"[DEBUG] level0_random_control.main() started", flush=True)
-    print(f"[DEBUG] HSI_VARIANT_CODE={os.environ.get('HSI_VARIANT_CODE', 'NOT SET')}", flush=True)
-    print(f"[DEBUG] HSI_ITERATIONS={os.environ.get('HSI_ITERATIONS', 'NOT SET')}", flush=True)
-
     parser = argparse.ArgumentParser(
         description="Generate control variants for HSI comparison",
         formatter_class=argparse.RawDescriptionHelpFormatter,
