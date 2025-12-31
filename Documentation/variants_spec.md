@@ -305,14 +305,52 @@ All surviving variants are **scientifically compatible** with the core principle
 
 ---
 
-## Future candidates (J–Z, not implemented yet)
+## Control Variants (A, J, K, L, M) — Implemented Dec 2025
 
-These are design sketches to help plan extensions; they are not active in the codebase.
-- J — Windowed finalize: global simplify applied only to a sliding window over the outermost structure
-- K — Asymmetric runs: compress `0+` and `1+` with different policies (e.g., thresholds) without adding randomness
-- L — Multi‑Absolute frame: `Dα = (Accα)11` to test double‑encapsulation pressure
-- M — Alternating finalizer: finalize every k iterations instead of every iteration
-- … (reserve N–Z for additional controlled decay models consistent with the HSI principles)
+These variants serve as **null/positive controls** for validating the φ-detection methodology.
+They are NOT HSI variants — they are external baselines for comparison.
+
+### Variant A — PRNG Random (Null Control)
+- **Source:** Mersenne Twister pseudo-random number generator
+- **Expected LZ ratio:** ≈ 1.0 (no self-similar structure)
+- **Purpose:** Statistical random baseline
+
+### Variant J — π Binary (Null Control)
+- **Source:** π digits in BCD encoding (4 bits per decimal digit)
+- **Expected LZ ratio:** ≈ 1.0 (pseudo-random, patternless)
+- **Purpose:** Algorithm sanity check — if LZ detects φ in π, the algorithm is biased
+
+### Variant K — Rule 30 (Null Control)
+- **Source:** Wolfram's Rule 30 cellular automaton
+- **Expected LZ ratio:** ≈ 1.0 (deterministic chaos)
+- **Purpose:** Comparison with deterministic chaos from simple rules
+
+### Variant L — Logistic Map (Null Control)
+- **Source:** x_{n+1} = r × x_n × (1 - x_n) with r = 3.99
+- **Expected LZ ratio:** ≈ 1.0 (deterministic chaos)
+- **Purpose:** Comparison with dynamical system chaos
+
+### Variant M — Fibonacci Word (POSITIVE Control) ⭐
+- **Source:** Recursive Fibonacci word: S_0="0", S_1="01", S_n=S_{n-1}+S_{n-2}
+- **Expected LZ ratio:** ≈ 0.62 (1/φ) — HAS φ structure by construction
+- **Purpose:** POSITIVE CONTROL — validates that our algorithm correctly detects φ where it exists
+- **Validation logic:** If M shows ≈0.62 and B shows ≈0.62, the detection is validated
+
+**Usage:**
+```bash
+python level0_random_control.py --variant A -i 15   # Null control
+python level0_random_control.py --variant M -i 15   # Positive control
+python level1_deep_analysis.py --variants A,B,M -i 15 --analysis lz
+```
+
+---
+
+## Future candidates (N–Z, not implemented yet)
+
+These are design sketches for potential future variants:
+- N — Windowed finalize: global simplify applied only to a sliding window
+- O — Multi‑Absolute frame: `Dα = (Accα)11` to test double‑encapsulation
+- … (reserve P–Z for additional controlled decay models)
 
 ---
 

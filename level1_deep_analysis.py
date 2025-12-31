@@ -620,6 +620,153 @@ def multiscale_lz_analysis(bits: str, max_bits: int = 100000,
     }
 
 
+def bootstrap_lz_confidence_interval(bits: str, max_bits: int = 100000,
+                                      n_bootstrap: int = 100,
+                                      confidence: float = 0.95,
+                                      verbose: bool = True) -> Dict:
+    """
+    Calculate bootstrap confidence intervals for LZ φ-distance.
+
+    Args:
+        bits: Binary string
+        max_bits: Maximum bits to analyze
+        n_bootstrap: Number of bootstrap samples
+        confidence: Confidence level (default 95%)
+        verbose: Print progress
+
+    Returns:
+        Bootstrap statistics with CI for mean_phi_distance
+    """
+    if verbose:
+        print(f"\n📊 Bootstrap Confidence Interval (n={n_bootstrap}, {confidence*100:.0f}%)")
+
+    data = bits[:max_bits]
+    n = len(data)
+
+    # Scales to analyze
+    scales = [1000, 2000, 5000, 10000, 20000, 50000]
+    scales = [s for s in scales if s <= n]
+
+    phi_distances_samples = []
+
+    iterator = range(n_bootstrap)
+    if verbose and TQDM_AVAILABLE:
+        iterator = tqdm(iterator, desc="   Bootstrap", unit="sample")
+
+    for _ in iterator:
+        # Resample with replacement
+        indices = np.random.choice(n, size=n, replace=True)
+        sample = ''.join(data[i] for i in indices)
+
+        # Calculate LZ at each scale
+        lz_values = {}
+        for scale in scales:
+            segment = sample[:scale]
+            lz = lempel_ziv_complexity(segment)
+            normalized = lz / (scale / math.log2(scale)) if scale > 1 else 0
+            lz_values[scale] = normalized
+
+        # Calculate ratios
+        sorted_scales = sorted(lz_values.keys())
+        lz_ratios = []
+        for i in range(len(sorted_scales) - 1):
+            s1, s2 = sorted_scales[i], sorted_scales[i + 1]
+            if lz_values[s1] > 0:
+                lz_ratios.append(lz_values[s2] / lz_values[s1])
+
+        # Calculate phi distance
+        if lz_ratios:
+            phi_dists = [min(abs(r - PHI), abs(r - 1/PHI)) for r in lz_ratios]
+            phi_distances_samples.append(np.mean(phi_dists))
+
+    # Calculate CI
+    alpha = 1 - confidence
+    lower = np.percentile(phi_distances_samples, alpha/2 * 100)
+    upper = np.percentile(phi_distances_samples, (1 - alpha/2) * 100)
+    mean = np.mean(phi_distances_samples)
+    std = np.std(phi_distances_samples)
+
+    if verbose:
+        print(f"   Mean φ-distance: {mean:.4f} ± {std:.4f}")
+        print(f"   {confidence*100:.0f}% CI: [{lower:.4f}, {upper:.4f}]")
+
+    return {
+        'mean_phi_distance': float(mean),
+        'std': float(std),
+        'ci_lower': float(lower),
+        'ci_upper': float(upper),
+        'confidence_level': confidence,
+        'n_bootstrap': n_bootstrap,
+        'samples': phi_distances_samples
+    }
+
+
+def test_multiple_constants(lz_ratios: List[float], verbose: bool = True) -> Dict:
+    """
+    Test LZ ratios against multiple mathematical constants.
+
+    Honestly reports which constant is closest to the observed ratios.
+
+    Args:
+        lz_ratios: List of LZ complexity ratios between scales
+        verbose: Print results
+
+    Returns:
+        Comparison with multiple constants
+    """
+    if not lz_ratios:
+        return {'error': 'No LZ ratios provided'}
+
+    # Constants to test
+    constants = {
+        'φ (Golden Ratio)': PHI,
+        '1/φ': 1/PHI,
+        '√2': math.sqrt(2),
+        '1/√2': 1/math.sqrt(2),
+        '√3': math.sqrt(3),
+        '1/√3': 1/math.sqrt(3),
+        'e': math.e,
+        '1/e': 1/math.e,
+        'π/3': math.pi/3,
+        'ln(2)': math.log(2),
+        '2': 2.0,
+        '0.5': 0.5,
+        '1.0 (random)': 1.0
+    }
+
+    # Calculate mean ratio
+    mean_ratio = np.mean(lz_ratios)
+
+    # Test each constant
+    results = []
+    for name, value in constants.items():
+        distance = abs(mean_ratio - value)
+        results.append({
+            'constant': name,
+            'value': value,
+            'distance': distance
+        })
+
+    # Sort by distance
+    results.sort(key=lambda x: x['distance'])
+
+    if verbose:
+        print(f"\n🔬 Multiple Constants Test")
+        print(f"   Mean LZ ratio: {mean_ratio:.4f}")
+        print(f"   Closest matches:")
+        for i, r in enumerate(results[:5]):
+            marker = "🎯" if i == 0 else "  "
+            print(f"   {marker} {r['constant']}: {r['value']:.4f} (distance: {r['distance']:.4f})")
+
+    return {
+        'mean_ratio': float(mean_ratio),
+        'rankings': results,
+        'best_match': results[0]['constant'],
+        'best_match_distance': results[0]['distance'],
+        'phi_rank': next((i+1 for i, r in enumerate(results) if 'φ' in r['constant']), None)
+    }
+
+
 def multiscale_lz_analysis_subsampled(subsamples: Dict, verbose: bool = True) -> Dict:
     """
     Analyze Lempel-Ziv complexity using multi-scale subsamples.
@@ -897,6 +1044,11 @@ def run_deep_analysis(
         else:
             results['lz'] = multiscale_lz_analysis(phi_observable, max_bits, verbose)
 
+        # Add multiple constants test for rigor (fast)
+        lz_ratios = results['lz'].get('lz_ratios', [])
+        if lz_ratios:
+            results['lz']['constants_test'] = test_multiple_constants(lz_ratios, verbose)
+
         if verbose:
             elapsed = time.time() - analysis_start
             lz = results['lz']
@@ -973,19 +1125,22 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  Standard mode (first N bits):
-    python level1_deep_analysis.py -v B -i 20 --max-bits 100000
+  Single variant:
+    python level1_deep_analysis.py -v B -i 15 --max-bits 100000
+
+  Multiple variants (comparative analysis):
+    python level1_deep_analysis.py --variants A,B,F,J,K,L -i 15 --max-bits 100000
 
   Multiscale mode (analyze ALL bits using Nyquist subsampling):
-    python level1_deep_analysis.py -v B -i 20 --multiscale
+    python level1_deep_analysis.py -v B -i 15 --multiscale
 
   The --multiscale flag uses Nyquist-based subsampling to analyze patterns
   at ALL scales (from 1 bit to 100G+ bits) using only ~12M samples in RAM.
-  This is scientifically valid because detecting patterns of scale N only
-  requires sampling at frequency 2/N (Nyquist theorem).
         """
     )
-    parser.add_argument("--variant", "-v", default="B", help="Variant (B, D, E, F, G, H, I)")
+    parser.add_argument("--variant", "-v", default="B", help="Single variant to analyze")
+    parser.add_argument("--variants", type=str, default=None,
+                        help="Multiple variants (comma-separated, e.g., A,B,F,J,K,L)")
     parser.add_argument("--iteration", "-i", type=int, default=15, help="Iteration number")
     parser.add_argument("--max-bits", "-m", type=int, default=100000,
                         help="Max bits to analyze (ignored if --multiscale)")
@@ -1004,68 +1159,176 @@ Examples:
 
     analyses = args.analysis.split(",") if args.analysis != "all" else ["all"]
 
-    # Generate default output path if not specified
-    if args.output:
-        output_path = args.output
-    elif args.no_save:
-        output_path = None
+    # Determine variants to analyze
+    if args.variants:
+        variants = [v.strip().upper() for v in args.variants.split(",")]
     else:
-        # Auto-generate descriptive filename
-        from utils.file_saver import get_output_path
-        if args.multiscale:
-            sample_info = "multiscale"
+        variants = [args.variant.upper()]
+
+    # Helper to format bits nicely
+    def format_bits(n):
+        if n >= 1_000_000_000:
+            return f"{n // 1_000_000_000}G"
+        elif n >= 1_000_000:
+            return f"{n // 1_000_000}M"
+        elif n >= 1_000:
+            return f"{n // 1_000}k"
+        return str(n)
+
+    sample_info = "multiscale" if args.multiscale else format_bits(args.max_bits)
+
+    # Multi-variant mode
+    if len(variants) > 1:
+        print(f"\n{'='*70}")
+        print(f"🔬 COMPARATIVE DEEP ANALYSIS — {len(variants)} variants")
+        print(f"{'='*70}")
+        print(f"   Variants: {', '.join(variants)}")
+        print(f"   Iteration: {args.iteration}")
+        print(f"   Max bits: {args.max_bits:,}")
+        print(f"   Analyses: {', '.join(analyses if 'all' not in analyses else ['wavelet', 'recurrence', 'lz'])}")
+        print()
+
+        all_results = {}
+        for variant in variants:
+            try:
+                # Generate output path for each variant
+                if args.no_save:
+                    output_path = None
+                else:
+                    from utils.file_saver import get_output_path
+                    filename = f"deep_analysis_var_{variant}_iter{args.iteration}_{sample_info}.json"
+                    output_path = str(get_output_path(1, "analysis", filename))
+
+                results = run_deep_analysis(
+                    variant, args.iteration,
+                    analyses=analyses,
+                    max_bits=args.max_bits,
+                    output_path=output_path,
+                    use_multiscale=args.multiscale
+                )
+                all_results[variant] = results
+            except FileNotFoundError as e:
+                print(f"⚠️  Variant {variant}: {e}")
+                all_results[variant] = {'error': str(e)}
+
+        # Comparative summary table
+        print(f"\n{'='*70}")
+        print(f"📊 COMPARATIVE SUMMARY — Iteration {args.iteration}")
+        print(f"{'='*70}")
+
+        # Header
+        header = "   Variant  │ Type     │ LZ Ratio │ Best Match      │ φ-dist"
+        print(header)
+        print(f"   {'─'*60}")
+
+        for variant in variants:
+            r = all_results.get(variant, {})
+            if 'error' in r:
+                print(f"   {variant:^7}  │ {'ERROR':^8} │ {'─':^8} │ {'─':^15} │ {'─':^6}")
+                continue
+
+            # Determine type
+            vtype = "Control" if variant in ('A', 'J', 'K', 'L') else "HSI"
+
+            lz = r.get('lz', {})
+            ct = lz.get('constants_test', {})
+            lz_ratio = ct.get('mean_ratio', float('nan'))
+            best_match = ct.get('best_match', '─')[:15]
+            phi_dist = lz.get('mean_phi_distance', float('nan'))
+
+            # Emoji based on phi detection
+            marker = "✅" if lz.get('phi_detected') else "  "
+
+            print(f"   {variant:^7}  │ {vtype:^8} │ {lz_ratio:^8.3f} │ {best_match:^15} │ {phi_dist:^6.3f} {marker}")
+
+        print()
+
+        # Statistical comparison if we have both HSI and control variants
+        hsi_variants = [v for v in variants if v not in ('A', 'J', 'K', 'L') and 'error' not in all_results.get(v, {})]
+        ctrl_variants = [v for v in variants if v in ('A', 'J', 'K', 'L') and 'error' not in all_results.get(v, {})]
+
+        if hsi_variants and ctrl_variants:
+            hsi_ratios = [all_results[v].get('lz', {}).get('constants_test', {}).get('mean_ratio', 0) for v in hsi_variants]
+            ctrl_ratios = [all_results[v].get('lz', {}).get('constants_test', {}).get('mean_ratio', 0) for v in ctrl_variants]
+
+            hsi_mean = np.mean(hsi_ratios) if hsi_ratios else 0
+            ctrl_mean = np.mean(ctrl_ratios) if ctrl_ratios else 0
+
+            print(f"   📈 HSI mean LZ ratio:     {hsi_mean:.4f} (n={len(hsi_variants)})")
+            print(f"   📉 Control mean LZ ratio: {ctrl_mean:.4f} (n={len(ctrl_variants)})")
+            print(f"   📊 Difference:            {abs(hsi_mean - ctrl_mean):.4f}")
+
+            # Simple effect size (Cohen's d approximation)
+            if len(hsi_ratios) > 1 and len(ctrl_ratios) > 1:
+                pooled_std = np.sqrt((np.var(hsi_ratios) + np.var(ctrl_ratios)) / 2)
+                if pooled_std > 0:
+                    cohens_d = (hsi_mean - ctrl_mean) / pooled_std
+                    print(f"   📐 Effect size (Cohen's d): {cohens_d:.2f}")
+
+        # Save comparative report
+        if not args.no_save:
+            from utils.file_saver import get_output_path
+            report = {
+                'variants': variants,
+                'iteration': args.iteration,
+                'max_bits': args.max_bits,
+                'analyses': analyses,
+                'results': {v: all_results[v] for v in variants}
+            }
+            report_path = get_output_path(1, "analysis", f"comparative_iter{args.iteration}_{sample_info}.json")
+            with open(report_path, 'w') as f:
+                json.dump(report, f, indent=2, default=str)
+            print(f"\n   💾 Comparative report saved: {report_path}")
+
+    else:
+        # Single variant mode (original behavior)
+        variant = variants[0]
+
+        if args.output:
+            output_path = args.output
+        elif args.no_save:
+            output_path = None
         else:
-            # Format max_bits nicely (e.g., 100000 -> 100k, 1000000 -> 1M)
-            mb = args.max_bits
-            if mb >= 1_000_000_000:
-                sample_info = f"{mb // 1_000_000_000}G"
-            elif mb >= 1_000_000:
-                sample_info = f"{mb // 1_000_000}M"
-            elif mb >= 1_000:
-                sample_info = f"{mb // 1_000}k"
-            else:
-                sample_info = str(mb)
+            from utils.file_saver import get_output_path
+            filename = f"deep_analysis_var_{variant}_iter{args.iteration}_{sample_info}.json"
+            output_path = str(get_output_path(1, "analysis", filename))
 
-        filename = f"deep_analysis_var_{args.variant}_iter{args.iteration}_{sample_info}.json"
-        output_path = str(get_output_path(1, "analysis", filename))
-
-    try:
-        results = run_deep_analysis(
-            args.variant, args.iteration,
-            analyses=analyses,
-            max_bits=args.max_bits,
-            output_path=output_path,
-            use_multiscale=args.multiscale
-        )
-
-        if args.compare:
-            print(f"\n{'='*60}")
-            print(f"📊 COMPARISON: {args.variant} vs {args.compare}")
-            print(f"{'='*60}")
-
-            results_compare = run_deep_analysis(
-                args.compare, args.iteration,
+        try:
+            results = run_deep_analysis(
+                variant, args.iteration,
                 analyses=analyses,
                 max_bits=args.max_bits,
+                output_path=output_path,
                 use_multiscale=args.multiscale
             )
 
-            # Compare key metrics
-            print(f"\n   Metric                    {args.variant:>10}  {args.compare:>10}")
-            print(f"   {'-'*45}")
+            if args.compare:
+                print(f"\n{'='*60}")
+                print(f"📊 COMPARISON: {variant} vs {args.compare}")
+                print(f"{'='*60}")
 
-            if 'wavelet' in results and 'wavelet' in results_compare:
-                print(f"   φ-preference              {results['wavelet']['phi_preference']:>10.3f}  {results_compare['wavelet']['phi_preference']:>10.3f}")
+                results_compare = run_deep_analysis(
+                    args.compare, args.iteration,
+                    analyses=analyses,
+                    max_bits=args.max_bits,
+                    use_multiscale=args.multiscale
+                )
 
-            if 'recurrence' in results and 'recurrence' in results_compare:
-                print(f"   Determinism               {results['recurrence']['determinism']:>10.3f}  {results_compare['recurrence']['determinism']:>10.3f}")
+                print(f"\n   Metric                    {variant:>10}  {args.compare:>10}")
+                print(f"   {'-'*45}")
 
-            if 'lz' in results and 'lz' in results_compare:
-                print(f"   LZ φ-distance             {results['lz']['mean_phi_distance']:>10.3f}  {results_compare['lz']['mean_phi_distance']:>10.3f}")
+                if 'wavelet' in results and 'wavelet' in results_compare:
+                    print(f"   φ-preference              {results['wavelet']['phi_preference']:>10.3f}  {results_compare['wavelet']['phi_preference']:>10.3f}")
 
-    except FileNotFoundError as e:
-        print(f"❌ {e}")
-        sys.exit(1)
+                if 'recurrence' in results and 'recurrence' in results_compare:
+                    print(f"   Determinism               {results['recurrence']['determinism']:>10.3f}  {results_compare['recurrence']['determinism']:>10.3f}")
+
+                if 'lz' in results and 'lz' in results_compare:
+                    print(f"   LZ φ-distance             {results['lz']['mean_phi_distance']:>10.3f}  {results_compare['lz']['mean_phi_distance']:>10.3f}")
+
+        except FileNotFoundError as e:
+            print(f"❌ {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

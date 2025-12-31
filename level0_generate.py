@@ -178,12 +178,15 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
                     stripped.startswith("[post]") or
                     stripped.startswith("[snapshot]") or
                     stripped.startswith("[INFO]") or
-                    stripped.startswith("[variant_A]") or
+                    stripped.startswith("[DEBUG]") or
+                    stripped.startswith("[variant_") or  # All variants (A, J, etc.)
                     "Config:" in line or
                     "Compression" in line or
                     "Saved variant" in line or
                     "Generated" in line or
                     "✅" in line or
+                    "⏳" in line or
+                    "📐" in line or
                     "%" in line):
                     print(line.rstrip())
         proc.wait(timeout=600)
@@ -2154,8 +2157,15 @@ def main():
 
     # Define all available variants
     # Variant A is Random Control (separate script), others use the main generator
+    # Control variants (A, J, K, L) use level0_random_control module
+    # ISH variants (B-I) use level0.generator module
     all_variants = [
+        # Control variants (null hypothesis / sanity checks)
         ("-m", "hsi_agents_project.level0_random_control", "Variant A (Random Control)", "variant_A_results.json", "A"),
+        ("-m", "hsi_agents_project.level0_random_control", "Variant J (π Binary Control)", "variant_J_results.json", "J"),
+        ("-m", "hsi_agents_project.level0_random_control", "Variant K (Rule 30 Chaos)", "variant_K_results.json", "K"),
+        ("-m", "hsi_agents_project.level0_random_control", "Variant L (Logistic Map Chaos)", "variant_L_results.json", "L"),
+        # ISH variants (emergent structure hypothesis)
         ("-m", "hsi_agents_project.level0.generator", "Variant B (Stratified Baseline)", "variant_B_results.json", "B"),
         ("-m", "hsi_agents_project.level0.generator", "Variant D (Minimal Asymmetry)", "variant_D_results.json", "D"),
         ("-m", "hsi_agents_project.level0.generator", "Variant I (Inverse Order: 10→01)", "variant_I_results.json", "I"),
@@ -2166,23 +2176,25 @@ def main():
     ]
 
     # Filter variants based on CLI args
+    control_variants = {'A', 'J', 'K', 'L'}
     if args.variant:
         # Run only the specified variant
         variant_code = args.variant.upper()
         variants = [v for v in all_variants if v[4] == variant_code]
         if not variants:
             print(f"❌ ERROR: Unknown variant '{variant_code}'")
-            print(f"   Available variants: A, B, D, E, F, G, H, I")
+            print(f"   Available variants: A, B, D, E, F, G, H, I, J, K, L")
+            print(f"   Control variants: A=Random, J=Pi, K=Rule30, L=Logistic")
             return
         print(f"🎯 Running only Variant {variant_code}")
     elif args.include_control:
-        # Include all variants (with A)
+        # Include all variants (with control variants)
         variants = all_variants
-        print("🎯 Running all variants INCLUDING Variant A (Random Control)")
+        print("🎯 Running all variants INCLUDING controls (A=Random, J=Pi, K=Rule30, L=Logistic)")
     else:
-        # Default: exclude A (random control)
-        variants = [v for v in all_variants if v[4] != 'A']
-        print("🎯 Running HSI variants (B, D, E, F, G, H). Use --include-control to add Variant A.")
+        # Default: exclude control variants
+        variants = [v for v in all_variants if v[4] not in control_variants]
+        print("🎯 Running HSI variants (B, D, E, F, G, H, I). Use --include-control to add controls.")
 
     execution_results = []
     variant_results = []

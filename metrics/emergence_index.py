@@ -1744,7 +1744,9 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
 
             # Checkpoint configuration
             CHECKPOINT_INTERVAL = 1000  # Save every 1000 chunks
-            checkpoint_path = Path(__file__).parent.parent / "results" / f"checkpoint_{variant}_{iteration}.json"
+            temp_dir = Path(__file__).parent.parent / "results" / "temp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint_path = temp_dir / f"emergence_checkpoint_{variant}_{iteration}.json"
 
             # Try to resume from checkpoint
             start_chunk = 0
