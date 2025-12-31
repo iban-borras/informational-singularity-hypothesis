@@ -99,17 +99,48 @@ hsi_agents_project/
 - **Python 3.8 or higher** (recommended Python 3.11)
 - **RAM Memory**: minimum 4GB (recommended 8GB for large experiments)
 - **Operating System**: Windows 10/11, macOS, Linux
+- **Alternative**: Docker (works on any OS)
 
-### Automatic Installation (Recommended)
+### Option 1: Docker Installation (Recommended for Linux/macOS)
 
-#### Windows - Smart Script (Recommended)
+Docker provides a consistent environment across all operating systems with no dependency conflicts.
+
+```bash
+# Build the image (first time only)
+docker build -t hsi-agents .
+
+# Run variant B with 15 iterations
+docker run -v ./results:/app/hsi_agents_project/results hsi-agents \
+    python -m hsi_agents_project.level0_generate -v B -i 15
+
+# Or use docker-compose (simpler)
+docker-compose run hsi -v B -i 15
+
+# Skip plots for faster generation
+docker-compose run hsi -v M -i 20 --no-plots
+
+# Interactive shell for debugging
+docker-compose run shell
+```
+
+**Helper scripts:**
+```bash
+# Linux/macOS
+chmod +x scripts/docker-run.sh
+./scripts/docker-run.sh -v B -i 15
+
+# Windows PowerShell
+.\scripts\docker-run.ps1 -v B -i 15
+```
+
+### Option 2: Windows - Smart Script
 
 ```powershell
 # Unified script that handles setup/activation
 .\Setup-virtual-envelop.ps1
 ```
 
-### Manual Installation
+### Option 3: Manual Installation (All Platforms)
 
 ```bash
 # 1. Create virtual environment
@@ -1771,9 +1802,40 @@ python level0_estimate_storage.py --max-iteration 24
 
 # Test Level 0 generator (with progress and compression level)
 python level0_generate.py -v B -i 4 --log-every 1 --compression-level 5
+```
 
-# Verify environment setup
+### Verify Environment Setup
+
+Choose the verification method based on your installation:
+
+**Docker (Linux/macOS/Windows with Docker):**
+```bash
+# Verify Docker image builds correctly
+docker build -t hsi-agents .
+
+# Test basic execution
+docker run --rm hsi-agents python -c "import numpy; print('NumPy OK')"
+
+# Run a quick test (iteration 4 is fast)
+docker-compose run hsi -v B -i 4 --no-plots
+```
+
+**Windows (PowerShell with venv):**
+```powershell
+# Setup and verify environment
 .\Setup-virtual-envelop.ps1
+
+# Test execution
+python level0_generate.py -v B -i 4 --no-plots
+```
+
+**Linux/macOS (with venv):**
+```bash
+# Activate environment
+source venv/bin/activate
+
+# Test execution
+python level0_generate.py -v B -i 4 --no-plots
 ```
 
 ### Additional Resources

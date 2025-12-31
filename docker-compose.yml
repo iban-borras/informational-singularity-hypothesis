@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# HSI Agents Project - Docker Compose Configuration
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Usage:
+#   docker-compose run hsi -v B -i 15              # Generate variant B
+#   docker-compose run hsi -v M -i 20 --no-plots   # Fibonacci control, no plots
+#   docker-compose run --rm hsi -v A -i 15         # Random control, remove container after
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  hsi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hsi-agents:latest
+    
+    # Mount results directory for persistent storage
+    volumes:
+      - ./results:/app/hsi_agents_project/results
+    
+    # Default entrypoint for level0_generate
+    entrypoint: ["python", "-m", "hsi_agents_project.level0_generate"]
+    
+    # Resource limits (adjust based on your system)
+    # Uncomment and modify as needed:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 8G
+    #     reservations:
+    #       memory: 2G
+    
+    # Environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Skip plots by default in container (faster generation)
+      # - HSI_NO_PLOTS=1
+
+  # Alternative service for analysis scripts
+  analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hsi-agents:latest
+    volumes:
+      - ./results:/app/hsi_agents_project/results
+    entrypoint: ["python"]
+    # Usage: docker-compose run analysis -m hsi_agents_project.level1_deep_analysis -v B -i 15
+
+  # Interactive shell for debugging
+  shell:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hsi-agents:latest
+    volumes:
+      - ./results:/app/hsi_agents_project/results
+    entrypoint: ["/bin/bash"]
+    stdin_open: true
+    tty: true
+

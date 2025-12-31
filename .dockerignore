@@ -1,0 +1,60 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Docker Ignore - HSI Agents Project
+# Exclude unnecessary files from Docker build context
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+*.egg
+.eggs
+
+# Virtual environments (use container's Python)
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Results (mounted as volume, not copied)
+results/
+
+# Logs and temp files
+*.log
+setup_log.txt
+*.tmp
+
+# Numba cache (will be regenerated)
+*.nbc
+*.nbi
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed for execution)
+Documentation/
+*.md
+!README.md
+
+# Windows scripts (not needed in Linux container)
+*.ps1
+
+# Tests (optional, uncomment to include)
+# tests/
+
