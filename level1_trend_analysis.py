@@ -235,7 +235,9 @@ def run_emergence_analysis(variant: str, iteration: int,
                            output_dir: Path,
                            streaming: bool = True,
                            chunk_size: int = 50_000_000,
-                           max_cpu_percent: int = 50) -> Optional[Dict]:
+                           max_cpu_percent: int = 50,
+                           force_mmap: bool = False,
+                           no_cache: bool = False) -> Optional[Dict]:
     """
     Run emergence index + SCI/ICC for a single variant/iteration.
 
@@ -246,6 +248,8 @@ def run_emergence_analysis(variant: str, iteration: int,
         streaming: If True, process ENTIRE sequence (rigorous, default)
         chunk_size: Bits per chunk for streaming mode
         max_cpu_percent: Maximum CPU usage for parallel processing
+        force_mmap: Force MMAP mode even for small files (saves RAM)
+        no_cache: Ignore and delete existing cache (force recalculation)
 
     Returns:
         Combined metrics or None if failed
@@ -261,13 +265,20 @@ def run_emergence_analysis(variant: str, iteration: int,
         calculate_nontriviality, calculate_phi_tendency
     )
 
-    print(f"\n   📊 Analyzing {variant}@{iteration}{'  [STREAMING MODE]' if streaming else '  [FAST MODE]'}...")
+    mode_str = "  [STREAMING MODE"
+    if streaming:
+        mode_str += " + MMAP]" if force_mmap else "]"
+    else:
+        mode_str = "  [FAST MODE]"
+    print(f"\n   📊 Analyzing {variant}@{iteration}{mode_str}...")
 
     # === STREAMING MODE: Process entire sequence (DEFAULT) ===
     if streaming:
         result = calculate_emergence_index_streaming(variant, iteration,
                                                      chunk_size=chunk_size,
-                                                     max_cpu_percent=max_cpu_percent)
+                                                     max_cpu_percent=max_cpu_percent,
+                                                     force_mmap=force_mmap,
+                                                     no_cache=no_cache)
 
         if 'error' in result:
             print(f"      ⚠️ {result['error']}")
@@ -423,7 +434,9 @@ def run_batch_analysis(discoveries: Dict[str, List[int]],
                        specific_iters: Optional[List[int]] = None,
                        streaming: bool = True,
                        chunk_size: int = 50_000_000,
-                       max_cpu_percent: int = 50) -> Dict:
+                       max_cpu_percent: int = 50,
+                       force_mmap: bool = False,
+                       no_cache: bool = False) -> Dict:
     """
     Run analysis for all discovered variants/iterations.
 
@@ -432,6 +445,9 @@ def run_batch_analysis(discoveries: Dict[str, List[int]],
         specific_iters: If provided, only analyze these iterations
         streaming: If True, process entire sequences (rigorous but slow)
         chunk_size: Bits per chunk in streaming mode
+        max_cpu_percent: Maximum CPU usage for parallel processing
+        force_mmap: Force MMAP mode even for small files (saves RAM)
+        no_cache: Ignore and delete existing cache (force recalculation)
 
     Returns:
         Consolidated results structure
@@ -466,7 +482,9 @@ def run_batch_analysis(discoveries: Dict[str, List[int]],
         for iteration in iters_to_analyze:
             metrics = run_emergence_analysis(variant, iteration, output_dir,
                                             streaming=streaming, chunk_size=chunk_size,
-                                            max_cpu_percent=max_cpu_percent)
+                                            max_cpu_percent=max_cpu_percent,
+                                            force_mmap=force_mmap,
+                                            no_cache=no_cache)
             if metrics:
                 results['variants'][variant][iteration] = metrics
                 # Summary already printed in run_emergence_analysis if streaming
@@ -507,22 +525,58 @@ Examples:
                         help='Bits per chunk in streaming mode (default: 50M)')
     parser.add_argument('--max-cpu', type=int, default=50,
                         help='Maximum CPU usage percentage for parallel processing (default: 50)')
+    parser.add_argument('--force-mmap', action='store_true',
+                        help='Force MMAP mode even for small files (saves RAM, useful for low-memory systems)')
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Ignore existing cache and force full recalculation')
 
     args = parser.parse_args()
-    
+
     print("\n🌌 HSI Trend Analysis")
     print("=" * 60)
-    
+
+    # Check if loading from cache (skip analysis, just generate plots)
+    if args.from_cache:
+        cache_path = Path(args.from_cache)
+        if not cache_path.exists():
+            print(f"❌ Cache file not found: {cache_path}")
+            return
+        print(f"\n📂 Loading from cache: {cache_path}")
+        with open(cache_path) as f:
+            results = json.load(f)
+        print(f"   ✅ Loaded {len(results.get('variants', {}))} variants")
+
+        # Skip to plot generation
+        if args.plot:
+            print(f"\n📈 Generating trend plots (extrapolating to iter {args.extrapolate})...")
+            from utils.file_saver import get_output_path
+            plot_dir = get_output_path(1, "trends", "plots")
+            extrapolations = generate_trend_plots(results, plot_dir, args.extrapolate)
+            if extrapolations:
+                print("\n📊 Extrapolation Summary:")
+                for variant, metrics in extrapolations.items():
+                    print(f"\n   Variant {variant}:")
+                    print(f"   {'Metric':<20} {'Slope/iter':<12} {'R²':<8} {'@iter ' + str(args.extrapolate):<12}")
+                    print(f"   {'-'*52}")
+                    for metric, data in metrics.items():
+                        r2 = data.get('r_squared', 0)
+                        predicted = data.get(f'predicted_{args.extrapolate}', 0)
+                        print(f"   {metric:<20} {data['slope']:+.6f}   {r2:.3f}    {predicted:.4f}")
+            print("\n✅ Plots generated!")
+        else:
+            print("\n💡 Use --plot to generate trend plots from cached data")
+        return
+
     # Phase 1: Discover available iterations
     print("\n📁 Phase 1: Discovering available iterations...")
-    
+
     discoveries = {}
     for variant in args.variants:
         iters = discover_available_iterations(variant)
         discoveries[variant] = iters
-    
+
     print_discovery_summary(discoveries)
-    
+
     if args.discover_only:
         print("✅ Discovery complete. Use without --discover-only to run analysis.")
         return
@@ -535,7 +589,9 @@ Examples:
 
     results = run_batch_analysis(discoveries, args.iterations,
                                   streaming=use_streaming, chunk_size=args.chunk_size,
-                                  max_cpu_percent=args.max_cpu)
+                                  max_cpu_percent=args.max_cpu,
+                                  force_mmap=args.force_mmap,
+                                  no_cache=args.no_cache)
 
     # Phase 3: Save consolidated results using unified structure
     print("\n💾 Phase 3: Saving consolidated results...")

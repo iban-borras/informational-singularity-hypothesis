@@ -324,7 +324,9 @@ def load_from_trend_analysis(variants: List[str], iterations: List[int]) -> Opti
         return None
 
 
-def run_trend_analysis(variants: List[str], iterations: List[int]) -> bool:
+def run_trend_analysis(variants: List[str], iterations: List[int],
+                       force_mmap: bool = False, max_cpu: int = 50,
+                       no_cache: bool = False) -> bool:
     """
     Launch level1_trend_analysis.py to generate streaming data.
 
@@ -332,15 +334,23 @@ def run_trend_analysis(variants: List[str], iterations: List[int]) -> bool:
     """
     import subprocess
 
-    print("\n🚀 Launching trend analysis (streaming mode)...")
+    mmap_note = " + MMAP" if force_mmap else ""
+    cache_note = " (no-cache)" if no_cache else ""
+    print(f"\n🚀 Launching trend analysis (streaming mode{mmap_note}{cache_note})...")
     print("   This may take several minutes for large iterations.\n")
 
     cmd = [
         sys.executable,
         str(Path(__file__).parent / "level1_trend_analysis.py"),
         "--variants", *variants,
-        "--iterations", *[str(i) for i in iterations]
+        "--iterations", *[str(i) for i in iterations],
+        "--max-cpu", str(max_cpu)
     ]
+
+    if force_mmap:
+        cmd.append("--force-mmap")
+    if no_cache:
+        cmd.append("--no-cache")
 
     try:
         result = subprocess.run(cmd, check=True)
@@ -382,6 +392,12 @@ Examples:
                         help='Verbose output')
     parser.add_argument('--force-compute', action='store_true',
                         help='Force re-computation even if cached data exists')
+    parser.add_argument('--force-mmap', action='store_true',
+                        help='Force MMAP mode even for small files (saves RAM, useful for low-memory systems)')
+    parser.add_argument('--max-cpu', type=int, default=50,
+                        help='Maximum CPU usage percentage for parallel processing (default: 50)')
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Ignore existing checkpoints and force full recalculation')
 
     args = parser.parse_args()
 
@@ -408,7 +424,9 @@ Examples:
             print(f"   🔄 Will compute using streaming analysis...")
 
             # Run trend analysis to generate the data
-            if run_trend_analysis(variants, iterations):
+            if run_trend_analysis(variants, iterations,
+                                  force_mmap=args.force_mmap, max_cpu=args.max_cpu,
+                                  no_cache=args.no_cache):
                 # Try loading again
                 results = load_from_trend_analysis(variants, iterations)
                 if not results:
@@ -419,7 +437,9 @@ Examples:
                 return
     else:
         # Force compute: run trend analysis
-        if run_trend_analysis(variants, iterations):
+        if run_trend_analysis(variants, iterations,
+                              force_mmap=args.force_mmap, max_cpu=args.max_cpu,
+                              no_cache=args.no_cache):
             results = load_from_trend_analysis(variants, iterations)
             if not results:
                 print("❌ Failed to load computed data")

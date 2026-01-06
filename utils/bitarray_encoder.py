@@ -21,6 +21,14 @@ from bitarray import bitarray
 from typing import Optional
 import gzip
 
+# Progress bar support
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    tqdm = None
+
 # Progress protocol for subprocess communication
 try:
     from hsi_agents_project.utils.progress_protocol import ProgressReporter

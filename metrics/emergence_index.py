@@ -1643,7 +1643,9 @@ def _process_chunk(args):
 def calculate_emergence_index_streaming(variant: str, iteration: int,
                                         chunk_size: int = 50_000_000,
                                         verbose: bool = True,
-                                        max_cpu_percent: int = 50) -> Dict[str, Any]:
+                                        max_cpu_percent: int = 50,
+                                        force_mmap: bool = False,
+                                        no_cache: bool = False) -> Dict[str, Any]:
     """
     Calculate Emergence Index by streaming through the ENTIRE sequence.
 
@@ -1657,6 +1659,8 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
         chunk_size: Bits per chunk (default 50M for memory efficiency)
         verbose: Print progress
         max_cpu_percent: Maximum CPU usage (default 50% = half of cores)
+        force_mmap: Force MMAP mode even for small files (saves RAM)
+        no_cache: If True, ignore and delete existing checkpoints
 
     Returns:
         Dictionary with emergence metrics computed over full sequence
@@ -1696,15 +1700,31 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
     file_size_mb = data_path.stat().st_size / (1024 * 1024)
     log(f"📂 File: {data_path.name} ({file_size_mb:.1f} MB compressed)")
 
-    # For large files (>500MB compressed), use memory-efficient streaming
-    # Otherwise load all at once for speed
-    use_streaming_load = file_size_mb > 500
+    # Decide whether to use MMAP based on estimated decompressed size vs available RAM
+    # Typical compression ratio for binary data: ~8-12x, use 10x as estimate
+    estimated_decompressed_gb = (file_size_mb * 10) / 1024  # Estimated GB when decompressed
+    available_ram_gb = psutil.virtual_memory().available / (1024 ** 3)
+
+    # Use MMAP if:
+    # 1. force_mmap is True (user override), OR
+    # 2. Estimated decompressed size > 50% of available RAM
+    ram_threshold_ratio = 0.5
+    use_streaming_load = force_mmap or (estimated_decompressed_gb > available_ram_gb * ram_threshold_ratio)
+
+    # Determine reason for MMAP mode
+    auto_mmap = use_streaming_load and not force_mmap
+
+    if auto_mmap:
+        log(f"   📊 Estimated size: {estimated_decompressed_gb:.1f} GB > {available_ram_gb * ram_threshold_ratio:.1f} GB (50% of {available_ram_gb:.1f} GB available)")
+        log(f"   ⚡ Auto-selecting MMAP mode to save RAM")
 
     t0 = time.time()
 
     if use_streaming_load:
         # MEMORY-EFFICIENT: Use mmap instead of loading all into RAM
-        log(f"⚠️ Large file detected - using MMAP streaming (low RAM usage)...")
+        if auto_mmap:
+            log(f"📦 Using MMAP streaming (large file detected)...")
+        # Note: force_mmap message already printed in run_emergence_analysis()
 
         import mmap
 
@@ -1748,21 +1768,42 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             temp_dir.mkdir(parents=True, exist_ok=True)
             checkpoint_path = temp_dir / f"emergence_checkpoint_{variant}_{iteration}.json"
 
-            # Try to resume from checkpoint
+            # Handle no_cache: delete existing checkpoint if requested
+            if no_cache and checkpoint_path.exists():
+                checkpoint_path.unlink()
+                log(f"🗑️ Cache cleared (--no-cache)")
+
+            # Try to resume from checkpoint (persistent cache)
             start_chunk = 0
             if checkpoint_path.exists():
                 try:
                     import json as json_mod
                     with open(checkpoint_path, 'r') as f:
                         ckpt = json_mod.load(f)
-                    start_chunk = ckpt.get('completed', 0)
-                    power_slopes = ckpt.get('power_slopes', [])
-                    lz_values = ckpt.get('lz_values', [])
-                    mi_values = ckpt.get('mi_values', [])
-                    dfa_hursts = ckpt.get('dfa_hursts', [])
-                    hierarchy_scores = ckpt.get('hierarchy_scores', [])
-                    # Note: phi ratios are too large to checkpoint, will recalculate
-                    log(f"📥 Resuming from checkpoint: {start_chunk}/{n_chunks} chunks already done")
+
+                    # Check if checkpoint is complete (all chunks done)
+                    ckpt_completed = ckpt.get('completed', 0)
+                    ckpt_total = ckpt.get('n_chunks', 0)
+
+                    if ckpt_completed >= ckpt_total and ckpt_total == n_chunks:
+                        # Fully completed cache - reuse all data!
+                        log(f"✅ Using cached results: {ckpt_completed}/{n_chunks} chunks (complete)")
+                        power_slopes = ckpt.get('power_slopes', [])
+                        lz_values = ckpt.get('lz_values', [])
+                        mi_values = ckpt.get('mi_values', [])
+                        dfa_hursts = ckpt.get('dfa_hursts', [])
+                        hierarchy_scores = ckpt.get('hierarchy_scores', [])
+                        # Skip processing entirely - go to aggregation
+                        start_chunk = n_chunks  # This will skip the for loop
+                    else:
+                        # Partial checkpoint - resume from where we left off
+                        start_chunk = ckpt_completed
+                        power_slopes = ckpt.get('power_slopes', [])
+                        lz_values = ckpt.get('lz_values', [])
+                        mi_values = ckpt.get('mi_values', [])
+                        dfa_hursts = ckpt.get('dfa_hursts', [])
+                        hierarchy_scores = ckpt.get('hierarchy_scores', [])
+                        log(f"📥 Resuming from checkpoint: {start_chunk}/{n_chunks} chunks")
                 except Exception as e:
                     log(f"⚠️ Could not load checkpoint: {e}")
 
@@ -1770,17 +1811,22 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             base_workers = n_workers  # Store original worker count for adaptive scaling
 
             # Single unified progress bar for all chunks
+            n_batches = max(1, (n_chunks - start_chunk + batch_size - 1) // batch_size)
             pbar_main = tqdm(total=n_chunks, initial=start_chunk,
-                            desc="      Processing chunks", unit="chunk",
+                            desc=f"      Chunks (batch 1/{n_batches})", unit="chunk",
                             disable=not verbose, leave=True)
 
-            n_batches = (n_chunks - start_chunk + batch_size - 1) // batch_size
-            for batch_idx, batch_start in enumerate(range(start_chunk, n_chunks, batch_size)):
+            for batch_idx, batch_start in enumerate(range(start_chunk, n_chunks, batch_size), 1):
+                # Update description to show current batch
+                pbar_main.set_description(f"      Chunks (batch {batch_idx}/{n_batches})")
                 batch_end = min(batch_start + batch_size, n_chunks)
 
-                # Adaptive worker adjustment based on RAM usage
-                current_workers = _get_adaptive_workers(base_workers, ram_threshold=80.0,
+                # Adaptive worker adjustment based on RAM usage (threshold 65% for early reaction)
+                current_workers = _get_adaptive_workers(base_workers, ram_threshold=65.0,
                                                          min_workers=2, verbose=verbose)
+
+                # Wait for RAM to be available before starting batch
+                _wait_for_ram(target_percent=60.0, max_wait=120, verbose=verbose)
 
                 # Create only this batch of chunks - read from mmap (low RAM!)
                 chunk_args = []
@@ -1792,7 +1838,7 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                     chunk_args.append((chunk_str, chunk_idx, n_chunks, False))
 
                 # Process batch in parallel with retry for failed chunks
-                MAX_RETRIES = 2
+                MAX_RETRIES = 3  # Increased from 2
                 batch_failed = []
 
                 with ProcessPoolExecutor(max_workers=current_workers) as executor:
@@ -1819,24 +1865,26 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                                 total_phi_close += result['phi_data'].get('phi_close_count', 0)
                                 total_runs += result['phi_data'].get('total_runs', 0)
                         except Exception as e:
-                            # Track failed chunk for retry
+                            # Track failed chunk for retry (capture ALL errors, not just specific ones)
                             error_msg = str(e)
-                            if 'handle is closed' in error_msg or 'BrokenProcessPool' in error_msg:
-                                batch_failed.append(chunk_info)
+                            batch_failed.append(chunk_info)
                             if verbose:
-                                log(f"   ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
+                                pbar_main.write(f"      ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
 
                         # Update main progress bar per chunk (not per batch)
                         completed += 1
                         pbar_main.update(1)
 
-                # Retry failed chunks sequentially (safer) - wait for RAM first
+                # Retry failed chunks with resilience system
                 if batch_failed:
-                    log(f"   🔄 Retrying {len(batch_failed)} failed chunks (waiting for RAM <70%)...")
-                    _wait_for_ram(target_percent=70.0, max_wait=120, verbose=verbose)
+                    pbar_main.write(f"      🔄 Retrying {len(batch_failed)} failed chunks...")
 
                     for args in batch_failed:
+                        chunk_success = False
                         for retry in range(MAX_RETRIES):
+                            # Wait for resources before each retry attempt (silent)
+                            _wait_for_ram(target_percent=55.0, max_wait=180, verbose=False)
+
                             try:
                                 result = _process_chunk(args)
                                 if result['power_slope'] is not None:
@@ -1854,13 +1902,17 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                                     all_phi_density_ratios.extend(result['phi_data']['density_ratios'])
                                     total_phi_close += result['phi_data'].get('phi_close_count', 0)
                                     total_runs += result['phi_data'].get('total_runs', 0)
+                                chunk_success = True
+                                pbar_main.write(f"      ✓ Chunk {args[1]} recovered")
                                 break  # Success, no more retries
                             except Exception as e:
-                                # Wait for RAM before next retry
-                                _wait_for_ram(target_percent=70.0, max_wait=60, verbose=False)
                                 if retry == MAX_RETRIES - 1:
                                     failed_chunks.append(args[1])
-                                    log(f"   ❌ Chunk {args[1]} failed permanently")
+                                    pbar_main.write(f"      ❌ Chunk {args[1]} failed permanently")
+
+                # Force garbage collection between batches to free memory
+                import gc
+                gc.collect()
 
                 # Save checkpoint every CHECKPOINT_INTERVAL chunks
                 if completed % CHECKPOINT_INTERVAL < batch_size and completed > start_chunk:
@@ -1878,9 +1930,10 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                         }
                         with open(checkpoint_path, 'w') as f:
                             json_mod.dump(ckpt_data, f)
-                        log(f"   💾 Checkpoint saved: {completed}/{n_chunks}")
+                        # Use pbar.write() to avoid duplicating progress bar
+                        pbar_main.write(f"      💾 Checkpoint saved: {completed}/{n_chunks}")
                     except Exception as e:
-                        log(f"   ⚠️ Could not save checkpoint: {e}")
+                        pbar_main.write(f"      ⚠️ Could not save checkpoint: {e}")
 
                 # Clear chunk_args to free memory
                 del chunk_args
@@ -1888,10 +1941,25 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             # Close main progress bar
             pbar_main.close()
 
-            # Remove checkpoint file on successful completion (outside for loop)
-            if checkpoint_path.exists() and not failed_chunks:
-                checkpoint_path.unlink()
-                log(f"   🗑️ Checkpoint cleaned up (completed successfully)")
+            # Save final checkpoint as persistent cache (don't delete!)
+            if completed >= n_chunks and not failed_chunks:
+                try:
+                    import json as json_mod
+                    ckpt_data = {
+                        'completed': n_chunks,
+                        'n_chunks': n_chunks,
+                        'power_slopes': power_slopes,
+                        'lz_values': lz_values,
+                        'mi_values': mi_values,
+                        'dfa_hursts': dfa_hursts,
+                        'hierarchy_scores': hierarchy_scores,
+                        'failed_chunks': []
+                    }
+                    with open(checkpoint_path, 'w') as f:
+                        json_mod.dump(ckpt_data, f)
+                    log(f"💾 Results cached for future use")
+                except Exception as e:
+                    log(f"⚠️ Could not save cache: {e}")
 
         finally:
             # Cleanup mmap and temp file
@@ -1937,21 +2005,28 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
         completed = 0
         base_workers = n_workers
         batch_size = 50  # Process 50 chunks per batch for adaptive control
+        n_batches = (n_chunks + batch_size - 1) // batch_size
+        MAX_RETRIES = 3
+        batch_failed_all = []  # Collect all failed chunks across batches
 
-        for batch_start in range(0, n_chunks, batch_size):
+        for batch_idx, batch_start in enumerate(range(0, n_chunks, batch_size), 1):
             batch_end = min(batch_start + batch_size, n_chunks)
             batch_args = chunk_args[batch_start:batch_end]
 
-            # Adaptive worker adjustment based on RAM usage
-            current_workers = _get_adaptive_workers(base_workers, ram_threshold=80.0,
+            # Adaptive worker adjustment based on RAM usage (threshold 65% for early reaction)
+            current_workers = _get_adaptive_workers(base_workers, ram_threshold=65.0,
                                                      min_workers=2, verbose=verbose)
+
+            # Wait for RAM to be available before starting batch
+            _wait_for_ram(target_percent=60.0, max_wait=120, verbose=verbose)
 
             with ProcessPoolExecutor(max_workers=current_workers) as executor:
                 futures = {executor.submit(_process_chunk, args): args for args in batch_args}
 
-                # Progress bar for chunks - leave=True to keep the bar visible after completion
+                # Progress bar for chunks - shows batch X/Y
+                batch_desc = f"      Batch {batch_idx}/{n_batches}"
                 pbar = tqdm(as_completed(futures), total=len(futures),
-                            desc="      Processing chunks",
+                            desc=batch_desc,
                             unit="chunk", leave=True, disable=not verbose)
 
                 for future in pbar:
@@ -1976,40 +2051,51 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                             total_phi_close += result['phi_data'].get('phi_close_count', 0)
                             total_runs += result['phi_data'].get('total_runs', 0)
                     except Exception as e:
-                        error_msg = str(e)
-                        if 'handle is closed' in error_msg or 'BrokenProcessPool' in error_msg:
-                            failed_chunks.append(chunk_info)
+                        # Track ALL failed chunks for retry (not just specific errors)
+                        batch_failed_all.append(chunk_info)
                         if verbose:
-                            log(f"   ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
+                            log(f"   ⚠️ Chunk {chunk_info[1]} error: {str(e)[:100]}")
                 pbar.close()
 
-        # Retry failed chunks sequentially - wait for RAM first
-        if failed_chunks:
-            log(f"   🔄 Retrying {len(failed_chunks)} failed chunks (waiting for RAM <70%)...")
-            _wait_for_ram(target_percent=70.0, max_wait=120, verbose=verbose)
+            # Force garbage collection between batches to free memory
+            import gc
+            gc.collect()
 
-            for args in failed_chunks:
-                try:
-                    result = _process_chunk(args)
-                    if result['power_slope'] is not None:
-                        power_slopes.append(result['power_slope'])
-                    if result['lz'] is not None:
-                        lz_values.append(result['lz'])
-                    if result['mi'] is not None:
-                        mi_values.append(result['mi'])
-                    if result['dfa_hurst'] is not None:
-                        dfa_hursts.append(result['dfa_hurst'])
-                    if result['hierarchy'] is not None:
-                        hierarchy_scores.append(result['hierarchy'])
-                    if result['phi_data'] is not None:
-                        all_phi_run_ratios.extend(result['phi_data']['run_ratios'])
-                        all_phi_density_ratios.extend(result['phi_data']['density_ratios'])
-                        total_phi_close += result['phi_data'].get('phi_close_count', 0)
-                        total_runs += result['phi_data'].get('total_runs', 0)
-                except Exception as e:
-                    # Wait for RAM before giving up
-                    _wait_for_ram(target_percent=70.0, max_wait=60, verbose=False)
-                    log(f"   ❌ Chunk {args[1]} failed permanently: {e}")
+        # Retry failed chunks with resilience system
+        if batch_failed_all:
+            log(f"   🔄 Retrying {len(batch_failed_all)} failed chunks with resilience mode...")
+
+            for args in batch_failed_all:
+                chunk_success = False
+                for retry in range(MAX_RETRIES):
+                    # Wait for resources before each retry attempt
+                    log(f"      Retry {retry+1}/{MAX_RETRIES} for chunk {args[1]} (waiting for RAM <55%)...")
+                    _wait_for_ram(target_percent=55.0, max_wait=180, verbose=False)
+
+                    try:
+                        result = _process_chunk(args)
+                        if result['power_slope'] is not None:
+                            power_slopes.append(result['power_slope'])
+                        if result['lz'] is not None:
+                            lz_values.append(result['lz'])
+                        if result['mi'] is not None:
+                            mi_values.append(result['mi'])
+                        if result['dfa_hurst'] is not None:
+                            dfa_hursts.append(result['dfa_hurst'])
+                        if result['hierarchy'] is not None:
+                            hierarchy_scores.append(result['hierarchy'])
+                        if result['phi_data'] is not None:
+                            all_phi_run_ratios.extend(result['phi_data']['run_ratios'])
+                            all_phi_density_ratios.extend(result['phi_data']['density_ratios'])
+                            total_phi_close += result['phi_data'].get('phi_close_count', 0)
+                            total_runs += result['phi_data'].get('total_runs', 0)
+                        chunk_success = True
+                        log(f"      ✓ Chunk {args[1]} recovered successfully")
+                        break  # Success, no more retries
+                    except Exception as e:
+                        if retry == MAX_RETRIES - 1:
+                            failed_chunks.append(args[1])
+                            log(f"   ❌ Chunk {args[1]} failed permanently after {MAX_RETRIES} retries: {e}")
 
     log(f"✅ Processed all {n_chunks} chunks in {(time.time()-t0)/60:.1f} min")
 
@@ -2337,6 +2423,10 @@ Examples:
                         help='Bits per chunk in streaming mode (default: 50M)')
     parser.add_argument('--max-cpu', type=int, default=50,
                         help='Maximum CPU usage percentage for parallel streaming (default: 50)')
+    parser.add_argument('--force-mmap', action='store_true',
+                        help='Force MMAP mode even for small files (saves RAM, useful for low-memory systems)')
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Ignore and delete existing checkpoints/cache (force full recalculation)')
     parser.add_argument('--null-test', action='store_true',
                         help='Run statistical significance test against null model')
     parser.add_argument('--null-samples', type=int, default=100,
@@ -2383,7 +2473,9 @@ Examples:
             results = calculate_emergence_index_streaming(
                 args.variant, args.iteration,
                 chunk_size=args.chunk_size,
-                max_cpu_percent=args.max_cpu
+                max_cpu_percent=args.max_cpu,
+                force_mmap=args.force_mmap,
+                no_cache=args.no_cache
             )
             if 'error' in results:
                 print(f"❌ {results['error']}")

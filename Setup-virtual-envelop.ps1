@@ -237,11 +237,11 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "    HSI Setup completed successfully!       " -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "To start the HSI experiment:" -ForegroundColor Yellow
-Write-Host "  python main.py                    # Run full experiment" -ForegroundColor White
-Write-Host "  python main.py --help             # Show all options" -ForegroundColor White
-Write-Host "  python level0/generator.py        # Test Phi generator" -ForegroundColor White
-Write-Host "  python run_all_variants.py        # Test all HSI variants" -ForegroundColor White
+Write-Host "Next steps:" -ForegroundColor Yellow
+Write-Host "  1. Read the README.md for full documentation" -ForegroundColor White
+Write-Host "  2. Quick start examples:" -ForegroundColor White
+Write-Host "     python generate_data.py      # Generate HSI data" -ForegroundColor Gray
+Write-Host "     python analyze_patterns.py   # Analyze emergence patterns" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Results will be saved in: ./results/" -ForegroundColor Cyan
 Write-Host ""

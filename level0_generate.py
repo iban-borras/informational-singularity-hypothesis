@@ -2302,6 +2302,9 @@ def main():
     # Check for --no-plots flag (skip all visualizations)
     skip_all_plots = getattr(args, 'no_plots', False) or os.environ.get("HSI_NO_PLOTS") == "1"
 
+    # Initialize beta_stats before conditionals (used in master_results)
+    beta_stats = {}
+
     if skip_all_plots:
         print("\n🎨 Visualizations SKIPPED (--no-plots)", flush=True)
         # Still save enriched reports
