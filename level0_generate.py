@@ -136,7 +136,7 @@ def _load_dotenv_if_present(path: str = ".env"):
     except Exception as e:
         print(f"[WARN] Failed to load .env: {e}")
 
-def run_variant_script(python_flag, module_or_script, variant_name, results_file, variant_code, iterations: int | None):
+def run_variant_script(python_flag, module_or_script, variant_name, results_file, variant_code, iterations: int | None, force_compress: bool = False):
     """Run one generator variant (A–F) and capture results with live progress."""
     print(f"\n🚀 Running {variant_name}...")
     print("=" * 50)
@@ -149,6 +149,8 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
         env["HSI_VARIANT_CODE"] = variant_code
         if iterations is not None:
             env["HSI_ITERATIONS"] = str(iterations)
+        if force_compress:
+            env["HSI_FORCE_COMPRESS"] = "1"
         env["HSI_LOG_EVERY"] = env.get("HSI_LOG_EVERY", "1")  # show per-iter logs during runner
         # Force UTF-8 I/O on Windows consoles to avoid UnicodeEncodeError
         env["PYTHONUTF8"] = "1"
@@ -169,6 +171,8 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding='utf-8',
+            errors='replace',  # Handle any encoding issues gracefully
             env=env,
             cwd=str(ROOT_PATH)
         )
@@ -237,8 +241,8 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
             print(f"✅ {variant_name} finished in {execution_time:.2f}s")
             return True, execution_time, full_output
         else:
-            print(f"❌ Error in {variant_name}:")
-            print(full_output)
+            # Error message already shown in live output - don't duplicate
+            print(f"❌ Error in {variant_name} (exit code {proc.returncode})")
             return False, execution_time, full_output
 
     except subprocess.TimeoutExpired:
@@ -372,11 +376,11 @@ def _growth_and_ratio_metrics(result_obj: dict) -> dict:
 
 
 def _attach_growth_metrics(variant_results: list, beta_stats: list | None):
-    """Attach growth and spectral metrics to variant results (v32: no phi-alignment)."""
+    """Attach growth and spectral metrics to variant results and update JSON files."""
     for i, r in enumerate(variant_results):
         if not r:
             continue
-        # Growth metrics
+        # Growth metrics (may already be in file, but compute anyway for memory)
         gr = _growth_and_ratio_metrics(r)
         r.update(gr)
         # Beta from spectral analysis (if available)
@@ -390,6 +394,24 @@ def _attach_growth_metrics(variant_results: list, beta_stats: list | None):
             print(f"[metrics] {r.get('variant','?'):<24} | γ={r.get('growth_exponent'):.4f} R²={r.get('growth_r2'):.3f} | r_med={r.get('ratio_median')} | D_fractal={r.get('fractal_dimension')} | β={r.get('beta')} Dβ={r.get('fractal_from_beta')}")
         except Exception:
             pass
+        # Update original JSON file with new metrics (beta, fractal_from_beta)
+        rp = r.get('report_path')
+        if rp and (r.get('beta') is not None or r.get('fractal_from_beta') is not None):
+            try:
+                from pathlib import Path as _P
+                p = _P(rp)
+                if p.exists():
+                    with open(p, 'r') as f:
+                        data = json.load(f)
+                    # Add only spectral metrics (growth already added by generator.py)
+                    if r.get('beta') is not None:
+                        data['beta'] = r['beta']
+                    if r.get('fractal_from_beta') is not None:
+                        data['fractal_from_beta'] = r['fractal_from_beta']
+                    with open(p, 'w') as f:
+                        json.dump(data, f, indent=2)
+            except Exception as e:
+                print(f"[WARN] Could not update report with beta metrics: {e}")
 
 
 def plot_growth_and_time(results_list):
@@ -459,26 +481,7 @@ def _extract_variant_metrics(r: dict) -> dict:
     }
 
 
-def _write_enriched_variant_report(r: dict):
-    try:
-        rp = r.get('report_path')
-        if not rp:
-            return
-        from pathlib import Path as _P
-        p = _P(rp)
-        out_path = p.with_name(p.stem + '.enriched.json')
-        # Keep original metrics + enriched fields, drop huge payloads if any
-        slim = _extract_variant_metrics(r)
-        slim['timestamp'] = datetime.now().isoformat()
-        with open(out_path, 'w') as f:
-            json.dump(slim, f, indent=2)
-        try:
-            rel = out_path.resolve().relative_to(BASE_PATH)
-            print(f"[INFO] Wrote enriched report: {rel}")
-        except Exception:
-            print(f"[INFO] Wrote enriched report: {out_path}")
-    except Exception as e:
-        print(f"[WARN] Could not write enriched report: {e}")
+# NOTE: _write_enriched_variant_report() removed - beta metrics now updated in _attach_growth_metrics
 
 
 
@@ -2188,6 +2191,8 @@ def parse_args():
     parser.add_argument("--no-beta", action="store_true", help="Skip spectrum β-fit")
     parser.add_argument("--only", type=str, default=None,
                         help="Generate ONLY this plot type: growth, raster, hilbert, fft, autocorr, beta")
+    parser.add_argument("--force-compress", action="store_true",
+                        help="Force gzip compression for temp files (for testing disk space optimization)")
     return parser.parse_args()
 
     ax4.scatter(fractal_dims, y_scatter, c=colors, s=100, alpha=0.7)
@@ -2267,12 +2272,13 @@ def main():
     total_start_time = time.time()
 
     for flag, mod, name, results_file, variant_code in variants:
-        success, exec_time, output = run_variant_script(flag, mod, name, results_file, variant_code, args.iterations)
+        success, exec_time, output = run_variant_script(flag, mod, name, results_file, variant_code, args.iterations, args.force_compress)
         execution_results.append({
             'variant': name,
+            'variant_code': variant_code,
             'success': success,
             'execution_time': exec_time,
-            'output_preview': output[:200] + "..." if len(output) > 200 else output
+            'full_output': output  # Keep full output for log file
         })
 
         # Load results if execution was successful
@@ -2291,8 +2297,14 @@ def main():
     total_execution_time = time.time() - total_start_time
 
     # Show execution summary
+    successful_count = sum(1 for r in execution_results if r['success'])
     print(f"\n⏱️ TOTAL EXECUTION TIME: {total_execution_time:.2f}s", flush=True)
-    print(f"✅ Successful variants: {sum(1 for r in execution_results if r['success'])}/{len(variants)}", flush=True)
+    print(f"✅ Successful variants: {successful_count}/{len(variants)}", flush=True)
+
+    # If no variants succeeded, skip all post-processing
+    if successful_count == 0:
+        print("\n⚠️ No variants completed successfully. Skipping post-processing.", flush=True)
+        return
 
     # Compare convergence
     print("\n📊 Comparing φ-convergence across variants...", flush=True)
@@ -2307,12 +2319,9 @@ def main():
 
     if skip_all_plots:
         print("\n🎨 Visualizations SKIPPED (--no-plots)", flush=True)
-        # Still save enriched reports
-        print("   Saving enriched reports...", flush=True)
+        # Still attach growth metrics to original JSON files
+        print("   Updating reports with growth metrics...", flush=True)
         _attach_growth_metrics(variant_results, {})
-        for r in variant_results:
-            if r:
-                _write_enriched_variant_report(r)
     else:
         print("\n🎨 Starting visualization generation...", flush=True)
 
@@ -2342,12 +2351,9 @@ def main():
             print("   [3/5] Spectrum β-fit analysis (enhanced)...", flush=True)
             beta_stats = plot_spectrum_beta_fit_enhanced(variant_results, max_bits=fft_prefix, skip=False)
 
-        # Attach growth and spectral metrics
-        print("   [4/5] Attaching growth metrics & saving enriched reports...", flush=True)
+        # Attach growth and spectral metrics (updates original JSON files)
+        print("   [4/5] Attaching growth & spectral metrics...", flush=True)
         _attach_growth_metrics(variant_results, beta_stats)
-        for r in variant_results:
-            if r:
-                _write_enriched_variant_report(r)
 
         if skip_raster:
             print("   [5/5] 2D raster SKIPPED", flush=True)
@@ -2355,38 +2361,32 @@ def main():
             print("   [5/5] 2D raster plot...", flush=True)
             plot_raster2d(variant_results, max_iter_cap=None)
 
-    # Save master summary with variants in filename to avoid overwrites
-    master_results = {
-        'execution_summary': execution_results,
-        'best_variant': best_variant,
-        'total_execution_time': total_execution_time,
-        'timestamp': datetime.now().isoformat(),
-        'variants_analyzed': len(variants),
-        'successful_executions': sum(1 for r in execution_results if r['success']),
-        'spectrum_beta': beta_stats
-    }
-
-    # Build filename with variant codes (e.g., hsi_master_results_B_E_I.json)
-    # variants is a list of tuples; extract the code (element 4) from each
-    variant_codes = '_'.join(sorted([v[4] for v in variants]))
+    # NOTE: hsi_master_results_{variant}.json removed - all data now in variant_*.json
+    # Save execution log as markdown for each variant
     master_results_dir = RESULTS_DIR / "level0" / "reports"
     master_results_dir.mkdir(parents=True, exist_ok=True)
-    master_results_path = master_results_dir / f'hsi_master_results_{variant_codes}.json'
-    with open(master_results_path, 'w') as f:
-        json.dump(master_results, f, indent=2)
-    print(f"💾 Saved: {master_results_path.relative_to(BASE_PATH)}")
 
-    # Export metadata and compress for Level 1 (if enabled in config)
+    for exec_result in execution_results:
+        if exec_result.get('success') and exec_result.get('full_output'):
+            variant_name = exec_result.get('variant', 'unknown')
+            variant_code = exec_result.get('variant_code', 'X')
+            log_path = master_results_dir / f"variant_{variant_code}_execution.log.md"
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.write(f"# Execution Log: {variant_name}\n\n")
+                f.write(f"- **Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"- **Execution time**: {exec_result.get('execution_time', 0):.2f}s\n")
+                f.write(f"- **Success**: {exec_result.get('success')}\n\n")
+                f.write("## Output\n\n```\n")
+                f.write(exec_result.get('full_output', ''))
+                f.write("\n```\n")
+            print(f"📝 Log saved: {log_path.relative_to(BASE_PATH)}")
+
+    # Compress iteration snapshots for Level 1 (if enabled in config)
     try:
         cfg = load_project_config("config.json")
         level1_cfg = cfg.get('level1', {})
 
-        if level1_cfg.get('export_metadata', True):
-            print("\n📦 Exporting metadata for Level 1...")
-            for r in variant_results:
-                if r:
-                    variant_code = r.get('variant', '').replace('Variant_', '')
-                    export_metadata_for_level1(variant_code, r)
+        # NOTE: metadata_{variant}.json removed - all data now in variant_*.json
 
         if level1_cfg.get('enable_tar_compression', True):
             print("\n🗜️ Compressing iteration snapshots...")
@@ -2597,12 +2597,9 @@ def _run_plot_only():
     if skip_rep:
         print(f"[9/9] ⏭️  Report SKIPPED", flush=True)
     else:
-        print(f"[9/9] 💾 Writing enriched report...", flush=True)
+        print(f"[9/9] 💾 Updating report with metrics...", flush=True)
         t0 = _time.perf_counter()
         _attach_growth_metrics(results_list, beta_stats)
-        for r in results_list:
-            if r:
-                _write_enriched_variant_report(r)
         print(f"[9/9] ✅ Done in {_time.perf_counter()-t0:.1f}s", flush=True)
 
     print("\n" + "=" * 60, flush=True)
@@ -2621,46 +2618,7 @@ def _run_plot_only():
 # Level 1 Data Export Functions
 # ============================================================================
 
-def export_metadata_for_level1(variant_code: str, results: dict):
-    """
-    Export metadata.json to results/level0/reports/ directory.
-
-    Parameters:
-    -----------
-    variant_code : str
-        Variant code (e.g., 'B', 'D')
-    results : dict
-        Results dictionary from variant execution
-    """
-    try:
-        reports_dir = RESULTS_DIR / "level0" / "reports"
-        reports_dir.mkdir(parents=True, exist_ok=True)
-
-        metadata = {
-            "variant": variant_code.upper(),
-            "iterations": results.get('iterations', 0),
-            "total_bits": results.get('phi_length', 0),
-            "absolute_token": results.get('absolute_token', '10'),
-            "timestamp": datetime.now().isoformat(),
-            "phi_lengths": results.get('phi_lengths_per_iteration', []),
-            "compression_ratio": results.get('compression_ratio', 1.0),
-            "fractal_dimension": results.get('fractal_dimension'),
-            "phi_alignment": results.get('phi_alignment'),
-            "execution_time_seconds": results.get('execution_time', 0)
-        }
-
-        # Save with variant name in filename for clarity
-        metadata_path = reports_dir / f"metadata_{variant_code.upper()}.json"
-        with open(metadata_path, 'w', encoding='utf-8') as f:
-            json.dump(metadata, f, indent=2)
-
-        print(f"[INFO] Metadata exported: {metadata_path.relative_to(BASE_PATH)}")
-        return True
-
-    except Exception as e:
-        print(f"[WARN] Failed to export metadata for variant {variant_code}: {e}")
-        return False
-
+# NOTE: export_metadata_for_level1() removed - all data now in variant_*.json
 
 def compress_iterations_to_tar(variant_code: str):
     """

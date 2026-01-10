@@ -1981,13 +1981,8 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
         n_chunks = (total_bits + chunk_size - 1) // chunk_size
         log(f"⚡ Processing {n_chunks} chunks of {chunk_size//1_000_000}M bits each (parallel)...")
 
-        # Extract all chunks (fits in RAM for small files)
-        chunk_args = []
-        for chunk_idx in range(n_chunks):
-            start = chunk_idx * chunk_size
-            end = min(start + chunk_size, total_bits)
-            chunk_str = ba[start:end].to01()
-            chunk_args.append((chunk_str, chunk_idx, n_chunks, False))
+        # NOTE: We extract chunks on-demand per batch to avoid memory explosion
+        # For iteration 27+ with 240B+ bits, pre-extracting all chunks would need ~240GB RAM
 
         # Accumulators
         power_slopes = []
@@ -2011,7 +2006,14 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
 
         for batch_idx, batch_start in enumerate(range(0, n_chunks, batch_size), 1):
             batch_end = min(batch_start + batch_size, n_chunks)
-            batch_args = chunk_args[batch_start:batch_end]
+
+            # Extract chunks on-demand for this batch only (memory efficient)
+            batch_args = []
+            for chunk_idx in range(batch_start, batch_end):
+                start = chunk_idx * chunk_size
+                end = min(start + chunk_size, total_bits)
+                chunk_str = ba[start:end].to01()
+                batch_args.append((chunk_str, chunk_idx, n_chunks, False))
 
             # Adaptive worker adjustment based on RAM usage (threshold 65% for early reaction)
             current_workers = _get_adaptive_workers(base_workers, ram_threshold=65.0,
@@ -2057,7 +2059,8 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                             log(f"   ⚠️ Chunk {chunk_info[1]} error: {str(e)[:100]}")
                 pbar.close()
 
-            # Force garbage collection between batches to free memory
+            # Free batch strings immediately before next batch
+            del batch_args
             import gc
             gc.collect()
 

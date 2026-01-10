@@ -21,6 +21,13 @@ Usage (via level0_generate.py - RECOMMENDED):
 
 The generated files are saved in the same format as ISH variants,
 allowing direct use with the analysis pipeline.
+
+Configuration (config.json > level0_generation):
+  variant_J_force_calculate: true  - Force mpmath calculation instead of pre-computed cache
+
+Cache Requirements (variant J):
+  Download Pi.zip from: https://archive.org/download/Math_Constants/Pi.zip
+  Save to: results/cache/Pi.zip (~876 MB, 1 billion digits)
 """
 from __future__ import annotations
 import argparse
@@ -31,6 +38,7 @@ import random
 import secrets
 import sys
 import time
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -42,6 +50,64 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 # Now we're inside level0/, so go up one level to hsi_agents_project/
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = ROOT / "results" / "level0" / "phi_snapshots" / "var_A"
+
+# Pi cache configuration
+PI_CACHE_DIR = ROOT / "results" / "cache"
+PI_CACHE_FILE = PI_CACHE_DIR / "Pi.zip"
+PI_ARCHIVE_URL = "https://archive.org/download/Math_Constants/Pi.zip"
+PI_CACHE_MAX_DIGITS = 1_000_000_000  # 1 billion digits available
+
+
+def _read_pi_digits_from_cache(n_digits: int) -> Optional[str]:
+    """
+    Read π digits from the cached zip file.
+
+    Args:
+        n_digits: Number of decimal digits to read (after the decimal point).
+
+    Returns:
+        String of π digits, or None if cache unavailable.
+    """
+    if not PI_CACHE_FILE.exists():
+        return None
+
+    if n_digits > PI_CACHE_MAX_DIGITS:
+        print(f"[variant_J] ⚠️  Requested {n_digits:,} digits but cache only has {PI_CACHE_MAX_DIGITS:,}", flush=True)
+        print(f"[variant_J]    Will use available digits (max iteration ~23)", flush=True)
+        n_digits = PI_CACHE_MAX_DIGITS
+
+    try:
+        with zipfile.ZipFile(PI_CACHE_FILE, 'r') as zf:
+            # Find the decimal digits file (usually "Pi - Dec - Chudnovsky.txt")
+            txt_files = [n for n in zf.namelist() if 'Dec' in n and n.endswith('.txt')]
+            if not txt_files:
+                # Fallback: any .txt file
+                txt_files = [n for n in zf.namelist() if n.endswith('.txt')]
+            if not txt_files:
+                print(f"[variant_J] ❌ No text file found in {PI_CACHE_FILE.name}", flush=True)
+                return None
+
+            txt_name = txt_files[0]
+            print(f"[variant_J] 📖 Reading {n_digits:,} digits from {txt_name}...", flush=True)
+
+            with zf.open(txt_name) as f:
+                # Read enough bytes (digits are ASCII, 1 byte each)
+                # File format: "3.14159..." - skip "3." prefix
+                header = f.read(2).decode('ascii')  # Read "3."
+                if header != "3.":
+                    # Some files may start directly with digits
+                    content = header + f.read(n_digits).decode('ascii')
+                else:
+                    content = f.read(n_digits).decode('ascii')
+
+                # Clean: only keep digits
+                digits = ''.join(c for c in content if c.isdigit())[:n_digits]
+                print(f"[variant_J] ✅ Read {len(digits):,} π digits from cache", flush=True)
+                return digits
+
+    except (zipfile.BadZipFile, OSError) as e:
+        print(f"[variant_J] ❌ Error reading cache: {e}", flush=True)
+        return None
 
 
 def generate_random_bits(num_bits: int, seed: Optional[int] = None, use_csprng: bool = False) -> str:
@@ -82,6 +148,29 @@ def generate_random_bits(num_bits: int, seed: Optional[int] = None, use_csprng: 
     return ''.join(chunks)[:num_bits]
 
 
+def _get_force_calculate_setting() -> bool:
+    """
+    Check if we should force mpmath calculation instead of using cache.
+
+    Reads from config.json > level0_generation > variant_J_force_calculate.
+    Falls back to environment variable HSI_VARIANT_J_FORCE_CALCULATE for compatibility.
+    """
+    # First, try config.json
+    config_path = ROOT / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            force = config.get("level0_generation", {}).get("variant_J_force_calculate", False)
+            if force:
+                return True
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Fallback to environment variable
+    return os.environ.get('HSI_VARIANT_J_FORCE_CALCULATE', '0') == '1'
+
+
 def generate_pi_bits(num_bits: int) -> str:
     """
     Generate binary representation of π digits.
@@ -89,75 +178,105 @@ def generate_pi_bits(num_bits: int) -> str:
     Uses BCD encoding: each decimal digit (0-9) → 4 bits.
     For num_bits binary bits, we need num_bits/4 decimal digits.
 
+    By default, uses pre-computed π digits from cache.
+    Set variant_J_force_calculate=true in config.json to force mpmath calculation.
+
     Args:
         num_bits: Number of binary bits to generate
 
     Returns:
         String of '0' and '1' characters from π
+
+    Raises:
+        SystemExit: If cache not found and force_calculate is False
     """
     # We need num_bits/4 decimal digits (BCD: 4 bits per digit)
     n_digits = (num_bits // 4) + 10  # Extra margin
 
-    print(f"[variant_J] 📐 Computing {n_digits:,} π digits...", flush=True)
+    # Check if we should force mpmath calculation
+    force_calculate = _get_force_calculate_setting()
 
-    try:
-        from mpmath import mp
-        # Set precision high enough
-        mp.dps = n_digits + 50
+    pi_digits = None
 
-        # Time estimate: ~1 min per 1M digits with mpmath
-        if n_digits > 1_000_000:
-            est_minutes = n_digits / 1_000_000
-            print(f"[variant_J] ⏳ Estimated time: ~{est_minutes:.0f} min for {n_digits/1e6:.1f}M digits", flush=True)
-            print(f"[variant_J]    (mpmath does not support progress, please wait...)", flush=True)
+    if not force_calculate:
+        # Check if cache exists
+        if not PI_CACHE_FILE.exists():
+            print(f"\n[variant_J] ⚠️  Cache de π no trobat!", flush=True)
+            print(f"[variant_J] 📥 Descarrega manualment des de:", flush=True)
+            print(f"[variant_J]    URL: {PI_ARCHIVE_URL}", flush=True)
+            print(f"[variant_J]    Desa a: {PI_CACHE_FILE}", flush=True)
+            print(f"[variant_J]", flush=True)
+            print(f"[variant_J] 💡 Alternativament, activa el càlcul amb mpmath:", flush=True)
+            print(f"[variant_J]    En config.json: \"variant_J_force_calculate\": true", flush=True)
+            print(f"[variant_J]", flush=True)
+            sys.exit(1)
 
-        t0 = time.perf_counter()
-        pi_str = mp.nstr(mp.pi, n_digits + 1, strip_zeros=False)
-        calc_time = time.perf_counter() - t0
+        # Cache exists, read from it
+        print(f"[variant_J] 📐 Loading {n_digits:,} π digits from cache...", flush=True)
+        pi_digits = _read_pi_digits_from_cache(n_digits)
 
-        if n_digits > 1_000_000:
-            print(f"[variant_J] ✅ π calculation completed in {calc_time:.1f}s", flush=True)
-        # Remove "3." prefix - we want digits after decimal point
-        pi_str = pi_str.replace('.', '')[1:]  # Skip the "3"
-        pi_digits = pi_str[:n_digits]
-        print(f"[variant_J] ✅ Generated {len(pi_digits):,} π digits using mpmath", flush=True)
-    except ImportError:
-        print("[variant_J] ⚠️  mpmath not available, using precomputed π digits", flush=True)
-        # Fallback: first 1000 digits of π (after decimal point)
-        PI_1000 = (
-            "1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679"
-            "8214808651328230664709384460955058223172535940812848111745028410270193852110555964462294895493038196"
-            "4428810975665933446128475648233786783165271201909145648566923460348610454326648213393607260249141273"
-            "7245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094"
-            "3305727036575959195309218611738193261179310511854807446237996274956735188575272489122793818301194912"
-            "9833673362440656643086021394946395224737190702179860943702770539217176293176752384674818467669405132"
-            "0005681271452635608277857713427577896091736371787214684409012249534301465495853710507922796892589235"
-            "4201995611212902196086403441815981362977477130996051870721134999999837297804995105973173281609631859"
-            "5024459455346908302642522308253344685035261931188171010003137838752886587533208381420617177669147303"
-            "5982534904287554687311595628638823537875937519577818577805321712268066130019278766111959092164201989"
-        )
-        if n_digits > len(PI_1000):
-            print(f"[variant_J] ⚠️  Only {len(PI_1000)} digits available (install mpmath for more)", flush=True)
-        pi_digits = PI_1000[:n_digits]
+    if pi_digits is None:
+        # Fallback to mpmath calculation
+        print(f"[variant_J] 📐 Computing {n_digits:,} π digits with mpmath...", flush=True)
+        try:
+            from mpmath import mp
+            mp.dps = n_digits + 50
 
-    # Convert to binary using BCD (4 bits per decimal digit) with progress
-    print(f"[variant_J] 🔄 Converting to binary ({num_bits:,} bits)...", flush=True)
+            if n_digits > 1_000_000:
+                est_minutes = n_digits / 1_000_000
+                print(f"[variant_J] ⏳ Estimated time: ~{est_minutes:.0f} min for {n_digits/1e6:.1f}M digits", flush=True)
+                print(f"[variant_J]    (mpmath does not support progress, please wait...)", flush=True)
+
+            t0 = time.perf_counter()
+            pi_str = mp.nstr(mp.pi, n_digits + 1, strip_zeros=False)
+            calc_time = time.perf_counter() - t0
+
+            if n_digits > 1_000_000:
+                print(f"[variant_J] ✅ π calculation completed in {calc_time:.1f}s", flush=True)
+            pi_str = pi_str.replace('.', '')[1:]  # Skip "3."
+            pi_digits = pi_str[:n_digits]
+            print(f"[variant_J] ✅ Generated {len(pi_digits):,} π digits using mpmath", flush=True)
+        except ImportError:
+            print("[variant_J] ⚠️  mpmath not available, using built-in π digits", flush=True)
+            PI_1000 = (
+                "1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679"
+                "8214808651328230664709384460955058223172535940812848111745028410270193852110555964462294895493038196"
+                "4428810975665933446128475648233786783165271201909145648566923460348610454326648213393607260249141273"
+                "7245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094"
+                "3305727036575959195309218611738193261179310511854807446237996274956735188575272489122793818301194912"
+                "9833673362440656643086021394946395224737190702179860943702770539217176293176752384674818467669405132"
+                "0005681271452635608277857713427577896091736371787214684409012249534301465495853710507922796892589235"
+                "4201995611212902196086403441815981362977477130996051870721134999999837297804995105973173281609631859"
+                "5024459455346908302642522308253344685035261931188171010003137838752886587533208381420617177669147303"
+                "5982534904287554687311595628638823537875937519577818577805321712268066130019278766111959092164201989"
+            )
+            if n_digits > len(PI_1000):
+                print(f"[variant_J] ⚠️  Only {len(PI_1000)} digits available", flush=True)
+            pi_digits = PI_1000[:n_digits]
+
+    # Convert to binary using BCD (4 bits per decimal digit)
     binary_map = {
         '0': '0000', '1': '0001', '2': '0010', '3': '0011', '4': '0100',
         '5': '0101', '6': '0110', '7': '0111', '8': '1000', '9': '1001'
     }
 
-    # For large sequences, show progress
+    # For large sequences, use progress protocol for tqdm bar in parent
     if num_bits > 10_000_000:
+        from hsi_agents_project.utils.progress_protocol import ProgressReporter
+
         chunks = []
-        chunk_size = 1_000_000  # Process 1M digits at a time
+        chunk_size = 1_000_000
         total_digits = len(pi_digits)
-        for i in range(0, total_digits, chunk_size):
-            chunk = pi_digits[i:i+chunk_size]
-            chunks.append(''.join(binary_map[d] for d in chunk if d in binary_map))
-            if (i + chunk_size) % 10_000_000 == 0:
-                pct = min(100, (i + chunk_size) * 100 // total_digits)
-                print(f"[variant_J]   Converting: {pct}%...", flush=True)
+        num_chunks = (total_digits + chunk_size - 1) // chunk_size
+
+        with ProgressReporter(num_chunks, "[variant_J] π→binary", update_percent=1) as progress:
+            for chunk_idx in range(num_chunks):
+                start = chunk_idx * chunk_size
+                end = min(start + chunk_size, total_digits)
+                chunk = pi_digits[start:end]
+                chunks.append(''.join(binary_map[d] for d in chunk if d in binary_map))
+                progress.update(chunk_idx + 1)
+
         pi_binary = ''.join(chunks)
     else:
         pi_binary = ''.join(binary_map[d] for d in pi_digits if d in binary_map)
@@ -333,88 +452,119 @@ def generate_pi_variant(num_bits: int, iterations: int) -> dict:
     """
     Generate π (Pi) binary control data in v33-compatible format.
 
+    Generates ALL iterations from 1 to `iterations` (like variant B),
+    using pre-computed π digits from cache for speed.
+
     Variant J serves as a sanity check for the LZ multi-scale analysis:
     - π digits pass most randomness tests (pseudo-random)
     - Expected LZ ratio ≈ 1.0 (no self-similar structure)
     - If LZ ratio ≈ 0.62 for π, the algorithm is biased!
 
     Args:
-        num_bits: Number of binary bits to generate
-        iterations: Iteration number (for filename compatibility)
+        num_bits: Number of binary bits for the final iteration
+        iterations: Maximum iteration number (will generate 1..iterations)
 
     Returns:
-        Metadata dictionary
+        Metadata dictionary for the last iteration
     """
     from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
 
     results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_J"
     results_dir.mkdir(parents=True, exist_ok=True)
-
-    t0 = time.perf_counter()
-    print(f"[variant_J] 🥧 Generating {num_bits:,} π binary bits (~{num_bits/1e6:.1f}M)...", flush=True)
-
-    # Generate π bits
-    bits = generate_pi_bits(num_bits)
-
-    gen_time = time.perf_counter() - t0
-    print(f"[variant_J] ✅ Generated {len(bits):,} bits in {gen_time:.2f}s", flush=True)
-
-    # Save using v33 bitarray encoder
-    struct_path = results_dir / f"phi_iter{iterations}.struct.gz"
-    print(f"[variant_J] 💾 Saving to {struct_path.name}...", flush=True)
-
-    t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
-    save_time = time.perf_counter() - t1
-
-    elapsed = time.perf_counter() - t0
-
-    format_info = get_format_info(bits)
-
-    # Metadata
-    meta = {
-        "iteration": iterations,
-        "sequence_length": len(bits),
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "format": "v33_structural",
-        "encoding": "2bit",
-        "compressed": True,
-        "compression_level": 9,
-        "data_directory": str(results_dir),
-        "format_info": format_info,
-        "compressed_size_bytes": compressed_size,
-        "compression_ratio": compressed_size / len(bits) if len(bits) > 0 else 0.0,
-        "variant": "J",
-        "variant_description": "π (Pi) Binary Control - Sanity Check",
-        "source": "π decimal digits → BCD binary (4 bits per digit)",
-        "ones_count": bits.count('1'),
-        "zeros_count": bits.count('0'),
-        "ones_ratio": bits.count('1') / len(bits) if bits else 0.0,
-        "generation_time_seconds": gen_time,
-        "save_time_seconds": save_time
-    }
-
-    meta_path = results_dir / f"phi_iter{iterations}.json"
-    with open(meta_path, 'w') as f:
-        json.dump(meta, f, indent=2)
-
-    # Report file
     report_dir = ROOT / "results" / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
+
+    t0_total = time.perf_counter()
+
+    # Pre-load all π digits needed for max iteration (once)
+    max_bits = estimate_iteration_size(iterations)
+    print(f"[variant_J] 🥧 Generating iterations 1..{iterations} (max {max_bits:,} bits)", flush=True)
+
+    # Generate all π bits upfront (efficient: single cache read)
+    all_pi_bits = generate_pi_bits(max_bits)
+
+    per_iteration_data = []
+    phi_lengths = []
+    snapshots = []
+    last_meta = None
+
+    for iter_num in range(1, iterations + 1):
+        t0 = time.perf_counter()
+
+        # Calculate size for this iteration (like B: doubling growth)
+        iter_bits = estimate_iteration_size(iter_num)
+        bits = all_pi_bits[:iter_bits]
+
+        gen_time = time.perf_counter() - t0
+
+        # Save using v33 bitarray encoder
+        struct_path = results_dir / f"phi_iter{iter_num}.struct.gz"
+
+        t1 = time.perf_counter()
+        compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
+        save_time = time.perf_counter() - t1
+
+        elapsed = time.perf_counter() - t0
+        format_info = get_format_info(bits)
+
+        # Metadata per iteration
+        meta = {
+            "iteration": iter_num,
+            "sequence_length": len(bits),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "format": "v33_structural",
+            "encoding": "2bit",
+            "compressed": True,
+            "compression_level": 9,
+            "data_directory": str(results_dir),
+            "format_info": format_info,
+            "compressed_size_bytes": compressed_size,
+            "compression_ratio": compressed_size / len(bits) if len(bits) > 0 else 0.0,
+            "variant": "J",
+            "variant_description": "π (Pi) Binary Control - Sanity Check",
+            "source": "π decimal digits → BCD binary (4 bits per digit)",
+            "ones_count": bits.count('1'),
+            "zeros_count": bits.count('0'),
+            "ones_ratio": bits.count('1') / len(bits) if bits else 0.0,
+            "generation_time_seconds": gen_time,
+            "save_time_seconds": save_time
+        }
+
+        meta_path = results_dir / f"phi_iter{iter_num}.json"
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f, indent=2)
+
+        per_iteration_data.append({
+            "iteration": iter_num,
+            "phi_length": len(bits),
+            "time_sec": elapsed
+        })
+        phi_lengths.append(len(bits))
+        snapshots.append(str(struct_path))
+        last_meta = meta
+
+        # Progress report
+        size_mb = len(bits) / 8 / 1024 / 1024
+        print(f"[variant_J] ✅ iter {iter_num:2d}: {len(bits):>12,} bits ({size_mb:>7.2f} MB) "
+              f"in {elapsed:.2f}s → {struct_path.name}", flush=True)
+
+    total_time = time.perf_counter() - t0_total
+
+    # Final report
     report_name = f"variant_J_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report = {
         "variant": "J",
         "variant_description": "π (Pi) Binary Control - Sanity Check",
         "iterations": iterations,
-        "phi_length": len(bits),
-        "total_bits": len(bits),
+        "phi_length": phi_lengths[-1],
+        "total_bits": phi_lengths[-1],
         "format": "v33_structural",
         "timestamp": datetime.now().isoformat(),
-        "execution_time": elapsed,
-        "per_iteration": [{"iteration": iterations, "phi_length": len(bits), "time_sec": elapsed}],
-        "phi_lengths_per_iteration": [len(bits)],
-        "generator_type": "π BCD binary",
-        "ones_ratio": meta['ones_ratio'],
+        "execution_time": total_time,
+        "per_iteration": per_iteration_data,
+        "phi_lengths_per_iteration": phi_lengths,
+        "generator_type": "π BCD binary (pre-computed cache)",
+        "ones_ratio": last_meta['ones_ratio'] if last_meta else 0.0,
         "expected_lz_ratio": "≈1.0 (pseudo-random, no self-similar structure)",
         "purpose": "Sanity check - if LZ ratio ≈ 0.62, algorithm is biased"
     }
@@ -422,33 +572,31 @@ def generate_pi_variant(num_bits: int, iterations: int) -> dict:
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
 
-    # Also create phi_metadata_J.json for compatibility with analysis pipeline
+    # phi_metadata_J.json for analysis pipeline compatibility
     phi_metadata = {
         "variant": "J",
         "max_iterations": iterations,
         "iterations_completed": iterations,
-        "final_length": len(bits),
+        "final_length": phi_lengths[-1],
         "use_compression": True,
         "compression_activated": True,
         "basal_pure": False,
-        "snapshots_saved": [str(struct_path)],
-        "phi_lengths_per_iteration": [len(bits)],
-        "total_time_seconds": elapsed
+        "snapshots_saved": snapshots,
+        "phi_lengths_per_iteration": phi_lengths,
+        "total_time_seconds": total_time
     }
     phi_meta_path = report_dir / "phi_metadata_J.json"
     with open(phi_meta_path, 'w') as f:
         json.dump(phi_metadata, f, indent=2)
 
-    print(f"[variant_J] ✅ Saved: {struct_path.name} ({struct_path.stat().st_size:,} bytes)")
-    print(f"[variant_J] ✅ Metadata: {meta_path.name}")
+    print(f"\n[variant_J] 🎉 All {iterations} iterations completed in {total_time:.1f}s")
     print(f"[variant_J] ✅ Report: {report_path.name}")
     print(f"[variant_J] ✅ phi_metadata: {phi_meta_path.name}")
-    print(f"[variant_J] Stats: {meta['ones_count']:,} ones ({meta['ones_ratio']:.4f})")
 
-    return meta
+    return last_meta
 
 
-def generate_rule30_bits(num_bits: int) -> str:
+def generate_rule30_bits(num_bits: int, silent: bool = False) -> str:
     """
     Generate bits using Wolfram's Rule 30 cellular automaton.
 
@@ -457,90 +605,126 @@ def generate_rule30_bits(num_bits: int) -> str:
 
     Args:
         num_bits: Number of bits to generate
+        silent: If True, suppress progress output
 
     Returns:
         Binary string from Rule 30 center column
     """
     import numpy as np
+    from hsi_agents_project.utils.progress_protocol import ProgressReporter
 
-    # Try numba for speed (10-100x faster)
+    # =========================================================================
+    # TIER 1: Numba CPU (optimized with vectorization) - 10-20x faster
+    # Note: GPU is not efficient for Rule 30 due to sequential time dependency
+    # =========================================================================
     try:
         from numba import njit
 
-        @njit(cache=True)
-        def _rule30_chunk(state: np.ndarray, chunk_size: int, center: int) -> tuple:
-            """Process a chunk of Rule 30 steps. Returns (bits, new_state)."""
+        @njit(cache=True, fastmath=True)
+        def _rule30_chunk_optimized(state: np.ndarray, new_state: np.ndarray,
+                                     chunk_size: int, center: int) -> np.ndarray:
+            """Process a chunk of Rule 30 steps with buffer swapping (no allocations)."""
             width = len(state)
             bits = np.zeros(chunk_size, dtype=np.uint8)
 
             for step in range(chunk_size):
                 bits[step] = state[center]
-
-                # Rule 30: new = left XOR (center OR right)
-                new_state = np.zeros(width, dtype=np.uint8)
+                # Apply Rule 30 in-place to new_state
                 for i in range(1, width - 1):
-                    new_state[i] = state[i - 1] ^ (state[i] | state[i + 1])
-                state = new_state
+                    new_state[i] = state[i-1] ^ (state[i] | state[i+1])
+                # Swap buffers by copying (numba optimizes this)
+                for i in range(width):
+                    state[i] = new_state[i]
+                    new_state[i] = 0
 
-            return bits, state
+            return bits
 
-        width = min(2 * num_bits + 1, 100_001)
+        # Width=10K balances chaos quality vs computation time
+        # (100K was 10x slower, infeasible for large iterations)
+        width = min(2 * num_bits + 1, 10_001)
         center = width // 2
 
-        print(f"[variant_K]   Using numba (compiling JIT, wait ~10s first time)...", flush=True)
+        if not silent:
+            print(f"[variant_K]   Using numba JIT optimized...", flush=True)
 
-        # Initialize state
+        # Pre-allocate both buffers ONCE
         state = np.zeros(width, dtype=np.uint8)
         state[center] = 1
+        new_state = np.zeros(width, dtype=np.uint8)
 
         # Process in chunks to show progress
-        chunk_size = 1_000_000
+        chunk_size = 500_000  # 500K per chunk for better progress visibility
         all_bits = []
         processed = 0
+        num_chunks = (num_bits + chunk_size - 1) // chunk_size
 
-        while processed < num_bits:
-            remaining = num_bits - processed
-            current_chunk = min(chunk_size, remaining)
-            bits_chunk, state = _rule30_chunk(state, current_chunk, center)
-            all_bits.append(bits_chunk)
-            processed += current_chunk
-            print(f"[variant_K]   Rule 30: {100*processed/num_bits:.0f}%...", flush=True)
+        # Use a list of strings instead of numpy arrays to avoid memory issues
+        # Each chunk is converted to string immediately and numpy array discarded
+        result_parts = []
 
-        result = np.concatenate(all_bits)
-        return ''.join(str(b) for b in result)
+        with ProgressReporter(num_chunks, "[variant_K] Rule 30", update_percent=1, silent=silent) as progress:
+            chunk_idx = 0
+            while processed < num_bits:
+                remaining = num_bits - processed
+                current_chunk = min(chunk_size, remaining)
+                bits_chunk = _rule30_chunk_optimized(state, new_state, current_chunk, center)
+                # Convert to string immediately and discard numpy array
+                result_parts.append(''.join(str(b) for b in bits_chunk))
+                del bits_chunk  # Free memory immediately
+                processed += current_chunk
+                chunk_idx += 1
+                progress.update(chunk_idx)
+
+        return ''.join(result_parts)
 
     except ImportError:
         pass  # Fall through to numpy version
+    except Exception as e:
+        import traceback
+        if not silent:
+            print(f"[variant_K]   ⚠️ Numba error: {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
 
     # Fallback: optimized numpy version (no np.roll, use slicing)
-    print(f"[variant_K]   Using numpy (install numba for 10x speed)...", flush=True)
+    if not silent:
+        print(f"[variant_K]   Using numpy (install numba for 10x speed)...", flush=True)
 
-    width = min(2 * num_bits + 1, 100_001)
+    # Width=10K balances chaos quality vs computation time
+    width = min(2 * num_bits + 1, 10_001)
     center = width // 2
 
     state = np.zeros(width, dtype=np.uint8)
     state[center] = 1
 
-    bits = []
-    report_interval = max(num_bits // 20, 100_000)
+    # Process in chunks for progress bar
+    chunk_size = 100_000
+    num_chunks = (num_bits + chunk_size - 1) // chunk_size
+    all_bits = []
 
-    for step in range(num_bits):
-        bits.append(str(state[center]))
+    with ProgressReporter(num_chunks, "[variant_K] Rule 30 (numpy)", update_percent=2, silent=silent) as progress:
+        for chunk_idx in range(num_chunks):
+            start = chunk_idx * chunk_size
+            end = min(start + chunk_size, num_bits)
+            chunk_bits = []
 
-        # Rule 30 without np.roll (faster)
-        new_state = np.zeros(width, dtype=np.uint8)
-        new_state[1:-1] = state[:-2] ^ (state[1:-1] | state[2:])
-        state = new_state
+            for step in range(start, end):
+                chunk_bits.append(str(state[center]))
+                # Rule 30 without np.roll (faster)
+                new_state = np.zeros(width, dtype=np.uint8)
+                new_state[1:-1] = state[:-2] ^ (state[1:-1] | state[2:])
+                state = new_state
 
-        if step % report_interval == 0 and step > 0:
-            print(f"[variant_K]   Rule 30: {100*step/num_bits:.0f}%...", flush=True)
+            all_bits.append(''.join(chunk_bits))
+            progress.update(chunk_idx + 1)
 
-    return ''.join(bits)
+    return ''.join(all_bits)
 
 
-def generate_logistic_map_bits(num_bits: int, r: float = 3.99, x0: float = 0.1) -> str:
+def generate_logistic_map_bits_streaming(num_bits: int, output_path: str, r: float = 3.99, x0: float = 0.1, silent: bool = False) -> tuple:
     """
-    Generate bits using the Logistic Map (deterministic chaos).
+    Generate bits using the Logistic Map (deterministic chaos) - STREAMING VERSION.
+
+    Writes directly to gzip file without holding full sequence in memory.
 
     x_{n+1} = r * x_n * (1 - x_n)
 
@@ -549,12 +733,15 @@ def generate_logistic_map_bits(num_bits: int, r: float = 3.99, x0: float = 0.1) 
 
     Args:
         num_bits: Number of bits to generate
+        output_path: Path to write .struct.gz file
         r: Logistic map parameter (default 3.99 for chaos)
         x0: Initial condition
+        silent: Suppress progress output
 
     Returns:
-        Binary string from logistic map
+        Tuple of (ones_count, zeros_count, compressed_size)
     """
+    import gzip
     import numpy as np
     from hsi_agents_project.utils.progress_protocol import ProgressReporter
 
@@ -562,110 +749,192 @@ def generate_logistic_map_bits(num_bits: int, r: float = 3.99, x0: float = 0.1) 
     chunk_size = 10_000_000  # 10M per chunk
     num_chunks = (num_bits + chunk_size - 1) // chunk_size
 
-    all_bits = []
+    ones_count = 0
+    zeros_count = 0
     x = x0
 
-    with ProgressReporter(num_chunks, "[variant_L] Logistic map", update_percent=2) as progress:
-        for chunk_idx in range(num_chunks):
-            start = chunk_idx * chunk_size
-            end = min(start + chunk_size, num_bits)
-            n = end - start
+    with gzip.open(output_path, 'wt', encoding='utf-8', compresslevel=6) as f:
+        with ProgressReporter(num_chunks, "[variant_L] Logistic map", update_percent=2, silent=silent) as progress:
+            for chunk_idx in range(num_chunks):
+                start = chunk_idx * chunk_size
+                end = min(start + chunk_size, num_bits)
+                n = end - start
 
-            # Vectorized chunk processing
-            chunk_bits = np.empty(n, dtype=np.uint8)
-            for i in range(n):
-                x = r * x * (1 - x)
-                chunk_bits[i] = 1 if x >= 0.5 else 0
+                # Generate chunk
+                chunk_bits = np.empty(n, dtype=np.uint8)
+                for i in range(n):
+                    x = r * x * (1 - x)
+                    chunk_bits[i] = 1 if x >= 0.5 else 0
 
-            all_bits.append(''.join(str(b) for b in chunk_bits))
-            progress.update(chunk_idx + 1)
+                # Count ones/zeros
+                chunk_ones = int(np.sum(chunk_bits))
+                ones_count += chunk_ones
+                zeros_count += (n - chunk_ones)
 
-    return ''.join(all_bits)
+                # Write to file and discard
+                f.write(''.join(str(b) for b in chunk_bits))
+                del chunk_bits
+
+                progress.update(chunk_idx + 1)
+
+    # Get compressed size
+    compressed_size = Path(output_path).stat().st_size
+
+    return ones_count, zeros_count, compressed_size
 
 
 def generate_rule30_variant(num_bits: int, iterations: int) -> dict:
     """
     Generate Rule 30 cellular automaton control data in v33-compatible format.
 
+    Generates ALL iterations from 1 to `iterations` (like variant B/J).
+
     Variant K serves as deterministic chaos comparison:
     - Rule 30 is famous for pseudo-random behavior
     - Expected LZ ratio ≈ 1.0 (chaotic, no self-similar structure)
 
     Args:
-        num_bits: Number of binary bits to generate
-        iterations: Iteration number (for filename compatibility)
+        num_bits: Number of binary bits for the final iteration
+        iterations: Maximum iteration number (will generate 1..iterations)
 
     Returns:
-        Metadata dictionary
+        Metadata dictionary for the last iteration
     """
     from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
 
     results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_K"
     results_dir.mkdir(parents=True, exist_ok=True)
-
-    t0 = time.perf_counter()
-    print(f"[variant_K] 🔲 Generating {num_bits:,} Rule 30 bits...", flush=True)
-
-    bits = generate_rule30_bits(num_bits)
-
-    gen_time = time.perf_counter() - t0
-    print(f"[variant_K] ✅ Generated {len(bits):,} bits in {gen_time:.2f}s", flush=True)
-
-    # Save using v33 bitarray encoder
-    struct_path = results_dir / f"phi_iter{iterations}.struct.gz"
-    print(f"[variant_K] 💾 Saving to {struct_path.name}...", flush=True)
-
-    t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
-    save_time = time.perf_counter() - t1
-
-    elapsed = time.perf_counter() - t0
-    format_info = get_format_info(bits)
-
-    meta = {
-        "iteration": iterations,
-        "sequence_length": len(bits),
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "format": "v33_structural",
-        "variant": "K",
-        "variant_description": "Rule 30 Cellular Automaton - Deterministic Chaos",
-        "source": "Wolfram Rule 30 center column",
-        "ones_count": bits.count('1'),
-        "zeros_count": bits.count('0'),
-        "ones_ratio": bits.count('1') / len(bits) if bits else 0.0,
-        "compressed_size_bytes": compressed_size,
-        "format_info": format_info,
-        "generation_time_seconds": gen_time
-    }
-
-    meta_path = results_dir / f"phi_iter{iterations}.json"
-    with open(meta_path, 'w') as f:
-        json.dump(meta, f, indent=2)
-
-    # Report
     report_dir = ROOT / "results" / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
+
+    t0_total = time.perf_counter()
+
+    # Use num_bits as the size for the FINAL iteration
+    # Scale earlier iterations proportionally using estimate_iteration_size ratios
+    base_estimate = estimate_iteration_size(iterations)
+    scale_factor = num_bits / base_estimate if base_estimate > 0 else 1.0
+
+    print(f"[variant_K] 🔲 Generating iterations 1..{iterations} (final: {num_bits:,} bits)", flush=True)
+
+    # Generate all bits upfront (efficient: single generation)
+    all_rule30_bits = generate_rule30_bits(num_bits)
+
+    per_iteration_data = []
+    phi_lengths = []
+    snapshots = []
+    last_meta = None
+
+    for iter_num in range(1, iterations + 1):
+        t0 = time.perf_counter()
+
+        # Calculate size for this iteration proportionally
+        if iter_num == iterations:
+            iter_bits = num_bits  # Final iteration uses exact size
+        else:
+            iter_bits = int(estimate_iteration_size(iter_num) * scale_factor)
+            iter_bits = min(iter_bits, num_bits)  # Cap at available bits
+
+        bits = all_rule30_bits[:iter_bits]
+
+        gen_time = time.perf_counter() - t0
+
+        # Save using v33 bitarray encoder
+        struct_path = results_dir / f"phi_iter{iter_num}.struct.gz"
+
+        t1 = time.perf_counter()
+        compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
+        save_time = time.perf_counter() - t1
+
+        elapsed = time.perf_counter() - t0
+        format_info = get_format_info(bits)
+
+        # Metadata per iteration
+        meta = {
+            "iteration": iter_num,
+            "sequence_length": len(bits),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "format": "v33_structural",
+            "encoding": "2bit",
+            "compressed": True,
+            "compression_level": 9,
+            "data_directory": str(results_dir),
+            "format_info": format_info,
+            "compressed_size_bytes": compressed_size,
+            "compression_ratio": compressed_size / len(bits) if len(bits) > 0 else 0.0,
+            "variant": "K",
+            "variant_description": "Rule 30 Cellular Automaton - Deterministic Chaos",
+            "source": "Wolfram Rule 30 center column",
+            "ones_count": bits.count('1'),
+            "zeros_count": bits.count('0'),
+            "ones_ratio": bits.count('1') / len(bits) if bits else 0.0,
+            "generation_time_seconds": gen_time,
+            "save_time_seconds": save_time
+        }
+
+        meta_path = results_dir / f"phi_iter{iter_num}.json"
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f, indent=2)
+
+        per_iteration_data.append({
+            "iteration": iter_num,
+            "phi_length": len(bits),
+            "time_sec": elapsed
+        })
+        phi_lengths.append(len(bits))
+        snapshots.append(str(struct_path))
+        last_meta = meta
+
+        # Progress report
+        size_mb = len(bits) / 8 / 1024 / 1024
+        print(f"[variant_K] ✅ iter {iter_num:2d}: {len(bits):>12,} bits ({size_mb:>7.2f} MB) "
+              f"in {elapsed:.2f}s → {struct_path.name}", flush=True)
+
+    total_time = time.perf_counter() - t0_total
+
+    # Final report
+    report_name = f"variant_K_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report = {
         "variant": "K",
         "variant_description": "Rule 30 Cellular Automaton - Deterministic Chaos",
         "iterations": iterations,
-        "phi_length": len(bits),
-        "total_bits": len(bits),
-        "execution_time": elapsed,
-        "ones_ratio": meta['ones_ratio'],
-        "expected_lz_ratio": "≈1.0 (chaotic, no self-similar structure)"
+        "phi_length": phi_lengths[-1],
+        "total_bits": phi_lengths[-1],
+        "format": "v33_structural",
+        "timestamp": datetime.now().isoformat(),
+        "execution_time": total_time,
+        "per_iteration": per_iteration_data,
+        "phi_lengths_per_iteration": phi_lengths,
+        "generator_type": "Wolfram Rule 30 center column",
+        "ones_ratio": last_meta['ones_ratio'] if last_meta else 0.0,
+        "expected_lz_ratio": "≈1.0 (chaotic, no self-similar structure)",
+        "purpose": "Deterministic chaos comparison"
     }
-    report_path = report_dir / f"variant_K_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    report_path = report_dir / report_name
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
 
-    # phi_metadata for pipeline compatibility
-    phi_meta = {"variant": "K", "max_iterations": iterations, "final_length": len(bits)}
-    with open(report_dir / "phi_metadata_K.json", 'w') as f:
-        json.dump(phi_meta, f, indent=2)
+    # phi_metadata_K.json for analysis pipeline compatibility
+    phi_metadata = {
+        "variant": "K",
+        "max_iterations": iterations,
+        "iterations_completed": iterations,
+        "final_length": phi_lengths[-1],
+        "use_compression": True,
+        "compression_activated": True,
+        "basal_pure": False,
+        "snapshots_saved": snapshots,
+        "phi_lengths_per_iteration": phi_lengths,
+        "total_time_seconds": total_time
+    }
+    phi_meta_path = report_dir / "phi_metadata_K.json"
+    with open(phi_meta_path, 'w') as f:
+        json.dump(phi_metadata, f, indent=2)
 
-    print(f"[variant_K] ✅ Saved: {struct_path.name}")
-    return meta
+    print(f"\n[variant_K] 🎉 All {iterations} iterations completed in {total_time:.1f}s")
+    print(f"[variant_K] ✅ Report: {report_path.name}")
+    print(f"[variant_K] ✅ phi_metadata: {phi_meta_path.name}")
+
+    return last_meta
 
 
 def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
@@ -676,6 +945,8 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
     - Logistic map at r≈4 produces chaotic dynamics
     - Expected LZ ratio ≈ 1.0 (chaotic, no self-similar structure)
 
+    Uses streaming generation to avoid memory issues with large sequences.
+
     Args:
         num_bits: Number of binary bits to generate
         iterations: Iteration number (for filename compatibility)
@@ -683,43 +954,37 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
     Returns:
         Metadata dictionary
     """
-    from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
-
     results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_L"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     t0 = time.perf_counter()
-    print(f"[variant_L] 📈 Generating {num_bits:,} Logistic Map bits...", flush=True)
+    print(f"[variant_L] 📈 Generating {num_bits:,} Logistic Map bits (streaming)...", flush=True)
 
-    bits = generate_logistic_map_bits(num_bits)
+    # Use streaming version - writes directly to disk
+    struct_path = results_dir / f"phi_iter{iterations}.struct.gz"
+    ones_count, zeros_count, compressed_size = generate_logistic_map_bits_streaming(
+        num_bits, str(struct_path)
+    )
 
     gen_time = time.perf_counter() - t0
-    print(f"[variant_L] ✅ Generated {len(bits):,} bits in {gen_time:.2f}s", flush=True)
-
-    # Save using v33 bitarray encoder
-    struct_path = results_dir / f"phi_iter{iterations}.struct.gz"
-    print(f"[variant_L] 💾 Saving to {struct_path.name}...", flush=True)
-
-    t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
-    save_time = time.perf_counter() - t1
+    print(f"[variant_L] ✅ Generated {num_bits:,} bits in {gen_time:.2f}s", flush=True)
+    print(f"[variant_L] 💾 Saved to {struct_path.name} ({compressed_size / (1024*1024):.1f} MB)", flush=True)
 
     elapsed = time.perf_counter() - t0
-    format_info = get_format_info(bits)
+    ones_ratio = ones_count / num_bits if num_bits > 0 else 0.0
 
     meta = {
         "iteration": iterations,
-        "sequence_length": len(bits),
+        "sequence_length": num_bits,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "format": "v33_structural",
         "variant": "L",
         "variant_description": "Logistic Map - Deterministic Chaos",
         "source": "Logistic map x_{n+1}=r*x*(1-x) with r=3.99",
-        "ones_count": bits.count('1'),
-        "zeros_count": bits.count('0'),
-        "ones_ratio": bits.count('1') / len(bits) if bits else 0.0,
+        "ones_count": ones_count,
+        "zeros_count": zeros_count,
+        "ones_ratio": ones_ratio,
         "compressed_size_bytes": compressed_size,
-        "format_info": format_info,
         "generation_time_seconds": gen_time
     }
 
@@ -734,10 +999,10 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
         "variant": "L",
         "variant_description": "Logistic Map - Deterministic Chaos",
         "iterations": iterations,
-        "phi_length": len(bits),
-        "total_bits": len(bits),
+        "phi_length": num_bits,
+        "total_bits": num_bits,
         "execution_time": elapsed,
-        "ones_ratio": meta['ones_ratio'],
+        "ones_ratio": ones_ratio,
         "expected_lz_ratio": "≈1.0 (chaotic, no self-similar structure)"
     }
     report_path = report_dir / f"variant_L_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"

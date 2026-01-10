@@ -19,6 +19,11 @@ from .phi_snapshot_manager import PhiSnapshotManager
 from .accumulation_manager import AccumulationManager
 from .streaming_collapse_engine import StreamingCollapseEngine, OneLevelCollapseEngine
 from .hybrid_collapse_engine import HybridCollapseEngine
+from .disk_space_manager import (
+    should_use_compression,
+    check_sufficient_space,
+    write_insufficient_space_log
+)
 
 # Default safety limits (can be overridden by config.json)
 DEFAULT_MAX_RAM_GB = 30  # 30 GB default
@@ -164,7 +169,8 @@ def simulate_phi(
     memory_threshold: int = 10**8,
     variant: str = "B",  # Basal-pure variants: A (instant), B (stratified baseline)
     resume_from_checkpoint: bool = True,  # NEW: Enable checkpoint recovery
-    config: Optional[Dict[str, Any]] = None  # Configuration dict for RAM/disk limits
+    config: Optional[Dict[str, Any]] = None,  # Configuration dict for RAM/disk limits
+    force_compress_temp: bool = False  # Force gzip compression for temp files (for testing)
 ) -> Tuple[str, List[str], Dict[str, Any]]:
     """
     Simula el procés iteratiu de la Hipòtesi de Singularitat Informacional.
@@ -178,6 +184,7 @@ def simulate_phi(
         output_dir: Directori on guardar els resultats
         use_compression: Si usar compressió automàtica per seqüències grans
         memory_threshold: Llindar de bits per activar compressió automàtica
+        force_compress_temp: Forçar compressió gzip als fitxers temporals (per testing)
 
     Returns:
         Tuple amb:
@@ -232,10 +239,19 @@ def simulate_phi(
         )
 
     # Initialize AccumulationManager (disk-based storage for memory efficiency)
+    # Compression mode: forced by parameter or set dynamically based on disk space
+    compress_temp_files = force_compress_temp
+    compress_level = 1  # Fast compression when enabled
+
+    if force_compress_temp:
+        print("🗜️  COMPRESS MODE FORCED: Temp files will use gzip compression")
+
     if output_dir:
         accumulation_manager = AccumulationManager(
             output_dir=str(Path(output_dir) / "temp"),
-            variant=variant
+            variant=variant,
+            compress=compress_temp_files,
+            compress_level=compress_level
         )
     else:
         # Fallback to in-memory for small tests without output_dir
@@ -546,8 +562,46 @@ def simulate_phi(
                 metadata["safety_stop_reason"] = f"Accumulation exceeded {max_disk_tb} TB at iteration {iteration + 1}"
                 break
 
+            # ========== AUTOMATIC COMPRESSION CHECK ==========
+            # Check if we need to switch to compressed temp files
+            if iteration >= 14 and not compress_temp_files:  # Only check for large iterations
+                temp_dir = Path(output_dir) / "temp"
+                should_compress, space_details = should_use_compression(
+                    temp_dir, iteration, current_accum_size
+                )
+                if should_compress:
+                    if space_details.get('decision') == 'INSUFFICIENT':
+                        # Even with compression, not enough space
+                        print(f"\n❌ INSUFFICIENT DISK SPACE at iteration {iteration + 1}")
+                        print(f"   Free: {space_details['free_space_gb']:.1f} GB")
+                        print(f"   Needed (compressed): {space_details['estimated_compressed_gb']:.1f} GB")
+                        write_insufficient_space_log(temp_dir, iteration, space_details)
+                        metadata["safety_stop"] = True
+                        metadata["safety_stop_reason"] = f"Insufficient disk space at iteration {iteration + 1}"
+                        break
+                    else:
+                        # Activate compression mode
+                        compress_temp_files = True
+                        print(f"\n🗜️  AUTO-COMPRESS ACTIVATED at iteration {iteration + 1}")
+                        print(f"   Free: {space_details['free_space_gb']:.1f} GB")
+                        print(f"   Estimated (uncompressed): {space_details['estimated_needed_gb']:.1f} GB")
+                        print(f"   Estimated (compressed): {space_details['estimated_compressed_gb']:.1f} GB")
+                        # Recreate AccumulationManager with compression enabled
+                        accumulation_manager.cleanup()  # Clean old file
+                        accumulation_manager = AccumulationManager(
+                            output_dir=str(Path(output_dir) / "temp"),
+                            variant=variant,
+                            compress=True,
+                            compress_level=compress_level
+                        )
+                        metadata["compression_activated_at_iter"] = iteration + 1
+
             # Build decay frame directly on disk (no RAM needed)
-            decay_frame_path = accumulation_manager.build_decay_frame(absolute_token)
+            # Use compression if auto-compress is active
+            decay_frame_path = accumulation_manager.build_decay_frame(
+                absolute_token,
+                compress_output=compress_temp_files
+            )
             decay_frame_size = decay_frame_path.stat().st_size
 
             if decay_frame_size > max_ram_bytes:
@@ -572,7 +626,15 @@ def simulate_phi(
                     "I": _simplify_variant_i,  # Inverse of E: 10 first, then 01
                 }
                 hybrid_simplify_fn = variant_simplify_fns.get(variant, _simplify_base)
-                hybrid_engine = HybridCollapseEngine(max_ram_bytes=max_ram_bytes, simplify_fn=hybrid_simplify_fn)
+                hybrid_engine = HybridCollapseEngine(
+                    max_ram_bytes=max_ram_bytes,
+                    simplify_fn=hybrid_simplify_fn,
+                    compress=compress_temp_files,
+                    compress_level=compress_level
+                )
+
+                # File extension depends on compression mode
+                tmp_ext = ".tmp.gz" if compress_temp_files else ".tmp"
 
                 while True:
                     pass_num += 1
@@ -593,10 +655,33 @@ def simulate_phi(
                     accumulation_manager.append_from_file(current_file)
 
                     # Collapse one level using hybrid (regex in RAM blocks)
-                    next_file = temp_dir / f"hybrid_{variant}_{pass_num}.tmp"
-                    output_size, had_changes = hybrid_engine.collapse_one_pass(
-                        current_file, next_file, log_progress=(pass_num == 1)
-                    )
+                    next_file = temp_dir / f"hybrid_{variant}_{pass_num}{tmp_ext}"
+                    try:
+                        output_size, had_changes = hybrid_engine.collapse_one_pass(
+                            current_file, next_file, log_progress=(pass_num == 1)
+                        )
+                    except OSError as e:
+                        if e.errno == 28:  # No space left on device
+                            print(f"\n❌ DISK FULL during hybrid collapse at iteration {iteration + 1}, pass {pass_num}")
+                            space_details = {
+                                'iteration': iteration + 1,
+                                'pass': pass_num,
+                                'error': str(e),
+                                'compress_active': compress_temp_files
+                            }
+                            write_insufficient_space_log(temp_dir, iteration, space_details, str(e))
+                            metadata["safety_stop"] = True
+                            metadata["safety_stop_reason"] = f"Disk full at iteration {iteration + 1}"
+                            # Clean up temp files
+                            if current_file.exists() and current_file != decay_frame_path:
+                                current_file.unlink()
+                            if next_file.exists():
+                                next_file.unlink()
+                            if decay_frame_path.exists():
+                                decay_frame_path.unlink()
+                            break
+                        else:
+                            raise  # Re-raise other OS errors
 
                     # Progress update
                     if pass_num % 3 == 0 or output_size < 1000:
@@ -617,6 +702,10 @@ def simulate_phi(
 
                     current_file = next_file
 
+                # Check if we broke out due to safety stop
+                if metadata.get("safety_stop"):
+                    break
+
                 # Clean up original decay frame
                 if decay_frame_path.exists():
                     decay_frame_path.unlink()
@@ -626,8 +715,14 @@ def simulate_phi(
                 if decay_frame_size > 100_000_000:  # >100MB
                     print(f"   [decay] Reading {decay_frame_size/1e9:.2f} GB to RAM...", flush=True)
                     t_read = time.perf_counter()
-                with open(decay_frame_path, 'r', encoding='utf-8') as f:
-                    decay_frame = f.read()
+                # Handle compressed files (.gz extension)
+                if str(decay_frame_path).endswith('.gz'):
+                    import gzip
+                    with gzip.open(decay_frame_path, 'rt', encoding='utf-8') as f:
+                        decay_frame = f.read()
+                else:
+                    with open(decay_frame_path, 'r', encoding='utf-8') as f:
+                        decay_frame = f.read()
                 if decay_frame_size > 100_000_000:
                     print(f"   [decay] Read complete in {time.perf_counter()-t_read:.1f}s", flush=True)
                 if decay_frame_path.exists():
@@ -1209,7 +1304,7 @@ def _estimate_fractal_dimension(sequence: str, max_box_size: int = 50) -> float:
     return float(max(0.0, min(2.0, D)))
 
 
-def _estimate_fractal_dimension_streaming_gz(gz_path: str, max_box_size: int = 50) -> float:
+def _estimate_fractal_dimension_streaming_gz(gz_path: str, max_box_size: int = 50, show_progress: bool = True) -> float:
     """Estimate fractal dimension by streaming a gz-compressed Φ string from disk.
     Optimized to avoid per-character Python loops (vectorized per-size processing).
     Supports both v32 (text) and v33 (structural bitarray) formats.
@@ -1217,8 +1312,13 @@ def _estimate_fractal_dimension_streaming_gz(gz_path: str, max_box_size: int = 5
     import gzip
     import math
     import json
+    import sys
 
     CHUNK = 1_000_000  # characters per read (tune if needed)
+
+    def _progress_bar(pct: float, width: int = 30) -> str:
+        filled = int(width * pct / 100)
+        return f"[{'█' * filled}{'░' * (width - filled)}]"
 
     # Detect format from metadata
     gz_dir = Path(gz_path).parent
@@ -1287,11 +1387,19 @@ def _estimate_fractal_dimension_streaming_gz(gz_path: str, max_box_size: int = 5
         return float(max(0.0, min(2.0, D)))
 
     # v32 format: stream from gzip text file
-    # First pass: determine total length
+    # First pass: determine total length (with progress)
     total_len = 0
+    t0 = time.perf_counter()
+    if show_progress:
+        sys.stdout.write("[post] Fractal streaming: Pass 1/2 - counting length...")
+        sys.stdout.flush()
     with gzip.open(gz_path, "rt", encoding="utf-8") as f:
         for chunk in iter(lambda: f.read(CHUNK), ""):
             total_len += len(chunk)
+    if show_progress:
+        t1 = time.perf_counter()
+        sys.stdout.write(f"\r\033[K[post] Fractal streaming: Pass 1/2 done ({total_len:,} chars, {t1-t0:.1f}s)\n")
+        sys.stdout.flush()
     if total_len < 4:
         return 1.0
 
@@ -1306,11 +1414,27 @@ def _estimate_fractal_dimension_streaming_gz(gz_path: str, max_box_size: int = 5
     state_has = {s: False for s in sizes}
     box_counts = {s: 0 for s in sizes}
 
-    # Second pass: process chunks as numpy arrays
+    # Second pass: process chunks as numpy arrays (with progress bar)
+    processed = 0
+    t0_pass2 = time.perf_counter()
+    last_pct = -1
     with gzip.open(gz_path, "rt", encoding="utf-8") as f:
         for chunk in iter(lambda: f.read(CHUNK), ""):
             if not chunk:
                 break
+            processed += len(chunk)
+
+            # Progress bar update every 1%
+            if show_progress and total_len > 0:
+                pct = int(processed * 100 / total_len)
+                if pct > last_pct:
+                    last_pct = pct
+                    elapsed = time.perf_counter() - t0_pass2
+                    eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+                    bar = _progress_bar(pct)
+                    sys.stdout.write(f"\r\033[K[post] Fractal streaming: Pass 2/2 {bar} {pct:3d}% | ETA ~{eta:.0f}s")
+                    sys.stdout.flush()
+
             # Convert '0'/'1' chars to boolean array efficiently
             arr = np.frombuffer(chunk.encode('ascii'), dtype=np.uint8)
             bits = (arr == 49)  # ord('1') == 49
@@ -1356,6 +1480,13 @@ def _estimate_fractal_dimension_streaming_gz(gz_path: str, max_box_size: int = 5
         if state_pos[s] and state_has[s]:
             box_counts[s] += 1
 
+    # Final progress message
+    if show_progress:
+        t_end = time.perf_counter()
+        bar = _progress_bar(100)
+        sys.stdout.write(f"\r\033[K[post] Fractal streaming: Pass 2/2 {bar} 100% | Done in {t_end - t0_pass2:.1f}s\n")
+        sys.stdout.flush()
+
     # Build log-log arrays
     xs, ys = [], []
     for s in sizes:
@@ -1379,6 +1510,40 @@ def _attach_fractal_plot_data_to_report(report_obj: Dict[str, Any], per_size_cou
     counts = [per_size_counts[s] for s in sizes]
     report_obj.setdefault("fractal_plot_data", {})["sizes"] = sizes
     report_obj["fractal_plot_data"]["counts"] = counts
+
+
+def _compute_growth_metrics(result_obj: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Compute growth metrics from per_iteration data.
+    Returns dict with growth_exponent, growth_r2, ratio_median.
+    """
+    per_iter = result_obj.get('per_iteration') or []
+    xs = [e.get('iteration') for e in per_iter]
+    ys = [e.get('phi_length') for e in per_iter]
+    out = {'growth_exponent': None, 'growth_r2': None, 'ratio_median': None}
+    if len(xs) < 3 or any(y is None or y <= 0 for y in ys):
+        return out
+    # Exponential growth fit: log(bits) ~ a + gamma * i
+    x = np.array(xs, dtype=float)
+    y = np.array(ys, dtype=float)
+    ylog = np.log(np.maximum(1.0, y))
+    slope, intercept = np.polyfit(x, ylog, 1)
+    yhat = slope * x + intercept
+    ss_res = float(np.sum((ylog - yhat)**2))
+    ss_tot = float(np.sum((ylog - np.mean(ylog))**2)) or 1.0
+    r2 = 1.0 - ss_res/ss_tot
+    # Derivative ratios r_i = d_{i}/d_{i-1}
+    dy = np.diff(y)
+    dy = dy[dy > 0]
+    if dy.size >= 2:
+        ri = dy[1:] / np.maximum(1.0, dy[:-1])
+        # robust: use latter half to avoid transients
+        k0 = max(0, int(0.5*ri.size))
+        ri_sel = ri[k0:]
+        r_med = float(np.median(ri_sel)) if ri_sel.size else float(np.median(ri))
+        out.update({'ratio_median': r_med})
+    out.update({'growth_exponent': float(slope), 'growth_r2': float(r2)})
+    return out
 
 
 def _save_results(
@@ -1441,6 +1606,20 @@ def _save_results(
         "timestamp": __import__('datetime').datetime.now().isoformat()
     }
 
+    # Compute and add growth metrics directly to result_obj
+    growth_metrics = _compute_growth_metrics(result_obj)
+    result_obj.update(growth_metrics)
+    if growth_metrics.get('growth_exponent') is not None:
+        print(f"[post] Growth metrics: γ={growth_metrics['growth_exponent']:.4f} R²={growth_metrics['growth_r2']:.3f} r_med={growth_metrics['ratio_median']:.4f}")
+
+    # Add compression summary from metadata if available
+    if metadata.get("compression_summary"):
+        result_obj["compression_summary"] = metadata["compression_summary"]
+
+    # Add execution time if available
+    if metadata.get("total_execution_time"):
+        result_obj["total_execution_time"] = metadata["total_execution_time"]
+
     # If we computed streaming fractal metrics later, mirror them into the main fields
     # so enriched and raw reports carry non-null values.
 
@@ -1476,22 +1655,32 @@ def _save_results(
                     result_obj["phi_alignment"] = float(abs(D_stream - 1.618))
                 print(f"[post] Streaming fractal computed: D_stream={D_stream:.4f} (time={_t_stream_dur:.2f}s)")
                 try:
-                    print("[post] Persisting fractal_plot_data arrays (sizes, counts)...")
+                    import sys as _sys
                     _t_persist = time.perf_counter()
                     import math, gzip
                     sizes = list(range(2, 65))
                     per_counts = {}
                     # Progress setup
                     total_bits_est = int((latest.get("sequence_length") or 0))
-                    next_mark = 0.10 if total_bits_est > 0 else None
                     t0p = time.perf_counter()
+                    last_pct = -1
+
+                    def _fpd_bar(pct: float, width: int = 30) -> str:
+                        filled = int(width * pct / 100)
+                        return f"[{'█' * filled}{'░' * (width - filled)}]"
 
                     # Load phi_clean (handle both v32 and v33)
                     if is_v33:
                         from .phi_snapshot_manager import PhiSnapshotManager
+                        print(f"[post] Loading phi_structural for fractal_plot_data...", flush=True)
                         manager = PhiSnapshotManager(data_dir=data_dir)
                         phi_structural, _ = manager.load_phi_state_structural(latest['iteration'])
                         phi_clean = phi_structural.replace('(', '').replace(')', '')
+
+                        # Use actual length as fallback if estimate is 0
+                        if total_bits_est == 0:
+                            total_bits_est = len(phi_clean)
+                        print(f"[post] Processing {len(phi_clean):,} chars for fractal_plot_data...", flush=True)
 
                         # Process as single string
                         idx = 0
@@ -1505,19 +1694,27 @@ def _save_results(
                                     per_counts[s] = per_counts.get(s, 0) + (1 if ones[s] > 0 else 0)
                                     ones[s] = 0
 
-                            # Progress print every 10% (if we know total)
-                            if next_mark is not None and total_bits_est > 0 and idx % 1_000_000 == 0:
-                                ratio = idx / total_bits_est
-                                if ratio >= next_mark:
-                                    elapsed = time.perf_counter() - t0p
-                                    eta = (elapsed/ratio - elapsed) if ratio > 0 else 0.0
-                                    print(f"[post] fractal_plot_data {ratio*100:5.1f}%  ETA ~{eta:.1f}s", end="\r")
-                                    next_mark += 0.10
+                            # Progress bar every 0.5M chars
+                            if idx % 500_000 == 0:
+                                if total_bits_est > 0:
+                                    pct = int(idx * 100 / total_bits_est)
+                                    if pct > last_pct:
+                                        last_pct = pct
+                                        elapsed = time.perf_counter() - t0p
+                                        eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+                                        bar = _fpd_bar(pct)
+                                        _sys.stdout.write(f"\r\033[K[post] fractal_plot_data {bar} {pct:3d}% | ETA ~{eta:.0f}s")
+                                        _sys.stdout.flush()
+                                else:
+                                    # Fallback: show chars processed
+                                    _sys.stdout.write(f"\r\033[K[post] fractal_plot_data: {idx:,} chars processed...")
+                                    _sys.stdout.flush()
                         for s in sizes:
                             if idx % s != 0 and ones[s] > 0:
                                 per_counts[s] = per_counts.get(s, 0) + 1
                     else:
                         # v32: stream from gzip
+                        print(f"[post] Streaming fractal_plot_data from gzip...", flush=True)
                         with gzip.open(str(gz_path), "rt", encoding="utf-8") as _f:
                             idx = 0
                             ones = {s: 0 for s in sizes}
@@ -1531,19 +1728,27 @@ def _save_results(
                                             per_counts[s] = per_counts.get(s, 0) + (1 if ones[s] > 0 else 0)
                                             ones[s] = 0
 
-                                # Progress print every 10% (if we know total)
-                                if next_mark is not None and total_bits_est > 0:
-                                    ratio = idx / total_bits_est
-                                    if ratio >= next_mark:
+                                # Progress bar after each 1M chunk
+                                if total_bits_est > 0:
+                                    pct = int(idx * 100 / total_bits_est)
+                                    if pct > last_pct:
+                                        last_pct = pct
                                         elapsed = time.perf_counter() - t0p
-                                        eta = (elapsed/ratio - elapsed) if ratio > 0 else 0.0
-                                        print(f"[post] fractal_plot_data {ratio*100:5.1f}%  ETA ~{eta:.1f}s", end="\r")
-                                        next_mark += 0.10
+                                        eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+                                        bar = _fpd_bar(pct)
+                                        _sys.stdout.write(f"\r\033[K[post] fractal_plot_data {bar} {pct:3d}% | ETA ~{eta:.0f}s")
+                                        _sys.stdout.flush()
+                                else:
+                                    # Fallback: show chars processed
+                                    _sys.stdout.write(f"\r\033[K[post] fractal_plot_data: {idx:,} chars processed...")
+                                    _sys.stdout.flush()
                             for s in sizes:
                                 if idx % s != 0 and ones[s] > 0:
                                     per_counts[s] = per_counts.get(s, 0) + 1
-                    if next_mark is not None:
-                        print("[post] fractal_plot_data 100.0%            ")
+                    # Final progress
+                    bar = _fpd_bar(100)
+                    _sys.stdout.write(f"\r\033[K[post] fractal_plot_data {bar} 100% | Done\n")
+                    _sys.stdout.flush()
                     _attach_fractal_plot_data_to_report(result_obj, per_counts)
                     print(f"[post] fractal_plot_data persisted (time={time.perf_counter()-_t_persist:.2f}s; sizes={len(sizes)})")
                 except Exception as e:
@@ -1606,16 +1811,7 @@ def _save_results(
         os.fsync(f.fileno())  # Force write to disk for Windows compatibility
     print(f"[INFO] 2.2/4 report saved to {rel}  (write={time.perf_counter()-t0w:.2f}s)")
 
-    # Save metadata with variant in filename to avoid overwrites
-    t_meta0 = time.perf_counter()
-    metadata_filename = f"phi_metadata_{variant_code}.json"
-    metadata_path = reports_dir / metadata_filename
-    with open(metadata_path, 'w') as f:
-        json.dump(metadata, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())  # Force write to disk for Windows compatibility
-    rel_meta = metadata_path.relative_to(BASE_PATH)
-    print(f"[post] 2.3/4 saved {rel_meta} in {time.perf_counter()-t_meta0:.2f}s")
+    # NOTE: phi_metadata_{variant}.json removed - all data now in variant_*.json
 
 
 # Funcions auxiliars per a compatibilitat amb altres mòduls
@@ -1862,7 +2058,12 @@ if __name__ == "__main__":
         else:
             print(f"[WARN] --abs-mode invalid: {args.abs_mode}; using default/env")
 
+    # Force compression for temp files (for testing disk space optimization)
+    force_compress = os.environ.get("HSI_FORCE_COMPRESS", "0") == "1"
+
     print(f"Config: variant={variant}, iterations={iterations}, ABS={os.environ.get('HSI_ABSOLUTE_TOKEN','1')}")
+    if force_compress:
+        print("🗜️  Force compress mode enabled via HSI_FORCE_COMPRESS")
 
     # Checkpoint recovery (enabled by default, disable with --no-resume)
     resume_checkpoint = not args.no_resume
@@ -1875,7 +2076,8 @@ if __name__ == "__main__":
         memory_threshold=10**7,
         variant=variant,
         resume_from_checkpoint=resume_checkpoint,
-        config=config
+        config=config,
+        force_compress_temp=force_compress
     )
 
     print("\n" + "=" * 60, flush=True)

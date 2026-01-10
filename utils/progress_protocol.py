@@ -49,43 +49,49 @@ def progress_end() -> None:
 class ProgressReporter:
     """
     Context manager for progress reporting.
-    
+
     Usage:
         with ProgressReporter(total=100, desc="Encoding") as progress:
             for i in range(100):
                 do_work()
                 progress.update(i + 1)
-    
+
     Or with automatic updates:
         with ProgressReporter(total=100, desc="Encoding") as progress:
             for i in progress.iter(range(100)):
                 do_work()
     """
-    
-    def __init__(self, total: int, description: str = "Processing", 
-                 update_percent: int = 1):
+
+    def __init__(self, total: int, description: str = "Processing",
+                 update_percent: int = 1, silent: bool = False):
         """
         Args:
             total: Total number of items
             description: Description for progress bar
             update_percent: Only send update every N percent (reduces output)
+            silent: If True, suppress all progress output
         """
         self.total = total
         self.description = description
         self.update_percent = update_percent
+        self.silent = silent
         self.current = 0
         self._last_reported_pct = -1
-    
+
     def __enter__(self):
-        progress_start(self.total, self.description)
+        if not self.silent:
+            progress_start(self.total, self.description)
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        progress_end()
+        if not self.silent:
+            progress_end()
         return False
-    
+
     def update(self, current: int) -> None:
         """Update progress to current value."""
+        if self.silent:
+            return
         self.current = current
         # Only report if percentage changed enough
         if self.total > 0:

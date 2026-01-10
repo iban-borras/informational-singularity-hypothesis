@@ -48,5 +48,5 @@ psutil>=5.9.0
 # Progress bars
 tqdm>=4.65.0
 
-# Optional: GPU acceleration (NVIDIA CUDA)
-# cupy-cuda11x>=9.0.0  # For NVIDIA CUDA 11.x
+# Note: GPU acceleration was evaluated for Rule 30 but is not efficient
+# due to its sequential time dependency. Numba JIT provides the best performance.

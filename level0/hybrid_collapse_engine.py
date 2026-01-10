@@ -7,6 +7,8 @@ This module implements an efficient hybrid approach:
 3. Handle block boundaries safely (cut at parenthesis depth 0)
 4. Fallback to streaming for edge cases
 
+Supports optional gzip compression for space-constrained environments.
+
 This is MUCH faster than char-by-char streaming while still handling
 files larger than available RAM.
 
@@ -15,8 +17,9 @@ Date: November 2025
 """
 
 import re
+import gzip
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, IO
 
 
 def _simplify_and(seq: str) -> str:
@@ -43,19 +46,36 @@ class HybridCollapseEngine:
     def __init__(
         self,
         max_ram_bytes: int = 30_000_000_000,  # 30 GB default
-        simplify_fn: Optional[Callable[[str], str]] = None
+        simplify_fn: Optional[Callable[[str], str]] = None,
+        compress: bool = False,
+        compress_level: int = 1
     ):
         """
         Initialize hybrid collapse engine.
-        
+
         Args:
             max_ram_bytes: Maximum RAM to use per block
             simplify_fn: Collapse function (default: AND)
+            compress: Whether to use gzip compression for temp files
+            compress_level: Gzip compression level (1=fast, 9=max)
         """
         self.max_ram_bytes = max_ram_bytes
         self.simplify_fn = simplify_fn or _simplify_and
+        self.compress = compress
+        self.compress_level = compress_level
         # Compile regex once for performance
         self._pattern = re.compile(r'\(([01]+)\)')
+
+    def _open_file(self, path: Path, mode: str) -> IO:
+        """Open file with appropriate method based on compression setting."""
+        is_compressed = str(path).endswith('.gz')
+        if is_compressed:
+            if 'r' in mode:
+                return gzip.open(path, 'rt', encoding='utf-8')
+            else:
+                return gzip.open(path, 'wt', encoding='utf-8', compresslevel=self.compress_level)
+        else:
+            return open(path, mode, encoding='utf-8')
     
     def _find_safe_cut_point(self, data: str, max_pos: int) -> int:
         """
@@ -164,40 +184,42 @@ class HybridCollapseEngine:
     ) -> Tuple[int, bool]:
         """
         Collapse innermost parentheses in one pass, processing in RAM blocks.
-        
+
+        Automatically handles compressed (.gz) files based on extension.
+
         Args:
             input_path: Input file path
             output_path: Output file path
             log_progress: Whether to show progress
-            
+
         Returns:
             Tuple (output_size, had_changes)
         """
         input_path = Path(input_path)
         output_path = Path(output_path)
-        
+
         file_size = input_path.stat().st_size
         total_had_changes = False
         bytes_processed = 0
-        
-        with open(output_path, 'w', encoding='utf-8') as out_f:
-            with open(input_path, 'r', encoding='utf-8') as in_f:
+
+        with self._open_file(output_path, 'w') as out_f:
+            with self._open_file(input_path, 'r') as in_f:
                 carry_over = ""  # Content carried from previous block
                 block_num = 0
-                
+
                 while True:
                     block_num += 1
                     # Read block (minus carry_over size to stay within RAM limit)
                     read_size = self.max_ram_bytes - len(carry_over)
                     chunk = in_f.read(read_size)
-                    
+
                     if not chunk and not carry_over:
                         break  # Done
-                    
+
                     # Combine carry_over with new chunk
                     data = carry_over + chunk
                     bytes_processed += len(chunk)
-                    
+
                     # Check if this is the last block
                     is_last_block = len(chunk) < read_size
 
@@ -232,8 +254,9 @@ class HybridCollapseEngine:
                     if is_last_block:
                         break
 
+        compress_note = " (compressed)" if self.compress else ""
         if log_progress:
-            print(f"   [hybrid] Complete: {file_size:,} bytes in {block_num} blocks")
+            print(f"   [hybrid] Complete: {file_size:,} bytes in {block_num} blocks{compress_note}")
 
         output_size = output_path.stat().st_size
         return output_size, total_had_changes
@@ -265,9 +288,12 @@ class HybridCollapseEngine:
         current_file = input_path
         pass_num = 0
 
+        # Use compressed temp files if compression is enabled
+        ext = ".tmp.gz" if self.compress else ".tmp"
+
         while True:
             pass_num += 1
-            next_file = temp_dir / f"hybrid_pass_{pass_num}.tmp"
+            next_file = temp_dir / f"hybrid_pass_{pass_num}{ext}"
 
             output_size, had_changes = self.collapse_one_pass(
                 current_file, next_file, log_progress=log_progress
@@ -295,14 +321,30 @@ def collapse_hybrid(
     output_path: Path,
     max_ram_bytes: int = 30_000_000_000,
     simplify_fn: Optional[Callable[[str], str]] = None,
-    log_progress: bool = True
+    log_progress: bool = True,
+    compress: bool = False,
+    compress_level: int = 1
 ) -> Tuple[int, bool]:
     """
     Convenience function for one-pass hybrid collapse.
 
+    Args:
+        input_path: Input file path
+        output_path: Output file path
+        max_ram_bytes: Maximum RAM to use per block
+        simplify_fn: Collapse function (default: AND)
+        log_progress: Whether to show progress
+        compress: Whether to use gzip compression for temp files
+        compress_level: Gzip compression level (1=fast, 9=max)
+
     Returns:
         Tuple (output_size, had_changes)
     """
-    engine = HybridCollapseEngine(max_ram_bytes=max_ram_bytes, simplify_fn=simplify_fn)
+    engine = HybridCollapseEngine(
+        max_ram_bytes=max_ram_bytes,
+        simplify_fn=simplify_fn,
+        compress=compress,
+        compress_level=compress_level
+    )
     return engine.collapse_one_pass(input_path, output_path, log_progress)
 
