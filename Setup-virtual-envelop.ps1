@@ -1,6 +1,6 @@
 #
 # Setup script for HSI Agents Project environment
-# Hipòtesi de Singularitat Informacional
+# Informational Singularity Hypothesis
 #
 
 # Configure PowerShell to use UTF-8
@@ -49,7 +49,7 @@ function Write-Log {
 # Start installation
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host "  HSI Agents Project Setup " -ForegroundColor Cyan
-Write-Host "  Hipòtesi de Singularitat Informacional " -ForegroundColor Cyan
+Write-Host "  Informational Singularity Hypothesis " -ForegroundColor Cyan
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host ""
 

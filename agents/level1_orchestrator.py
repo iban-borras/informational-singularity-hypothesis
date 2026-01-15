@@ -247,8 +247,17 @@ class Level1Orchestrator:
         total_structural = meta.get('structural_len', 0)
         total_observable = meta.get('observable_len') or meta.get('phi_length', 0)
 
+        # Fallback: if metadata doesn't have lengths, use max_chars as estimate
+        if total_structural == 0:
+            total_structural = max_chars
+        if total_observable == 0:
+            total_observable = max_chars
+
         # Estimate memory needed (2 bytes per char for Python string + overhead)
-        needed_gb = (total_structural + total_observable) * 2 / (1024**3)
+        # We need to load min(max_chars, total) for each sequence
+        chars_to_load_structural = min(max_chars, total_structural) if total_structural > 0 else max_chars
+        chars_to_load_observable = min(max_chars, total_observable) if total_observable > 0 else max_chars
+        needed_gb = (chars_to_load_structural + chars_to_load_observable) * 2 / (1024**3)
 
         # Get sampling configuration
         sampling_config = self.config.get('sampling', {})
@@ -257,7 +266,12 @@ class Level1Orchestrator:
         random_seed = sampling_config.get('seed', 42)
 
         # Decide strategy: use sampling if RAM insufficient OR user explicitly requested segments
-        use_sampling = (needed_gb > max_memory_for_load and max_chars >= 10_000_000_000) or sample_segments > 0
+        # Note: If the data to load exceeds available RAM, force sampling regardless of max_chars
+        use_sampling = (needed_gb > max_memory_for_load) or sample_segments > 0
+
+        if needed_gb > max_memory_for_load and not use_sampling:
+            # This should not happen now, but kept for safety
+            print(f"   ⚠️ WARNING: Need {needed_gb:.1f}GB but only {max_memory_for_load:.1f}GB available!")
 
         if use_sampling:
             print(f"   ⚠️ Sequence too large ({needed_gb:.1f}GB) for available RAM ({available_ram_gb:.1f}GB)")

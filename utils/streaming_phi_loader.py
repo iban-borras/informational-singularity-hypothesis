@@ -231,9 +231,12 @@ def load_phi_for_agents(
     if show_progress and not total_chars:
         meta = loader.metadata
         if observable_only:
-            total_chars = meta.get('observable_len') or meta.get('phi_length')
+            total_chars = (meta.get('observable_len') or
+                           meta.get('phi_length') or
+                           meta.get('sequence_length'))
         else:
-            total_chars = meta.get('structural_len')
+            total_chars = (meta.get('structural_len') or
+                           meta.get('sequence_length'))
 
         # If max_chars is set and smaller, use that as target
         if max_chars and total_chars:
@@ -245,8 +248,8 @@ def load_phi_for_agents(
         if not total_chars:
             import os
             compressed_size = os.path.getsize(struct_gz_path)
-            # Rough estimate: ~4 chars per byte compressed, ~10x compression ratio
-            total_chars = compressed_size * 40  # Very rough estimate
+            # Conservative estimate: assume high compression (100x)
+            total_chars = compressed_size * 100
 
     chars = []
     start_time = time.time()
@@ -376,17 +379,21 @@ def load_phi_sampled(
     loader = StreamingPhiLoader(struct_gz_path)
     meta = loader.metadata
 
-    # Get total size
+    # Get total size - try multiple metadata fields
     if observable_only:
-        total_chars = meta.get('observable_len') or meta.get('phi_length', 0)
+        total_chars = (meta.get('observable_len') or
+                       meta.get('phi_length') or
+                       meta.get('sequence_length', 0))
     else:
-        total_chars = meta.get('structural_len', 0)
+        total_chars = (meta.get('structural_len') or
+                       meta.get('sequence_length', 0))
 
     if not total_chars:
-        # Fallback: estimate from file size
+        # Fallback: estimate from file size (conservative: assume high compression)
         import os
         compressed_size = os.path.getsize(struct_gz_path)
-        total_chars = compressed_size * 40
+        # Use 100x ratio as conservative estimate (actual can be 400x+ for repetitive data)
+        total_chars = compressed_size * 100
 
     # Calculate how many chars we can load
     # Rough estimate: 1 char = 1 byte in Python string (actually 1-4 but 1 is safe)

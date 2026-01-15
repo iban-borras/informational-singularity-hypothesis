@@ -1627,6 +1627,9 @@ def _process_chunk(args):
     """Worker function for parallel chunk processing."""
     chunk_str, chunk_idx, n_chunks, verbose = args
 
+    # Debug flag - set to True to see step-by-step progress
+    DEBUG_CHUNK = False
+
     result = {
         'power_slope': None,
         'lz': None,
@@ -1640,22 +1643,34 @@ def _process_chunk(args):
     if chunk_len < 10000:
         return result
 
+    if DEBUG_CHUNK:
+        print(f"      [CHUNK {chunk_idx}] Starting, len={chunk_len:,}", flush=True)
+
     # 1. Power spectrum slope (fast with FFT)
     try:
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 1/6: Power spectrum...", flush=True)
         slope, _ = calculate_power_spectrum_slope(chunk_str)
         result['power_slope'] = slope
     except:
         pass
 
     # 2. LZ Complexity (Numba-accelerated)
+    # Note: LZ76 is O(n²) worst case, so we limit to 500K sample (default)
     try:
-        lz = calculate_lempel_ziv_complexity(chunk_str, max_sample=chunk_len, verbose=False)
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 2/6: LZ complexity (max 500K sample)...", flush=True)
+        lz = calculate_lempel_ziv_complexity(chunk_str, verbose=False)  # Uses default max_sample=500K
         result['lz'] = lz
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 2/6: LZ done = {lz:.4f}", flush=True)
     except:
         pass
 
     # 3. Long-range MI
     try:
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 3/6: Long-range MI...", flush=True)
         mi = calculate_long_range_mutual_info(chunk_str)
         result['mi'] = mi
     except:
@@ -1663,24 +1678,37 @@ def _process_chunk(args):
 
     # 4. DFA (Numba-accelerated)
     try:
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 4/6: DFA (Numba JIT may take time first run)...", flush=True)
         dfa_result = calculate_dfa(chunk_str)
         if not np.isnan(dfa_result['hurst_exponent']):
             result['dfa_hurst'] = dfa_result['hurst_exponent']
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 4/6: DFA done = {result['dfa_hurst']}", flush=True)
     except:
         pass
 
     # 5. Hierarchical entropy
     try:
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 5/6: HBE...", flush=True)
         hier_result = calculate_hierarchical_block_entropy(chunk_str, verbose=False)
         result['hierarchy'] = hier_result['hierarchy_score']
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 5/6: HBE done = {result['hierarchy']:.4f}", flush=True)
     except:
         pass
 
     # 6. φ-tendency partial data
     try:
+        if DEBUG_CHUNK:
+            print(f"      [CHUNK {chunk_idx}] Step 6/6: φ-tendency...", flush=True)
         result['phi_data'] = _calculate_phi_ratios_chunk(chunk_str)
     except:
         pass
+
+    if DEBUG_CHUNK:
+        print(f"      [CHUNK {chunk_idx}] Complete!", flush=True)
 
     return result
 
@@ -1855,16 +1883,16 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
             completed = start_chunk
             base_workers = n_workers  # Store original worker count for adaptive scaling
 
-            # Single unified progress bar for all chunks
-            n_batches = max(1, (n_chunks - start_chunk + batch_size - 1) // batch_size)
-            pbar_main = tqdm(total=n_chunks, initial=start_chunk,
-                            desc=f"      Chunks (batch 1/{n_batches})", unit="chunk",
-                            disable=not verbose, leave=True)
-
             # Determine processing mode: serial for small batches (avoids Numba JIT overhead per worker)
             use_serial = n_chunks <= 4
             if use_serial:
                 log(f"   Using SERIAL mode for {n_chunks} chunks (avoids Numba JIT overhead)")
+
+            # Single unified progress bar for all chunks (after serial mode message)
+            n_batches = max(1, (n_chunks - start_chunk + batch_size - 1) // batch_size)
+            pbar_main = tqdm(total=n_chunks, initial=start_chunk,
+                            desc=f"      Chunks (batch 1/{n_batches})", unit="chunk",
+                            disable=not verbose, leave=True)
 
             for batch_idx, batch_start in enumerate(range(start_chunk, n_chunks, batch_size), 1):
                 # Update description to show current batch
