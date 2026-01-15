@@ -280,7 +280,8 @@ def load_from_trend_analysis(variants: List[str], iterations: List[int]) -> Opti
     """
     Try to load pre-computed data from trend_analysis.json.
 
-    Returns dict with data for requested variants/iterations, or None if not available.
+    Returns dict with data for available variants/iterations, or None if file doesn't exist.
+    Tolerant: skips missing variants/iterations instead of failing.
     """
     trend_path = Path(__file__).parent / "results" / "level1" / "trends" / "trend_analysis.json"
 
@@ -291,19 +292,23 @@ def load_from_trend_analysis(variants: List[str], iterations: List[int]) -> Opti
         with open(trend_path) as f:
             trend_data = json.load(f)
 
-        # Check if we have data for all requested variants/iterations
         available = trend_data.get('variants', {})
-        results = {'variants': {}, 'source': 'trend_analysis.json'}
+        results = {'variants': {}, 'source': 'trend_analysis.json', 'missing': []}
 
         for variant in variants:
             if variant not in available:
-                return None  # Missing variant
+                # Skip missing variant but continue
+                for iteration in iterations:
+                    results['missing'].append(f"{variant}@{iteration}")
+                continue
 
             var_data = available[variant]
             for iteration in iterations:
                 iter_key = str(iteration)
                 if iter_key not in var_data:
-                    return None  # Missing iteration
+                    # Skip missing iteration but continue
+                    results['missing'].append(f"{variant}@{iteration}")
+                    continue
 
                 # Extract SCI/ICC data (already computed with streaming!)
                 iter_data = var_data[iter_key]
@@ -318,7 +323,10 @@ def load_from_trend_analysis(variants: List[str], iterations: List[int]) -> Opti
                     'total_bits': iter_data.get('total_bits')
                 }
 
-        return results
+        # Return results if we found at least some data
+        if results['variants']:
+            return results
+        return None
 
     except (json.JSONDecodeError, KeyError):
         return None
@@ -447,6 +455,11 @@ Examples:
         else:
             print("❌ Trend analysis failed")
             return
+
+    # Report missing iterations if any
+    missing = results.get('missing', [])
+    if missing:
+        print(f"\n⚠️  Skipped {len(missing)} missing iteration(s): {', '.join(missing)}")
 
     # Print summary - use appropriate function based on data source
     if results.get('source') == 'trend_analysis.json':
