@@ -708,10 +708,10 @@ class PatternDetector:
 
             # Adaptive worker count based on RAM
             n_workers = _get_adaptive_workers(base_workers, ram_threshold=75.0,
-                                               min_workers=2, verbose=False)  # Suppress for cleaner output
+                                               min_workers=4, verbose=False)  # Suppress for cleaner output
 
-            # Wait for RAM if needed before starting batch
-            _wait_for_ram(target_percent=70.0, max_wait=60, verbose=False)
+            # Wait for RAM if needed before starting batch (reduced wait for speed)
+            _wait_for_ram(target_percent=80.0, max_wait=10, verbose=False)
 
             batch_failed = []
 
@@ -764,7 +764,7 @@ class PatternDetector:
                     pbar.set_description("   [sliding] Retrying")
                 else:
                     print(f"   [sliding] Retrying {len(batch_failed)} failed chunks...", flush=True)
-                _wait_for_ram(target_percent=70.0, max_wait=120, verbose=False)
+                _wait_for_ram(target_percent=80.0, max_wait=30, verbose=False)
 
                 for args in batch_failed:
                     for retry in range(MAX_RETRIES):
@@ -1013,8 +1013,8 @@ class PatternDetector:
             batch_args = chunk_args[batch_start:batch_end]
 
             # Adaptive workers based on RAM
-            n_workers = _get_adaptive_workers(n_workers, ram_threshold=75.0, min_workers=2)
-            _wait_for_ram(target_percent=70.0, max_wait=60, verbose=False)
+            n_workers = _get_adaptive_workers(n_workers, ram_threshold=75.0, min_workers=4)
+            _wait_for_ram(target_percent=80.0, max_wait=10, verbose=False)
 
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 futures = {executor.submit(_process_block_chunk, args): args[1]
@@ -1143,20 +1143,28 @@ class PatternDetector:
         total_cores = os.cpu_count() or 4
         n_workers = max(1, int(total_cores * max_cpu_percent / 100))
 
-        print(f"      [spectral_stft] Processing {len(window_args)} windows with {n_workers} workers...",
-              flush=True)
-
         all_patterns = {}
         period_votes = {}
         completed = 0
         BATCH_SIZE = 200  # Larger batches to reduce pool creation overhead
+        total_windows = len(window_args)
 
-        for batch_start in range(0, len(window_args), BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, len(window_args))
+        # Create progress bar if tqdm available
+        pbar = None
+        if TQDM_AVAILABLE:
+            pbar = tqdm(total=total_windows, desc="      [spectral_stft]",
+                       unit="window", leave=True, ncols=100,
+                       bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+        else:
+            print(f"      [spectral_stft] Processing {total_windows} windows with {n_workers} workers...",
+                  flush=True)
+
+        for batch_start in range(0, total_windows, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_windows)
             batch_args = window_args[batch_start:batch_end]
 
-            n_workers = _get_adaptive_workers(n_workers, ram_threshold=75.0, min_workers=2)
-            _wait_for_ram(target_percent=70.0, max_wait=60, verbose=False)
+            n_workers = _get_adaptive_workers(n_workers, ram_threshold=75.0, min_workers=4)
+            _wait_for_ram(target_percent=80.0, max_wait=10, verbose=False)
 
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 futures = {executor.submit(_process_spectral_window, args): args[1]
@@ -1183,10 +1191,22 @@ class PatternDetector:
                                     'start_offset': p['start_offset']
                                 }
                     except Exception as e:
-                        print(f"      [spectral_stft] Window error: {str(e)[:60]}", flush=True)
+                        if pbar:
+                            pbar.write(f"      [spectral_stft] Window error: {str(e)[:60]}")
+                        else:
+                            print(f"      [spectral_stft] Window error: {str(e)[:60]}", flush=True)
 
-            print(f"      [spectral_stft] {completed}/{len(window_args)} windows, "
-                  f"{len(all_patterns):,} patterns", flush=True)
+                    if pbar:
+                        pbar.update(1)
+                        pbar.set_postfix({'patterns': len(all_patterns)})
+
+            # Fallback progress for non-tqdm
+            if not pbar:
+                print(f"      [spectral_stft] {completed}/{total_windows} windows, "
+                      f"{len(all_patterns):,} patterns", flush=True)
+
+        if pbar:
+            pbar.close()
 
         # Convert to final pattern format
         patterns = []

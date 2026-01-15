@@ -344,6 +344,153 @@ def iter_phi_from_variant(
     return StreamingPhiLoader(str(struct_path))
 
 
+def load_phi_sampled(
+    struct_gz_path: str,
+    max_memory_gb: float = 8.0,
+    segment_size: int = 10_000_000,
+    observable_only: bool = False,
+    show_progress: bool = True,
+    random_seed: int = 42
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Load Φ with random sampling for very large sequences.
+
+    Samples random segments distributed across the full sequence to maintain
+    statistical representativity while fitting in available RAM.
+
+    Args:
+        struct_gz_path: Path to .struct.gz file
+        max_memory_gb: Maximum memory to use in GB (default: 8GB)
+        segment_size: Size of each sampled segment (default: 10M chars)
+        observable_only: If True, return only 0/1 bits
+        show_progress: Show progress bar
+        random_seed: Seed for reproducible sampling
+
+    Returns:
+        Tuple of (sampled_phi_string, metadata_with_sampling_info)
+    """
+    import time
+    import random
+    import psutil
+
+    loader = StreamingPhiLoader(struct_gz_path)
+    meta = loader.metadata
+
+    # Get total size
+    if observable_only:
+        total_chars = meta.get('observable_len') or meta.get('phi_length', 0)
+    else:
+        total_chars = meta.get('structural_len', 0)
+
+    if not total_chars:
+        # Fallback: estimate from file size
+        import os
+        compressed_size = os.path.getsize(struct_gz_path)
+        total_chars = compressed_size * 40
+
+    # Calculate how many chars we can load
+    # Rough estimate: 1 char = 1 byte in Python string (actually 1-4 but 1 is safe)
+    max_chars = int(max_memory_gb * 1e9)
+
+    # Check if we need sampling
+    if total_chars <= max_chars:
+        # No sampling needed - load normally
+        if show_progress:
+            print(f"   📊 Sequence fits in memory ({total_chars/1e9:.2f}G), loading fully...", flush=True)
+        return load_phi_for_agents(struct_gz_path, observable_only=observable_only,
+                                   show_progress=show_progress, total_chars_hint=total_chars)
+
+    # Calculate sampling parameters
+    n_segments = max(1, max_chars // segment_size)
+    total_sampled = n_segments * segment_size
+    sampling_rate = total_sampled / total_chars
+
+    if show_progress:
+        print(f"   📊 Sequence too large for memory ({total_chars/1e9:.2f}G > {max_memory_gb}G)", flush=True)
+        print(f"   🎲 Random sampling: {n_segments} segments × {segment_size/1e6:.0f}M chars", flush=True)
+        print(f"   📈 Sampling rate: {sampling_rate*100:.2f}% (seed={random_seed})", flush=True)
+
+    # Generate random segment start positions
+    random.seed(random_seed)
+    max_start = total_chars - segment_size
+    if max_start <= 0:
+        segment_starts = [0]
+    else:
+        # Distribute segments evenly with some randomness within each region
+        region_size = max_start // n_segments
+        segment_starts = []
+        for i in range(n_segments):
+            region_start = i * region_size
+            region_end = min(region_start + region_size, max_start)
+            start = random.randint(region_start, region_end)
+            segment_starts.append(start)
+        segment_starts.sort()
+
+    # Load sampled segments
+    start_time = time.time()
+    sampled_chars = []
+    segment_info = []
+
+    pbar = None
+    if show_progress and TQDM_AVAILABLE:
+        pbar = tqdm(total=n_segments, desc="   Sampling Φ",
+                   unit="seg", leave=True, ncols=100)
+
+    for seg_idx, seg_start in enumerate(segment_starts):
+        seg_end = seg_start + segment_size
+        segment_chars = []
+
+        # Stream through file to reach segment
+        char_idx = 0
+        for char in loader.iter_chars():
+            if observable_only and char not in '01':
+                continue
+
+            if char_idx >= seg_start:
+                segment_chars.append(char)
+                if len(segment_chars) >= segment_size:
+                    break
+            char_idx += 1
+
+        sampled_chars.extend(segment_chars)
+        segment_info.append({
+            'start': seg_start,
+            'end': seg_start + len(segment_chars),
+            'length': len(segment_chars)
+        })
+
+        if pbar:
+            pbar.update(1)
+            pbar.set_postfix({'chars': f'{len(sampled_chars)/1e6:.0f}M'})
+
+        # Reset loader for next segment
+        loader = StreamingPhiLoader(struct_gz_path)
+
+    if pbar:
+        pbar.close()
+
+    elapsed = time.time() - start_time
+    if show_progress:
+        print(f"   ✓ Sampled {len(sampled_chars):,} chars from {n_segments} segments in {elapsed:.1f}s", flush=True)
+
+    # Add sampling info to metadata
+    sampling_metadata = {
+        **meta,
+        'sampling': {
+            'method': 'random_segments',
+            'seed': random_seed,
+            'n_segments': n_segments,
+            'segment_size': segment_size,
+            'total_sampled': len(sampled_chars),
+            'total_original': total_chars,
+            'sampling_rate': sampling_rate,
+            'segments': segment_info
+        }
+    }
+
+    return ''.join(sampled_chars), sampling_metadata
+
+
 if __name__ == "__main__":
     import sys
 

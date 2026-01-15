@@ -724,7 +724,7 @@ def generate_logistic_map_bits_streaming(num_bits: int, output_path: str, r: flo
     """
     Generate bits using the Logistic Map (deterministic chaos) - STREAMING VERSION.
 
-    Writes directly to gzip file without holding full sequence in memory.
+    Writes directly to gzip file in v33 binary 2-bit format.
 
     x_{n+1} = r * x_n * (1 - x_n)
 
@@ -743,6 +743,7 @@ def generate_logistic_map_bits_streaming(num_bits: int, output_path: str, r: flo
     """
     import gzip
     import numpy as np
+    from bitarray import bitarray
     from hsi_agents_project.utils.progress_protocol import ProgressReporter
 
     # Process in chunks for memory efficiency and progress
@@ -753,27 +754,29 @@ def generate_logistic_map_bits_streaming(num_bits: int, output_path: str, r: flo
     zeros_count = 0
     x = x0
 
-    with gzip.open(output_path, 'wt', encoding='utf-8', compresslevel=6) as f:
+    # v33 binary format: '0'->00, '1'->01, '('->10, ')'->11
+    # For flat sequences (no parens), only 00 and 01 are used
+    with gzip.open(output_path, 'wb', compresslevel=6) as f:
         with ProgressReporter(num_chunks, "[variant_L] Logistic map", update_percent=2, silent=silent) as progress:
             for chunk_idx in range(num_chunks):
                 start = chunk_idx * chunk_size
                 end = min(start + chunk_size, num_bits)
                 n = end - start
 
-                # Generate chunk
-                chunk_bits = np.empty(n, dtype=np.uint8)
+                # Generate chunk and encode to 2-bit format
+                bits = bitarray()
                 for i in range(n):
                     x = r * x * (1 - x)
-                    chunk_bits[i] = 1 if x >= 0.5 else 0
+                    if x >= 0.5:
+                        bits.extend('01')  # '1' in v33 format
+                        ones_count += 1
+                    else:
+                        bits.extend('00')  # '0' in v33 format
+                        zeros_count += 1
 
-                # Count ones/zeros
-                chunk_ones = int(np.sum(chunk_bits))
-                ones_count += chunk_ones
-                zeros_count += (n - chunk_ones)
-
-                # Write to file and discard
-                f.write(''.join(str(b) for b in chunk_bits))
-                del chunk_bits
+                # Write to file
+                bits.tofile(f)
+                del bits
 
                 progress.update(chunk_idx + 1)
 
@@ -1018,9 +1021,12 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
     return meta
 
 
-def generate_fibonacci_word(num_bits: int) -> str:
+def generate_fibonacci_word_streaming(num_bits: int, output_path: str, silent: bool = False) -> tuple:
     """
-    Generate the Fibonacci word (binary sequence with φ structure).
+    Generate the Fibonacci word (binary sequence with φ structure) - STREAMING VERSION.
+
+    Writes directly to gzip file in v33 binary 2-bit format.
+    Uses an optimized algorithm that generates the Fibonacci word in chunks.
 
     The Fibonacci word is constructed recursively:
       S_0 = "0"
@@ -1030,123 +1036,215 @@ def generate_fibonacci_word(num_bits: int) -> str:
     This produces: 0, 01, 010, 01001, 01001010, 0100101001001, ...
 
     The ratio of 0s to 1s tends to φ (golden ratio).
-    The sequence is inherently self-similar with φ proportions.
-
     Expected LZ ratio: ≈ 0.62 (1/φ) — POSITIVE CONTROL for φ detection.
+
+    Args:
+        num_bits: Number of bits to generate
+        output_path: Path to write .struct.gz file
+        silent: Suppress progress output
+
+    Returns:
+        Tuple of (ones_count, zeros_count, compressed_size)
     """
+    import gzip
+    from bitarray import bitarray
+    from hsi_agents_project.utils.progress_protocol import ProgressReporter
+
     if num_bits <= 0:
-        return ""
+        # Create empty file in binary format
+        with gzip.open(output_path, 'wb', compresslevel=6) as f:
+            pass
+        return 0, 0, Path(output_path).stat().st_size
 
-    # Build Fibonacci words until we have enough bits
-    s_prev2 = "0"   # S_0
-    s_prev1 = "01"  # S_1
+    # Generate using position-based formula (Beatty sequence)
+    # Bit at position n is: floor((n+2)/φ) - floor((n+1)/φ)
+    phi = (1 + 5**0.5) / 2
 
-    while len(s_prev1) < num_bits:
-        s_new = s_prev1 + s_prev2
-        s_prev2 = s_prev1
-        s_prev1 = s_new
+    ones_count = 0
+    zeros_count = 0
+    chunk_size = 10_000_000  # 10M per chunk
+    num_chunks = (num_bits + chunk_size - 1) // chunk_size
 
-    return s_prev1[:num_bits]
+    # v33 binary format: '0'->00, '1'->01, '('->10, ')'->11
+    # For flat sequences (no parens), only 00 and 01 are used
+    with gzip.open(output_path, 'wb', compresslevel=6) as f:
+        with ProgressReporter(num_chunks, "[variant_M] Fibonacci word", update_percent=2, silent=silent) as progress:
+            for chunk_idx in range(num_chunks):
+                start = chunk_idx * chunk_size
+                end = min(start + chunk_size, num_bits)
+
+                # Generate chunk using Beatty sequence property and encode to 2-bit format
+                bits = bitarray()
+                for n in range(start, end):
+                    # Fibonacci word bit at position n
+                    bit = int((n + 2) / phi) - int((n + 1) / phi)
+                    if bit == 1:
+                        bits.extend('01')  # '1' in v33 format
+                        ones_count += 1
+                    else:
+                        bits.extend('00')  # '0' in v33 format
+                        zeros_count += 1
+
+                # Write to file
+                bits.tofile(f)
+                del bits
+                progress.update(chunk_idx + 1)
+
+    compressed_size = Path(output_path).stat().st_size
+    return ones_count, zeros_count, compressed_size
 
 
 def generate_fibonacci_variant(num_bits: int, iterations: int) -> dict:
     """
     Generate Fibonacci word control data in v33-compatible format.
 
+    Generates ALL iterations from 1 to `iterations` (like variant K).
+
     Variant M serves as POSITIVE CONTROL for φ detection:
     - Fibonacci word has φ encoded in its structure
     - Expected LZ ratio ≈ 0.62 (1/φ) — same as HSI variants
     - If algorithm detects φ here, it validates the detection in B
 
+    Uses streaming generation to avoid memory issues with large sequences.
+
     Args:
-        num_bits: Number of binary bits to generate
-        iterations: Iteration number (for filename compatibility)
+        num_bits: Number of binary bits for the final iteration
+        iterations: Maximum iteration number (will generate 1..iterations)
 
     Returns:
-        Metadata dict with file info
+        Metadata dictionary for the last iteration
     """
-    from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
-
     results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_M"
     results_dir.mkdir(parents=True, exist_ok=True)
-
-    t0 = time.perf_counter()
-    print(f"[variant_M] 🌻 Generating {num_bits:,} Fibonacci word bits...", flush=True)
-
-    bits = generate_fibonacci_word(num_bits)
-
-    gen_time = time.perf_counter() - t0
-    print(f"[variant_M] ✅ Generated {len(bits):,} bits in {gen_time:.2f}s", flush=True)
-
-    # Statistics
-    ones = bits.count('1')
-    zeros = len(bits) - ones
-    ratio_01 = zeros / ones if ones > 0 else float('inf')
-    print(f"[variant_M] 0s: {zeros:,}, 1s: {ones:,}, ratio 0/1: {ratio_01:.6f} (φ≈1.618)", flush=True)
-
-    # Save using v33 bitarray encoder (same as other variants)
-    struct_path = results_dir / f"phi_iter{iterations}.struct.gz"
-    print(f"[variant_M] 💾 Saving to {struct_path.name}...", flush=True)
-
-    t1 = time.perf_counter()
-    compressed_size = save_phi_structural_gz(bits, str(struct_path), silent=True)
-    save_time = time.perf_counter() - t1
-
-    elapsed = time.perf_counter() - t0
-    format_info = get_format_info(bits)
-
-    meta = {
-        "iteration": iterations,
-        "sequence_length": len(bits),
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "format": "v33_structural",
-        "variant": "M",
-        "variant_description": "Fibonacci Word - Positive Control (φ-structured)",
-        "source": "Fibonacci word S_n = S_{n-1} + S_{n-2}",
-        "expected_lz_ratio": "≈0.62 (1/φ)",
-        "purpose": "Validate that algorithm detects φ where it exists",
-        "ones_count": ones,
-        "zeros_count": zeros,
-        "ones_ratio": ones / len(bits) if bits else 0.0,
-        "zeros_to_ones_ratio": ratio_01,
-        "phi_reference": 1.6180339887,
-        "compressed_size_bytes": compressed_size,
-        "format_info": format_info,
-        "generation_time_seconds": gen_time
-    }
-
-    meta_path = results_dir / f"phi_iter{iterations}.json"
-    with open(meta_path, 'w') as f:
-        json.dump(meta, f, indent=2)
-
-    # Report file
     report_dir = ROOT / "results" / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
+
+    t0_total = time.perf_counter()
+
+    # Use num_bits as the size for the FINAL iteration
+    # Scale earlier iterations proportionally using estimate_iteration_size ratios
+    base_estimate = estimate_iteration_size(iterations)
+    scale_factor = num_bits / base_estimate if base_estimate > 0 else 1.0
+
+    print(f"[variant_M] 🌻 Generating iterations 1..{iterations} (final: {num_bits:,} bits)", flush=True)
+
+    per_iteration_data = []
+    phi_lengths = []
+    snapshots = []
+    last_meta = None
+
+    for iter_num in range(1, iterations + 1):
+        t0 = time.perf_counter()
+
+        # Calculate size for this iteration proportionally
+        if iter_num == iterations:
+            iter_bits = num_bits  # Final iteration uses exact size
+        else:
+            iter_bits = int(estimate_iteration_size(iter_num) * scale_factor)
+            iter_bits = min(iter_bits, num_bits)  # Cap at available bits
+
+        # Generate using streaming to avoid memory issues
+        struct_path = results_dir / f"phi_iter{iter_num}.struct.gz"
+        ones_count, zeros_count, compressed_size = generate_fibonacci_word_streaming(
+            iter_bits, str(struct_path), silent=True
+        )
+
+        gen_time = time.perf_counter() - t0
+        ones_ratio = ones_count / iter_bits if iter_bits > 0 else 0.0
+        ratio_01 = zeros_count / ones_count if ones_count > 0 else float('inf')
+
+        # Metadata per iteration
+        meta = {
+            "iteration": iter_num,
+            "sequence_length": iter_bits,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "format": "v33_structural",
+            "encoding": "2bit",
+            "compressed": True,
+            "compression_level": 6,
+            "data_directory": str(results_dir),
+            "compressed_size_bytes": compressed_size,
+            "compression_ratio": compressed_size / iter_bits if iter_bits > 0 else 0.0,
+            "variant": "M",
+            "variant_description": "Fibonacci Word - Positive Control (φ-structured)",
+            "source": "Fibonacci word via Beatty sequence",
+            "expected_lz_ratio": "≈0.62 (1/φ)",
+            "purpose": "Validate that algorithm detects φ where it exists",
+            "ones_count": ones_count,
+            "zeros_count": zeros_count,
+            "ones_ratio": ones_ratio,
+            "zeros_to_ones_ratio": ratio_01,
+            "phi_reference": 1.6180339887,
+            "generation_time_seconds": gen_time
+        }
+
+        meta_path = results_dir / f"phi_iter{iter_num}.json"
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f, indent=2)
+
+        per_iteration_data.append({
+            "iteration": iter_num,
+            "phi_length": iter_bits,
+            "time_sec": gen_time
+        })
+        phi_lengths.append(iter_bits)
+        snapshots.append(str(struct_path))
+        last_meta = meta
+
+        # Progress report
+        size_mb = iter_bits / 8 / 1024 / 1024
+        print(f"[variant_M] ✅ iter {iter_num:2d}: {iter_bits:>12,} bits ({size_mb:>7.2f} MB) "
+              f"in {gen_time:.2f}s → {struct_path.name}", flush=True)
+
+    total_time = time.perf_counter() - t0_total
+
+    # Final report
+    report_name = f"variant_M_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report = {
         "variant": "M",
         "variant_description": "Fibonacci Word - Positive Control (φ-structured)",
         "iterations": iterations,
-        "phi_length": len(bits),
-        "total_bits": len(bits),
-        "execution_time": elapsed,
-        "ones_ratio": meta['ones_ratio'],
-        "zeros_to_ones_ratio": ratio_01,
-        "expected_lz_ratio": "≈0.62 (1/φ)"
+        "phi_length": phi_lengths[-1],
+        "total_bits": phi_lengths[-1],
+        "format": "v33_structural",
+        "timestamp": datetime.now().isoformat(),
+        "execution_time": total_time,
+        "per_iteration": per_iteration_data,
+        "phi_lengths_per_iteration": phi_lengths,
+        "generator_type": "Fibonacci word via Beatty sequence",
+        "ones_ratio": last_meta['ones_ratio'] if last_meta else 0.0,
+        "zeros_to_ones_ratio": last_meta['zeros_to_ones_ratio'] if last_meta else 0.0,
+        "expected_lz_ratio": "≈0.62 (1/φ)",
+        "purpose": "POSITIVE CONTROL for φ detection"
     }
-    report_path = report_dir / f"variant_M_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    report_path = report_dir / report_name
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
 
-    # phi_metadata for pipeline compatibility
-    phi_meta = {"variant": "M", "max_iterations": iterations, "final_length": len(bits)}
-    with open(report_dir / "phi_metadata_M.json", 'w') as f:
-        json.dump(phi_meta, f, indent=2)
+    # phi_metadata_M.json for analysis pipeline compatibility
+    phi_metadata = {
+        "variant": "M",
+        "max_iterations": iterations,
+        "iterations_completed": iterations,
+        "final_length": phi_lengths[-1],
+        "use_compression": True,
+        "compression_activated": True,
+        "basal_pure": False,
+        "snapshots_saved": snapshots,
+        "phi_lengths_per_iteration": phi_lengths,
+        "total_time_seconds": total_time
+    }
+    phi_meta_path = report_dir / "phi_metadata_M.json"
+    with open(phi_meta_path, 'w') as f:
+        json.dump(phi_metadata, f, indent=2)
 
-    print(f"[variant_M] ✅ Saved: {struct_path.name}", flush=True)
-    print(f"[variant_M] ✅ Metadata: {meta_path.name}", flush=True)
-    print(f"[variant_M] ✅ Report: {report_path.name}", flush=True)
-    print(f"[variant_M] Stats: {ones:,} ones ({meta['ones_ratio']:.4f}), ratio 0/1 = {ratio_01:.6f}", flush=True)
-    return meta
+    print(f"\n[variant_M] 🎉 All {iterations} iterations completed in {total_time:.1f}s")
+    print(f"[variant_M] ✅ Report: {report_path.name}")
+    print(f"[variant_M] ✅ phi_metadata: {phi_meta_path.name}")
+    if last_meta:
+        print(f"[variant_M] Stats: ratio 0/1 = {last_meta['zeros_to_ones_ratio']:.6f} (φ≈1.618)")
+
+    return last_meta
 
 
 def main():

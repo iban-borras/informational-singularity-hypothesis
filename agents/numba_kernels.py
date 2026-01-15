@@ -403,6 +403,67 @@ def _analyze_nesting_numba(seq: np.ndarray) -> Tuple[np.int64, np.int64, np.ndar
 
 
 @njit(cache=True)
+def _analyze_nesting_numba_chunk(seq: np.ndarray,
+                                  initial_depth: np.int64,
+                                  initial_prev_depth: np.int64,
+                                  initial_total_parens: np.int64,
+                                  depth_dist: np.ndarray,
+                                  transitions: np.ndarray) -> Tuple[np.int64, np.int64, np.int64, np.int64]:
+    """
+    Numba-optimized nesting analysis for a CHUNK of data.
+
+    This version takes mutable arrays (depth_dist, transitions) and updates them in-place.
+    State (depth, prev_depth, total_parens) is passed in and returned for chaining chunks.
+
+    Args:
+        seq: Chunk of sequence bytes
+        initial_depth: Current nesting depth from previous chunk
+        initial_prev_depth: Previous depth for transition tracking
+        initial_total_parens: Total parentheses count so far
+        depth_dist: Array to update with depth distribution (modified in-place)
+        transitions: Array to update with transitions (modified in-place)
+
+    Returns:
+        max_depth: Maximum depth seen in this chunk
+        final_depth: Depth at end of chunk (for next chunk)
+        final_prev_depth: Prev depth at end of chunk
+        final_total_parens: Total parens including this chunk
+    """
+    n = len(seq)
+    MAX_DEPTH = 256
+
+    depth = initial_depth
+    max_depth = initial_depth
+    prev_depth = initial_prev_depth
+    total_parens = initial_total_parens
+
+    for i in range(n):
+        char = seq[i]
+
+        if char == CHAR_OPEN:
+            depth += 1
+            if depth > max_depth:
+                max_depth = depth
+            if depth < MAX_DEPTH:
+                depth_dist[depth] += 1
+            total_parens += 1
+
+            if total_parens > 1:
+                if prev_depth < MAX_DEPTH and depth < MAX_DEPTH:
+                    transitions[prev_depth * MAX_DEPTH + depth] += 1
+            prev_depth = depth
+
+        elif char == CHAR_CLOSE:
+            total_parens += 1
+            if prev_depth < MAX_DEPTH and depth < MAX_DEPTH:
+                transitions[prev_depth * MAX_DEPTH + depth] += 1
+            prev_depth = depth
+            depth -= 1
+
+    return max_depth, depth, prev_depth, total_parens
+
+
+@njit(cache=True)
 def _analyze_containment_numba(seq: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.int64, np.float64, np.float64]:
     """
     Numba-optimized containment analysis - single pass.
@@ -558,3 +619,139 @@ def _analyze_stratified_numba(seq: np.ndarray) -> Tuple[np.ndarray, np.ndarray, 
             current_ones += 1
 
     return depth_zeros, depth_ones, depth_seq_counts
+
+
+@njit(cache=True)
+def _analyze_containment_numba_chunk(seq: np.ndarray,
+                                      stack_starts: np.ndarray,
+                                      stack_zeros: np.ndarray,
+                                      stack_ones: np.ndarray,
+                                      initial_stack_ptr: np.int64,
+                                      length_counts: np.ndarray,
+                                      entropy_stats: np.ndarray,
+                                      sum_lengths_in: np.float64,
+                                      sum_sq_lengths_in: np.float64,
+                                      num_absolutes_in: np.int64) -> Tuple[np.int64, np.int64, np.float64, np.float64]:
+    """
+    Numba-optimized containment analysis for a CHUNK.
+
+    Updates arrays in-place, returns state for next chunk.
+    """
+    n = len(seq)
+    MAX_DEPTH = 256
+    MAX_LENGTH = 10000
+
+    stack_ptr = initial_stack_ptr
+    num_absolutes = num_absolutes_in
+    sum_lengths = sum_lengths_in
+    sum_sq_lengths = sum_sq_lengths_in
+
+    # Unpack entropy stats
+    entropy_count = np.int64(entropy_stats[0])
+    entropy_mean = entropy_stats[1]
+    entropy_m2 = entropy_stats[2]
+
+    for i in range(n):
+        char = seq[i]
+
+        if char == CHAR_OPEN:
+            if stack_ptr < MAX_DEPTH:
+                stack_starts[stack_ptr] = i
+                stack_zeros[stack_ptr] = 0
+                stack_ones[stack_ptr] = 0
+                stack_ptr += 1
+
+        elif char == CHAR_CLOSE:
+            if stack_ptr > 0:
+                stack_ptr -= 1
+                zeros = stack_zeros[stack_ptr]
+                ones = stack_ones[stack_ptr]
+                content_len = zeros + ones
+
+                if content_len < MAX_LENGTH:
+                    length_counts[content_len] += 1
+
+                sum_lengths += content_len
+                sum_sq_lengths += content_len * content_len
+
+                if content_len > 0:
+                    p0 = zeros / content_len
+                    p1 = ones / content_len
+                    ent = np.float64(0.0)
+                    if p0 > 0:
+                        ent -= p0 * np.log2(p0)
+                    if p1 > 0:
+                        ent -= p1 * np.log2(p1)
+
+                    entropy_count += 1
+                    delta = ent - entropy_mean
+                    entropy_mean += delta / entropy_count
+                    delta2 = ent - entropy_mean
+                    entropy_m2 += delta * delta2
+
+                num_absolutes += 1
+
+        elif char == CHAR_ZERO:
+            for j in range(stack_ptr):
+                stack_zeros[j] += 1
+
+        elif char == CHAR_ONE:
+            for j in range(stack_ptr):
+                stack_ones[j] += 1
+
+    # Pack entropy stats back
+    entropy_stats[0] = np.float64(entropy_count)
+    entropy_stats[1] = entropy_mean
+    entropy_stats[2] = entropy_m2
+
+    return stack_ptr, num_absolutes, sum_lengths, sum_sq_lengths
+
+
+@njit(cache=True)
+def _analyze_stratified_numba_chunk(seq: np.ndarray,
+                                     initial_depth: np.int64,
+                                     initial_zeros: np.int64,
+                                     initial_ones: np.int64,
+                                     depth_zeros: np.ndarray,
+                                     depth_ones: np.ndarray,
+                                     depth_seq_counts: np.ndarray) -> Tuple[np.int64, np.int64, np.int64]:
+    """
+    Numba-optimized stratified analysis for a CHUNK.
+
+    Updates arrays in-place, returns state for next chunk.
+    """
+    n = len(seq)
+    MAX_DEPTH = 256
+
+    depth = initial_depth
+    current_zeros = initial_zeros
+    current_ones = initial_ones
+
+    for i in range(n):
+        char = seq[i]
+
+        if char == CHAR_OPEN:
+            if (current_zeros > 0 or current_ones > 0) and depth > 0 and depth < MAX_DEPTH:
+                depth_zeros[depth] += current_zeros
+                depth_ones[depth] += current_ones
+                depth_seq_counts[depth] += 1
+            current_zeros = 0
+            current_ones = 0
+            depth += 1
+
+        elif char == CHAR_CLOSE:
+            if (current_zeros > 0 or current_ones > 0) and depth > 0 and depth < MAX_DEPTH:
+                depth_zeros[depth] += current_zeros
+                depth_ones[depth] += current_ones
+                depth_seq_counts[depth] += 1
+            current_zeros = 0
+            current_ones = 0
+            depth -= 1
+
+        elif char == CHAR_ZERO:
+            current_zeros += 1
+
+        elif char == CHAR_ONE:
+            current_ones += 1
+
+    return depth, current_zeros, current_ones

@@ -996,29 +996,74 @@ def _interpret_mse(slope: float, mean_entropy: float) -> str:
 
 def calculate_hierarchical_block_entropy(sequence: str,
                                           max_block_power: int = 10,
-                                          verbose: bool = False) -> Dict[str, Any]:
+                                          verbose: bool = False,
+                                          max_total_operations: int = 2_000_000) -> Dict[str, Any]:
     """
     Calculate entropy at multiple block scales to detect hierarchical structure.
 
     For random sequences, entropy is maximum and constant across all scales.
     For structured sequences, entropy varies with scale (hierarchy signature).
 
+    The algorithm is O(n * scales) where scales = max_block_power+1 (typically 11).
+    For very large sequences, we skip the smallest block sizes (which have the most
+    iterations but contribute least unique information).
+
     Args:
         sequence: Binary string
         max_block_power: Maximum block size as power of 2 (e.g., 10 = 1024 bits)
         verbose: Print progress
+        max_total_operations: Skip small block sizes if total operations would exceed this
 
     Returns:
         Dictionary with:
         - entropies: Dict mapping block_size -> entropy value
         - hierarchy_score: Variance/Mean ratio (high = structured)
         - entropy_profile: Normalized entropy at each scale
+
+    Scientific Note on Scale Omission:
+    ----------------------------------
+    For very large sequences (n > max_total_operations), the algorithm omits the
+    smallest block scales (block_size=1, 2, 4, ...) to maintain computational
+    tractability. This is scientifically justified because:
+
+    1. HIERARCHICAL ANALYSIS FOCUS: The hierarchy_score measures how entropy VARIES
+       across scales. Small block sizes (1-8 bits) capture local bit statistics,
+       while larger scales (16-1024 bits) capture the multi-scale structure that
+       is the actual target of this analysis.
+
+    2. INFORMATION REDUNDANCY: For binary sequences, block_size=1 entropy is simply
+       H(p) where p = proportion of 1s. This single value is already captured by
+       other metrics (e.g., Shannon entropy). Larger blocks capture genuinely new
+       information about pattern structure.
+
+    3. STATISTICAL VALIDITY: All analyzed scales use 100% of their blocks (no
+       sampling). The hierarchy_score is computed over the FULL set of analyzed
+       scales, maintaining statistical rigor.
+
+    4. CONSISTENT COMPARISONS: When comparing variants at the same iteration, all
+       use identical scale ranges (same min_k), ensuring fair comparison.
+
+    Example: For n=32M bits with max_total_operations=2M:
+    - Skipped: k=0,1,2,3 (block_sizes 1,2,4,8) → would require 32M+16M+8M+4M = 60M ops
+    - Analyzed: k=4..10 (block_sizes 16,32,64,128,256,512,1024) → ~4M ops total
+    - hierarchy_score computed from 7 fully-analyzed scales
     """
     n = len(sequence)
     entropies = {}
 
-    # Calculate entropy at each scale (block sizes: 1, 2, 4, 8, ..., 2^max_block_power)
-    for k in range(0, max_block_power + 1):
+    # Calculate minimum block power to avoid excessive iterations
+    # For block_size=1, n_blocks=n. For block_size=2^k, n_blocks=n/2^k
+    # Total ops = sum(n/2^k) for k in 0..max = n * (2 - 2^(-max)) ≈ 2n
+    # To limit to max_total_operations, start at k where n/2^k < max_total_operations
+    min_k = 0
+    while (n >> min_k) > max_total_operations and min_k < max_block_power:
+        min_k += 1
+
+    if verbose and min_k > 0:
+        print(f"      Skipping block sizes 1-{2**(min_k-1)} (too many iterations for n={n:,})")
+
+    # Calculate entropy at each scale (block sizes: 2^min_k, ..., 2^max_block_power)
+    for k in range(min_k, max_block_power + 1):
         block_size = 2 ** k
 
         if block_size > n // 4:  # Need at least 4 blocks for statistics
@@ -1816,6 +1861,11 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                             desc=f"      Chunks (batch 1/{n_batches})", unit="chunk",
                             disable=not verbose, leave=True)
 
+            # Determine processing mode: serial for small batches (avoids Numba JIT overhead per worker)
+            use_serial = n_chunks <= 4
+            if use_serial:
+                log(f"   Using SERIAL mode for {n_chunks} chunks (avoids Numba JIT overhead)")
+
             for batch_idx, batch_start in enumerate(range(start_chunk, n_chunks, batch_size), 1):
                 # Update description to show current batch
                 pbar_main.set_description(f"      Chunks (batch {batch_idx}/{n_batches})")
@@ -1823,10 +1873,10 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
 
                 # Adaptive worker adjustment based on RAM usage (threshold 65% for early reaction)
                 current_workers = _get_adaptive_workers(base_workers, ram_threshold=65.0,
-                                                         min_workers=2, verbose=verbose)
+                                                         min_workers=4, verbose=verbose)
 
-                # Wait for RAM to be available before starting batch
-                _wait_for_ram(target_percent=60.0, max_wait=120, verbose=verbose)
+                # Wait for RAM to be available before starting batch (reduced wait for speed)
+                _wait_for_ram(target_percent=60.0, max_wait=10, verbose=verbose)
 
                 # Create only this batch of chunks - read from mmap (low RAM!)
                 chunk_args = []
@@ -1841,14 +1891,11 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                 MAX_RETRIES = 3  # Increased from 2
                 batch_failed = []
 
-                with ProcessPoolExecutor(max_workers=current_workers) as executor:
-                    futures = {executor.submit(_process_chunk, args): args for args in chunk_args}
-
-                    # Process futures as they complete, update main progress bar
-                    for future in as_completed(futures):
-                        chunk_info = futures[future]
+                # SERIAL MODE: Process directly without ProcessPoolExecutor (avoids Numba JIT per worker)
+                if use_serial:
+                    for args in chunk_args:
                         try:
-                            result = future.result(timeout=300)  # 5 min timeout per chunk
+                            result = _process_chunk(args)
                             if result['power_slope'] is not None:
                                 power_slopes.append(result['power_slope'])
                             if result['lz'] is not None:
@@ -1865,15 +1912,46 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                                 total_phi_close += result['phi_data'].get('phi_close_count', 0)
                                 total_runs += result['phi_data'].get('total_runs', 0)
                         except Exception as e:
-                            # Track failed chunk for retry (capture ALL errors, not just specific ones)
                             error_msg = str(e)
-                            batch_failed.append(chunk_info)
+                            batch_failed.append(args)
                             if verbose:
-                                pbar_main.write(f"      ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
+                                pbar_main.write(f"      ⚠️ Chunk {args[1]} error: {error_msg[:100]}")
 
-                        # Update main progress bar per chunk (not per batch)
                         completed += 1
                         pbar_main.update(1)
+
+                # PARALLEL MODE: Use ProcessPoolExecutor for larger batches
+                else:
+                    with ProcessPoolExecutor(max_workers=current_workers) as executor:
+                        futures = {executor.submit(_process_chunk, args): args for args in chunk_args}
+
+                        for future in as_completed(futures):
+                            chunk_info = futures[future]
+                            try:
+                                result = future.result(timeout=300)  # 5 min timeout per chunk
+                                if result['power_slope'] is not None:
+                                    power_slopes.append(result['power_slope'])
+                                if result['lz'] is not None:
+                                    lz_values.append(result['lz'])
+                                if result['mi'] is not None:
+                                    mi_values.append(result['mi'])
+                                if result['dfa_hurst'] is not None:
+                                    dfa_hursts.append(result['dfa_hurst'])
+                                if result['hierarchy'] is not None:
+                                    hierarchy_scores.append(result['hierarchy'])
+                                if result['phi_data'] is not None:
+                                    all_phi_run_ratios.extend(result['phi_data']['run_ratios'])
+                                    all_phi_density_ratios.extend(result['phi_data']['density_ratios'])
+                                    total_phi_close += result['phi_data'].get('phi_close_count', 0)
+                                    total_runs += result['phi_data'].get('total_runs', 0)
+                            except Exception as e:
+                                error_msg = str(e)
+                                batch_failed.append(chunk_info)
+                                if verbose:
+                                    pbar_main.write(f"      ⚠️ Chunk {chunk_info[1]} error: {error_msg[:100]}")
+
+                            completed += 1
+                            pbar_main.update(1)
 
                 # Retry failed chunks with resilience system
                 if batch_failed:
@@ -1883,7 +1961,7 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                         chunk_success = False
                         for retry in range(MAX_RETRIES):
                             # Wait for resources before each retry attempt (silent)
-                            _wait_for_ram(target_percent=55.0, max_wait=180, verbose=False)
+                            _wait_for_ram(target_percent=55.0, max_wait=10, verbose=False)
 
                             try:
                                 result = _process_chunk(args)
@@ -2004,6 +2082,11 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
         MAX_RETRIES = 3
         batch_failed_all = []  # Collect all failed chunks across batches
 
+        # Determine processing mode: serial for small batches (avoids Numba JIT overhead per worker)
+        use_serial = n_chunks <= 4
+        if use_serial:
+            log(f"   Using SERIAL mode for {n_chunks} chunks (avoids Numba JIT overhead)")
+
         for batch_idx, batch_start in enumerate(range(0, n_chunks, batch_size), 1):
             batch_end = min(batch_start + batch_size, n_chunks)
 
@@ -2017,26 +2100,21 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
 
             # Adaptive worker adjustment based on RAM usage (threshold 65% for early reaction)
             current_workers = _get_adaptive_workers(base_workers, ram_threshold=65.0,
-                                                     min_workers=2, verbose=verbose)
+                                                     min_workers=4, verbose=verbose)
 
-            # Wait for RAM to be available before starting batch
-            _wait_for_ram(target_percent=60.0, max_wait=120, verbose=verbose)
+            # Wait for RAM to be available before starting batch (reduced wait for speed)
+            _wait_for_ram(target_percent=60.0, max_wait=10, verbose=verbose)
 
-            with ProcessPoolExecutor(max_workers=current_workers) as executor:
-                futures = {executor.submit(_process_chunk, args): args for args in batch_args}
-
-                # Progress bar for chunks - shows batch X/Y
-                batch_desc = f"      Batch {batch_idx}/{n_batches}"
-                pbar = tqdm(as_completed(futures), total=len(futures),
-                            desc=batch_desc,
+            # SERIAL MODE: Process directly without ProcessPoolExecutor
+            if use_serial:
+                pbar = tqdm(batch_args, total=len(batch_args),
+                            desc=f"      Batch {batch_idx}/{n_batches}",
                             unit="chunk", leave=True, disable=not verbose)
 
-                for future in pbar:
+                for args in pbar:
                     completed += 1
-                    chunk_info = futures[future]
-
                     try:
-                        result = future.result(timeout=300)
+                        result = _process_chunk(args)
                         if result['power_slope'] is not None:
                             power_slopes.append(result['power_slope'])
                         if result['lz'] is not None:
@@ -2053,11 +2131,48 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                             total_phi_close += result['phi_data'].get('phi_close_count', 0)
                             total_runs += result['phi_data'].get('total_runs', 0)
                     except Exception as e:
-                        # Track ALL failed chunks for retry (not just specific errors)
-                        batch_failed_all.append(chunk_info)
+                        batch_failed_all.append(args)
                         if verbose:
-                            log(f"   ⚠️ Chunk {chunk_info[1]} error: {str(e)[:100]}")
+                            log(f"   ⚠️ Chunk {args[1]} error: {str(e)[:100]}")
                 pbar.close()
+
+            # PARALLEL MODE: Use ProcessPoolExecutor for larger batches
+            else:
+                with ProcessPoolExecutor(max_workers=current_workers) as executor:
+                    futures = {executor.submit(_process_chunk, args): args for args in batch_args}
+
+                    # Progress bar for chunks - shows batch X/Y
+                    batch_desc = f"      Batch {batch_idx}/{n_batches}"
+                    pbar = tqdm(as_completed(futures), total=len(futures),
+                                desc=batch_desc,
+                                unit="chunk", leave=True, disable=not verbose)
+
+                    for future in pbar:
+                        completed += 1
+                        chunk_info = futures[future]
+
+                        try:
+                            result = future.result(timeout=300)
+                            if result['power_slope'] is not None:
+                                power_slopes.append(result['power_slope'])
+                            if result['lz'] is not None:
+                                lz_values.append(result['lz'])
+                            if result['mi'] is not None:
+                                mi_values.append(result['mi'])
+                            if result['dfa_hurst'] is not None:
+                                dfa_hursts.append(result['dfa_hurst'])
+                            if result['hierarchy'] is not None:
+                                hierarchy_scores.append(result['hierarchy'])
+                            if result['phi_data'] is not None:
+                                all_phi_run_ratios.extend(result['phi_data']['run_ratios'])
+                                all_phi_density_ratios.extend(result['phi_data']['density_ratios'])
+                                total_phi_close += result['phi_data'].get('phi_close_count', 0)
+                                total_runs += result['phi_data'].get('total_runs', 0)
+                        except Exception as e:
+                            batch_failed_all.append(chunk_info)
+                            if verbose:
+                                log(f"   ⚠️ Chunk {chunk_info[1]} error: {str(e)[:100]}")
+                    pbar.close()
 
             # Free batch strings immediately before next batch
             del batch_args
@@ -2073,7 +2188,7 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                 for retry in range(MAX_RETRIES):
                     # Wait for resources before each retry attempt
                     log(f"      Retry {retry+1}/{MAX_RETRIES} for chunk {args[1]} (waiting for RAM <55%)...")
-                    _wait_for_ram(target_percent=55.0, max_wait=180, verbose=False)
+                    _wait_for_ram(target_percent=55.0, max_wait=10, verbose=False)
 
                     try:
                         result = _process_chunk(args)

@@ -28,7 +28,7 @@ from typing import Dict, Any, List, Optional, Tuple
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.streaming_phi_loader import StreamingPhiLoader, load_phi_for_agents
+from utils.streaming_phi_loader import StreamingPhiLoader, load_phi_for_agents, load_phi_sampled
 from agents.pattern_detector import PatternDetector
 from agents.structural_pattern_detector import StructuralPatternDetector
 from agents.rule_inferer import RuleInferer
@@ -235,15 +235,65 @@ class Level1Orchestrator:
         # Show progress for large files (>100M chars target)
         show_progress = max_chars is None or max_chars > 100_000_000
 
-        # Load structural (with parentheses) and observable (0/1 only)
-        print("   [1/2] Structural sequence...")
-        phi_structural, metadata = load_phi_for_agents(
-            struct_gz_path, max_chars=max_chars, show_progress=show_progress
-        )
-        print("   [2/2] Observable sequence...")
-        phi_observable, _ = load_phi_for_agents(
-            struct_gz_path, max_chars=max_chars, observable_only=True, show_progress=show_progress
-        )
+        # Check available RAM and sequence size to decide loading strategy
+        import psutil
+        available_ram_gb = psutil.virtual_memory().available / (1024**3)
+        # Reserve RAM for processing (use max 50% of available)
+        max_memory_for_load = available_ram_gb * 0.5
+
+        # Get sequence size from metadata
+        loader = StreamingPhiLoader(struct_gz_path)
+        meta = loader.metadata
+        total_structural = meta.get('structural_len', 0)
+        total_observable = meta.get('observable_len') or meta.get('phi_length', 0)
+
+        # Estimate memory needed (2 bytes per char for Python string + overhead)
+        needed_gb = (total_structural + total_observable) * 2 / (1024**3)
+
+        # Get sampling configuration
+        sampling_config = self.config.get('sampling', {})
+        sample_segments = sampling_config.get('sample_segments', 0)
+        segment_size = sampling_config.get('segment_size', 50_000_000)
+        random_seed = sampling_config.get('seed', 42)
+
+        # Decide strategy: use sampling if RAM insufficient OR user explicitly requested segments
+        use_sampling = (needed_gb > max_memory_for_load and max_chars >= 10_000_000_000) or sample_segments > 0
+
+        if use_sampling:
+            print(f"   ⚠️ Sequence too large ({needed_gb:.1f}GB) for available RAM ({available_ram_gb:.1f}GB)")
+            print(f"   🎲 Using random sampling strategy for scientific rigor...")
+
+            # Calculate max_memory_gb based on user segments or auto
+            if sample_segments > 0:
+                # User specified segments - calculate memory needed
+                max_memory_structural = (sample_segments * segment_size * 2) / (1024**3)
+                max_memory_observable = (sample_segments * segment_size * 2) / (1024**3)
+            else:
+                max_memory_structural = max_memory_for_load * 0.6
+                max_memory_observable = max_memory_for_load * 0.4
+
+            # Load with sampling
+            print("   [1/2] Structural sequence (sampled)...")
+            phi_structural, metadata = load_phi_sampled(
+                struct_gz_path, max_memory_gb=max_memory_structural,
+                segment_size=segment_size, show_progress=show_progress, random_seed=random_seed
+            )
+            print("   [2/2] Observable sequence (sampled)...")
+            phi_observable, _ = load_phi_sampled(
+                struct_gz_path, max_memory_gb=max_memory_observable,
+                segment_size=segment_size, observable_only=True,
+                show_progress=show_progress, random_seed=random_seed
+            )
+        else:
+            # Normal loading
+            print("   [1/2] Structural sequence...")
+            phi_structural, metadata = load_phi_for_agents(
+                struct_gz_path, max_chars=max_chars, show_progress=show_progress
+            )
+            print("   [2/2] Observable sequence...")
+            phi_observable, _ = load_phi_for_agents(
+                struct_gz_path, max_chars=max_chars, observable_only=True, show_progress=show_progress
+            )
 
         print(f"\n   Structural length: {len(phi_structural):,}")
         print(f"   Observable length: {len(phi_observable):,}")
@@ -645,6 +695,13 @@ EXAMPLES:
   python agents/level1_orchestrator.py -v B -i 17 --min-len 10 --max-len 50 --no-cache
   python agents/level1_orchestrator.py -v B -i 18 --min-len 10 --max-len 50 --no-cache
   python agents/level1_orchestrator.py -v B -i 19 --min-len 10 --max-len 50 --no-cache
+
+SAMPLING OPTIONS (for very large sequences):
+  # Auto-sampling with default seed (42):
+  python agents/level1_orchestrator.py -v M -i 21 --min-len 10 --max-len 50
+
+  # Custom sampling: 100 segments of 100M chars with specific seed:
+  python agents/level1_orchestrator.py -v M -i 21 --sample-segments 100 --segment-size 100000000 --seed 123
 """
 
     parser = argparse.ArgumentParser(
@@ -667,6 +724,14 @@ EXAMPLES:
                        help="Skip spectral (FFT) pattern analysis (faster, useful when spectral yields no patterns)")
     parser.add_argument("--report", "-r", action="store_true",
                        help="Generate Markdown analysis report after execution")
+
+    # Sampling options for large sequences
+    parser.add_argument("--sample-segments", type=int, default=0,
+                       help="Number of random segments to sample (0 = auto based on RAM)")
+    parser.add_argument("--segment-size", type=int, default=50_000_000,
+                       help="Size of each sampled segment in chars (default: 50M)")
+    parser.add_argument("--seed", type=int, default=42,
+                       help="Random seed for reproducible sampling (default: 42)")
 
     args = parser.parse_args()
 
@@ -771,6 +836,19 @@ EXAMPLES:
 
     orchestrator.config['max_chars_in_memory'] = max_chars
     orchestrator.config['user_specified_max_chars'] = user_specified_max_chars
+
+    # Add sampling configuration
+    orchestrator.config['sampling'] = {
+        'sample_segments': args.sample_segments,
+        'segment_size': args.segment_size,
+        'seed': args.seed
+    }
+    if args.sample_segments > 0 or args.seed != 42:
+        print(f"\n🎲 SAMPLING CONFIG")
+        print(f"   Segments: {args.sample_segments if args.sample_segments > 0 else 'auto'}")
+        print(f"   Segment size: {args.segment_size:,} chars")
+        print(f"   Random seed: {args.seed}")
+
     use_cache = not args.no_cache
     results = orchestrator.analyze_variant(args.variant, iteration, use_cache=use_cache)
 

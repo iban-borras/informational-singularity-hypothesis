@@ -36,8 +36,11 @@ try:
     from .numba_kernels import (
         str_to_bytes,
         _analyze_nesting_numba,
+        _analyze_nesting_numba_chunk,
         _analyze_containment_numba,
-        _analyze_stratified_numba
+        _analyze_containment_numba_chunk,
+        _analyze_stratified_numba,
+        _analyze_stratified_numba_chunk
     )
     NUMBA_STRUCTURAL_AVAILABLE = True
 except ImportError:
@@ -144,9 +147,13 @@ class StructuralPatternDetector:
     def _estimate_memory_mb(self, phi_structural: str) -> float:
         """Estimate memory usage for processing this sequence."""
         n = len(phi_structural)
-        # Rough estimate: each char uses ~50 bytes in processing
-        # (original string + depth tracking + absolutes list)
-        return n * 50 / (1024 * 1024)
+        # Realistic estimate based on actual processing:
+        # - Original string: 1 byte per char
+        # - Numba processing: converts to bytes array (1 byte per char)
+        # - Depth tracking: O(max_depth) = negligible
+        # - Result dictionaries: O(1000s of entries) = negligible
+        # Total: ~3 bytes per char (with some overhead)
+        return n * 3 / (1024 * 1024)
 
     def detect_structural_patterns(self, phi_structural: str) -> List[Dict[str, Any]]:
         """
@@ -159,13 +166,47 @@ class StructuralPatternDetector:
             List of detected structural patterns with metrics
         """
         self._start_time = time.time()
-        n = len(phi_structural)
+        original_n = len(phi_structural)
+        n = original_n
 
         self._log(f"🔍 Detecting structural patterns in Φ (length: {n:,})")
 
-        # Estimate memory
+        # Estimate memory (conservative: ~3 bytes per char)
         est_mem = self._estimate_memory_mb(phi_structural)
-        self._log(f"   📊 Estimated memory: {est_mem:.0f}MB (limit: {self.max_memory_gb*1024:.0f}MB)")
+        limit_mb = self.max_memory_gb * 1024
+        self._log(f"   📊 Estimated memory: {est_mem:.0f}MB (limit: {limit_mb:.0f}MB)")
+
+        # Check current system RAM if psutil available
+        try:
+            import psutil
+            ram = psutil.virtual_memory()
+            available_mb = ram.available / (1024 * 1024)
+            self._log(f"   📊 Available RAM: {available_mb:.0f}MB ({100-ram.percent:.1f}% free)")
+        except ImportError:
+            available_mb = None
+
+        # Only use sampling as absolute last resort (>95% of limit AND low available RAM)
+        use_sampling = False
+        if est_mem > limit_mb * 0.95:
+            if available_mb is not None and available_mb < est_mem * 1.5:
+                # Really need to sample - not enough RAM
+                sample_size = int(n * (limit_mb / est_mem) * 0.7)
+                sample_size = max(50_000_000, (sample_size // 1_000_000) * 1_000_000)
+                use_sampling = True
+                self._log(f"   ⚠️ Low available RAM! Using sampling: {sample_size:,} chars ({100*sample_size/n:.1f}%)")
+
+                # Sample from beginning, middle, and end for representativeness
+                chunk_size = sample_size // 3
+                start_chunk = phi_structural[:chunk_size]
+                mid_start = (n - chunk_size) // 2
+                mid_chunk = phi_structural[mid_start:mid_start + chunk_size]
+                end_chunk = phi_structural[-(sample_size - 2*chunk_size):]
+
+                phi_structural = start_chunk + mid_chunk + end_chunk
+                n = len(phi_structural)
+                self._log(f"   📊 Sampled sequence length: {n:,} chars")
+            else:
+                self._log(f"   ✅ Sufficient RAM available, proceeding with full analysis")
 
         # Method 1: Nesting depth patterns (O(n), fast)
         self._log(f"\n   📐 Phase 1/3: Nesting patterns...")
@@ -188,6 +229,19 @@ class StructuralPatternDetector:
         # Combine all patterns
         all_patterns = nesting_patterns + containment_patterns + stratified_patterns
 
+        # Add sampling metadata if we used sampling
+        if use_sampling:
+            sampling_meta = {
+                'type': 'sampling_metadata',
+                'original_length': original_n,
+                'sampled_length': n,
+                'sample_coverage': n / original_n,
+                'sampling_strategy': 'start+middle+end',
+                'warning': 'Results based on sampled data due to memory constraints'
+            }
+            all_patterns.insert(0, sampling_meta)
+            self._log(f"   ⚠️ Note: Results based on {100*n/original_n:.1f}% sample")
+
         total_time = time.time() - self._start_time
         self._log(f"\n   🎉 Structural analysis complete: {len(all_patterns)} patterns in {self._format_time(total_time)}")
 
@@ -208,28 +262,83 @@ class StructuralPatternDetector:
         patterns = []
         n = len(phi_structural)
 
-        # Use Numba-optimized version if available
-        if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000:
-            self._log(f"      [nesting] Using Numba acceleration...")
-            seq_bytes = str_to_bytes(phi_structural)
+        # Try Numba-optimized version if available
+        # For very large arrays, use chunked processing to avoid crashes
+        NUMBA_CHUNK_SIZE = 100_000_000  # 100M elements per chunk
+        use_numba = NUMBA_STRUCTURAL_AVAILABLE and n > 100_000
+        numba_success = False
 
-            max_depth, total_parens, depth_dist, trans_flat = _analyze_nesting_numba(seq_bytes)
+        if use_numba:
+            try:
+                if n <= NUMBA_CHUNK_SIZE:
+                    # Small enough for single pass
+                    self._log(f"      [nesting] Using Numba acceleration...")
+                    sys.stdout.flush()
+                    seq_bytes = str_to_bytes(phi_structural)
+                    max_depth, total_parens, depth_dist, trans_flat = _analyze_nesting_numba(seq_bytes)
+                else:
+                    # Use chunked processing for large sequences
+                    num_chunks = (n + NUMBA_CHUNK_SIZE - 1) // NUMBA_CHUNK_SIZE
+                    self._log(f"      [nesting] Using Numba chunked ({num_chunks} chunks of {NUMBA_CHUNK_SIZE:,})...")
+                    sys.stdout.flush()
 
-            # Convert numpy arrays back to dicts
-            depth_distribution = {int(d): int(c) for d, c in enumerate(depth_dist) if c > 0}
+                    # Initialize accumulators
+                    MAX_DEPTH = 256
+                    depth_dist = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    trans_flat = np.zeros(MAX_DEPTH * MAX_DEPTH, dtype=np.int64)
+                    max_depth = np.int64(0)
+                    current_depth = np.int64(0)
+                    prev_depth = np.int64(0)
+                    total_parens = np.int64(0)
 
-            # Reconstruct transitions dict from flattened array
-            MAX_DEPTH = 256
-            transitions = {}
-            for from_d in range(MAX_DEPTH):
-                for to_d in range(MAX_DEPTH):
-                    count = trans_flat[from_d * MAX_DEPTH + to_d]
-                    if count > 0:
-                        transitions[f"({from_d},{to_d})"] = int(count)
+                    # Use tqdm for chunk progress if available
+                    if TQDM_AVAILABLE:
+                        chunk_iter = tqdm(range(num_chunks), desc="      [nesting]",
+                                         unit="chunk", leave=True, ncols=100,
+                                         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+                    else:
+                        chunk_iter = range(num_chunks)
 
-            self._log(f"      [nesting] Complete: max_depth={max_depth}, parens={total_parens:,}")
-        else:
-            # Fallback to pure Python with progress
+                    for chunk_idx in chunk_iter:
+                        start = chunk_idx * NUMBA_CHUNK_SIZE
+                        end = min(start + NUMBA_CHUNK_SIZE, n)
+                        chunk_str = phi_structural[start:end]
+                        chunk_bytes = str_to_bytes(chunk_str)
+
+                        chunk_max, current_depth, prev_depth, total_parens = _analyze_nesting_numba_chunk(
+                            chunk_bytes, current_depth, prev_depth, total_parens,
+                            depth_dist, trans_flat
+                        )
+                        max_depth = max(max_depth, chunk_max)
+
+                        if TQDM_AVAILABLE:
+                            chunk_iter.set_postfix({'max_depth': int(max_depth)})
+                        else:
+                            pct = 100 * (chunk_idx + 1) // num_chunks
+                            self._log(f"      [nesting] Chunk {chunk_idx+1}/{num_chunks} ({pct}%) - max_depth={max_depth}")
+                            sys.stdout.flush()
+
+                # Convert numpy arrays back to dicts
+                depth_distribution = {int(d): int(c) for d, c in enumerate(depth_dist) if c > 0}
+
+                # Reconstruct transitions dict from flattened array
+                MAX_DEPTH = 256
+                transitions = {}
+                for from_d in range(MAX_DEPTH):
+                    for to_d in range(MAX_DEPTH):
+                        count = trans_flat[from_d * MAX_DEPTH + to_d]
+                        if count > 0:
+                            transitions[f"({from_d},{to_d})"] = int(count)
+
+                self._log(f"      [nesting] Complete: max_depth={max_depth}, parens={total_parens:,}")
+                numba_success = True
+
+            except Exception as e:
+                self._log(f"      ❌ [nesting] Numba error: {e}")
+                self._log(f"      [nesting] Falling back to Python...")
+
+        # Fallback to pure Python
+        if not numba_success:
             log_interval = max(1, n // 20)
             depth = 0
             max_depth = 0
@@ -267,6 +376,21 @@ class StructuralPatternDetector:
             depth_distribution = dict(depth_distribution)
             transitions = dict(transitions)
 
+        # Check if this is a flat sequence (no parentheses)
+        if total_parens == 0:
+            self._log(f"      [nesting] No parentheses found - skipping structural analysis")
+            patterns.append({
+                'pattern_id': 'nesting_depth_distribution',
+                'pattern_type': 'nesting',
+                'max_depth': 0,
+                'depth_distribution': {},
+                'total_parentheses': 0,
+                'is_flat_sequence': True,
+                'note': 'Sequence has no structural parentheses - flat binary data',
+                'method': 'nesting_analysis'
+            })
+            return patterns
+
         # Pattern 1: Depth distribution
         patterns.append({
             'pattern_id': 'nesting_depth_distribution',
@@ -274,17 +398,30 @@ class StructuralPatternDetector:
             'max_depth': int(max_depth),
             'depth_distribution': depth_distribution,
             'total_parentheses': int(total_parens),
-            'method': 'nesting_analysis' + ('_numba' if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000 else '')
+            'method': 'nesting_analysis' + ('_numba' if numba_success else '')
         })
 
-        # Pattern 2: Depth transitions
+        # Pattern 2: Depth transitions (LIMITED to top 1000 most common)
         if transitions:
+            # Sort by frequency and keep only top transitions
+            MAX_TRANSITIONS = 1000
+            if len(transitions) > MAX_TRANSITIONS:
+                sorted_trans = sorted(transitions.items(), key=lambda x: -x[1])
+                top_transitions = dict(sorted_trans[:MAX_TRANSITIONS])
+                total_trans = sum(transitions.values())
+                covered_trans = sum(top_transitions.values())
+                self._log(f"      [nesting] Limiting transitions: {len(transitions):,} → {MAX_TRANSITIONS} (covers {100*covered_trans/total_trans:.1f}%)")
+            else:
+                top_transitions = transitions
+                total_trans = sum(transitions.values())
+
             patterns.append({
                 'pattern_id': 'nesting_depth_transitions',
                 'pattern_type': 'nesting',
-                'transitions': transitions,
-                'num_transitions': len(transitions),
-                'total_transitions': sum(transitions.values()),
+                'transitions': top_transitions,
+                'num_unique_transitions': len(transitions),
+                'num_stored_transitions': len(top_transitions),
+                'total_transitions': total_trans,
                 'method': 'transition_analysis'
             })
 
@@ -305,13 +442,74 @@ class StructuralPatternDetector:
         patterns = []
         n = len(phi_structural)
 
-        # Use Numba-optimized version if available (much faster for large sequences)
-        if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000:
-            self._log(f"      [containment] Using Numba acceleration ({n:,} chars)...")
-            seq_bytes = str_to_bytes(phi_structural)
+        # Quick check: does this sequence have parentheses?
+        # Sample first 10000 chars to detect flat sequences efficiently
+        sample = phi_structural[:min(10000, n)]
+        has_parens = '(' in sample or ')' in sample
+        if not has_parens:
+            self._log(f"      [containment] No parentheses found - skipping (flat sequence)")
+            patterns.append({
+                'pattern_id': 'containment_length_distribution',
+                'pattern_type': 'containment',
+                'num_absolutes': 0,
+                'is_flat_sequence': True,
+                'note': 'Sequence has no structural parentheses - flat binary data',
+                'method': 'containment_analysis'
+            })
+            return patterns
 
-            length_counts, entropy_stats, num_absolutes, sum_lengths, sum_sq_lengths = \
-                _analyze_containment_numba(seq_bytes)
+        # Chunked Numba for large sequences
+        NUMBA_CHUNK_SIZE = 100_000_000
+        use_numba = NUMBA_STRUCTURAL_AVAILABLE and n > 100_000
+        numba_success = False
+
+        if use_numba:
+            try:
+                MAX_DEPTH = 256
+                MAX_LENGTH = 10000
+
+                if n <= NUMBA_CHUNK_SIZE:
+                    # Single pass
+                    self._log(f"      [containment] Using Numba acceleration ({n:,} chars)...")
+                    seq_bytes = str_to_bytes(phi_structural)
+                    length_counts, entropy_stats, num_absolutes, sum_lengths, sum_sq_lengths = \
+                        _analyze_containment_numba(seq_bytes)
+                else:
+                    # Chunked processing
+                    num_chunks = (n + NUMBA_CHUNK_SIZE - 1) // NUMBA_CHUNK_SIZE
+                    self._log(f"      [containment] Using Numba chunked ({num_chunks} chunks)...")
+
+                    # Initialize state
+                    stack_starts = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    stack_zeros = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    stack_ones = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    stack_ptr = np.int64(0)
+                    length_counts = np.zeros(MAX_LENGTH, dtype=np.int64)
+                    entropy_stats = np.zeros(3, dtype=np.float64)
+                    sum_lengths = np.float64(0.0)
+                    sum_sq_lengths = np.float64(0.0)
+                    num_absolutes = np.int64(0)
+
+                    for chunk_idx in range(num_chunks):
+                        start = chunk_idx * NUMBA_CHUNK_SIZE
+                        end = min(start + NUMBA_CHUNK_SIZE, n)
+                        chunk_bytes = str_to_bytes(phi_structural[start:end])
+
+                        stack_ptr, num_absolutes, sum_lengths, sum_sq_lengths = \
+                            _analyze_containment_numba_chunk(
+                                chunk_bytes, stack_starts, stack_zeros, stack_ones,
+                                stack_ptr, length_counts, entropy_stats,
+                                sum_lengths, sum_sq_lengths, num_absolutes
+                            )
+
+                        pct = 100 * (chunk_idx + 1) // num_chunks
+                        self._log(f"      [containment] Chunk {chunk_idx+1}/{num_chunks} ({pct}%)")
+
+                numba_success = True
+            except Exception as e:
+                self._log(f"      ❌ [containment] Numba error: {e}, falling back to Python...")
+
+        if numba_success:
 
             # Convert length_counts array to dict
             length_distribution = {int(length): int(count)
@@ -467,29 +665,80 @@ class StructuralPatternDetector:
         patterns = []
         n = len(phi_structural)
 
-        # Use Numba-optimized version if available
-        if NUMBA_STRUCTURAL_AVAILABLE and n > 100_000:
-            self._log(f"      [stratified] Using Numba acceleration ({n:,} chars)...")
-            seq_bytes = str_to_bytes(phi_structural)
+        # Quick check: does this sequence have parentheses?
+        sample = phi_structural[:min(10000, n)]
+        has_parens = '(' in sample or ')' in sample
+        if not has_parens:
+            self._log(f"      [stratified] No parentheses found - skipping (flat sequence)")
+            patterns.append({
+                'pattern_id': 'stratified_order_metrics',
+                'pattern_type': 'stratified_order',
+                'num_depths': 0,
+                'is_flat_sequence': True,
+                'note': 'Sequence has no structural parentheses - flat binary data',
+                'method': 'stratified_analysis'
+            })
+            return patterns
 
-            depth_zeros, depth_ones, depth_seq_counts = _analyze_stratified_numba(seq_bytes)
+        # Chunked Numba for large sequences
+        NUMBA_CHUNK_SIZE = 100_000_000
+        MAX_DEPTH = 256
+        use_numba = NUMBA_STRUCTURAL_AVAILABLE and n > 100_000
+        numba_success = False
 
-            # Build depth_stats from numpy arrays
-            depth_stats = {}
-            for d in range(len(depth_zeros)):
-                zeros = int(depth_zeros[d])
-                ones = int(depth_ones[d])
-                seq_count = int(depth_seq_counts[d])
-                if zeros > 0 or ones > 0:
-                    depth_stats[d] = {
-                        'zeros': zeros,
-                        'ones': ones,
-                        'sequence_count': seq_count,
-                        'total_chars': zeros + ones
-                    }
+        if use_numba:
+            try:
+                if n <= NUMBA_CHUNK_SIZE:
+                    # Single pass
+                    self._log(f"      [stratified] Using Numba acceleration ({n:,} chars)...")
+                    seq_bytes = str_to_bytes(phi_structural)
+                    depth_zeros, depth_ones, depth_seq_counts = _analyze_stratified_numba(seq_bytes)
+                else:
+                    # Chunked processing
+                    num_chunks = (n + NUMBA_CHUNK_SIZE - 1) // NUMBA_CHUNK_SIZE
+                    self._log(f"      [stratified] Using Numba chunked ({num_chunks} chunks)...")
 
-            self._log(f"      [stratified] Complete: {len(depth_stats)} depths (Numba)")
-        else:
+                    depth_zeros = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    depth_ones = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    depth_seq_counts = np.zeros(MAX_DEPTH, dtype=np.int64)
+                    current_depth = np.int64(0)
+                    current_zeros = np.int64(0)
+                    current_ones = np.int64(0)
+
+                    for chunk_idx in range(num_chunks):
+                        start = chunk_idx * NUMBA_CHUNK_SIZE
+                        end = min(start + NUMBA_CHUNK_SIZE, n)
+                        chunk_bytes = str_to_bytes(phi_structural[start:end])
+
+                        current_depth, current_zeros, current_ones = _analyze_stratified_numba_chunk(
+                            chunk_bytes, current_depth, current_zeros, current_ones,
+                            depth_zeros, depth_ones, depth_seq_counts
+                        )
+
+                        pct = 100 * (chunk_idx + 1) // num_chunks
+                        self._log(f"      [stratified] Chunk {chunk_idx+1}/{num_chunks} ({pct}%)")
+
+                # Build depth_stats from numpy arrays
+                depth_stats = {}
+                for d in range(len(depth_zeros)):
+                    zeros = int(depth_zeros[d])
+                    ones = int(depth_ones[d])
+                    seq_count = int(depth_seq_counts[d])
+                    if zeros > 0 or ones > 0:
+                        depth_stats[d] = {
+                            'zeros': zeros,
+                            'ones': ones,
+                            'sequence_count': seq_count,
+                            'total_chars': zeros + ones
+                        }
+
+                self._log(f"      [stratified] Complete: {len(depth_stats)} depths (Numba)")
+                numba_success = True
+
+            except Exception as e:
+                self._log(f"      ❌ [stratified] Numba error: {e}, falling back to Python...")
+
+        if not numba_success:
             # Fallback to pure Python with progress bar
             log_interval = max(1, n // 20)
             depth_stats = defaultdict(lambda: {'zeros': 0, 'ones': 0, 'sequence_count': 0, 'total_chars': 0})

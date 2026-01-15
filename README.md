@@ -1084,6 +1084,20 @@ Designed specifically for HSI theory to detect potential for **emergence of phys
 
 **Scientific basis:** Physical laws are compressible (Chaitin, 1987), operate across scales (Wilson, 1971), and require non-random dynamics (Peng et al., 1994).
 
+> **⚠️ Technical Note: Hierarchical Block Entropy (HBE) Scale Optimization**
+>
+> For very large sequences (>2M bits), the HBE calculation omits the smallest block scales (block_size=1,2,4,8) to maintain computational tractability. This is scientifically justified:
+>
+> 1. **Hierarchical Focus**: The hierarchy_score measures entropy *variation* across scales. Small blocks (1-8 bits) capture local statistics, while larger scales (16-1024 bits) capture the multi-scale structure that is the analysis target.
+>
+> 2. **Information Redundancy**: Block_size=1 entropy equals H(p) where p=proportion of 1s, already captured by other metrics.
+>
+> 3. **Statistical Validity**: All analyzed scales use 100% of blocks (no sampling). The hierarchy_score is computed from the full set of analyzed scales.
+>
+> 4. **Fair Comparison**: When comparing variants at the same iteration, all use identical scale ranges, ensuring consistent comparison.
+>
+> See `metrics/emergence_index.py:calculate_hierarchical_block_entropy()` for implementation details.
+
 #### ECI — Edge of Chaos Index (Original)
 
 Based on Langton (1990) and Kauffman (1993), seeks the computational "sweet spot" between order and chaos.
