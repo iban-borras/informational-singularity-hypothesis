@@ -433,48 +433,88 @@ def load_phi_sampled(
             segment_starts.append(start)
         segment_starts.sort()
 
-    # Load sampled segments
+    # Load all segments in ONE PASS through the file (O(n) instead of O(n²))
     start_time = time.time()
-    sampled_chars = []
-    segment_info = []
+
+    # Pre-allocate segment buffers
+    segments_data = [[] for _ in range(n_segments)]
+    segment_info = [{'start': s, 'end': s + segment_size, 'length': 0} for s in segment_starts]
+
+    # Build sorted list of (start, end, segment_index) for efficient lookup
+    # Sorted by start position for quick "which segments are active" check
+    segment_ranges = sorted(
+        [(segment_starts[i], segment_starts[i] + segment_size, i) for i in range(n_segments)],
+        key=lambda x: x[0]
+    )
+
+    completed_segments = 0
+    next_segment_idx = 0  # Index into segment_ranges for next segment to activate
+    active_segments = {}  # seg_idx -> (end_pos) for currently active segments
 
     pbar = None
     if show_progress and TQDM_AVAILABLE:
-        pbar = tqdm(total=n_segments, desc="   Sampling Φ",
+        pbar = tqdm(total=n_segments, desc="   Sampling Φ (single pass)",
                    unit="seg", leave=True, ncols=100)
 
-    for seg_idx, seg_start in enumerate(segment_starts):
-        seg_end = seg_start + segment_size
-        segment_chars = []
+    char_idx = 0
+    last_segment_end = max(s + segment_size for s in segment_starts)
 
-        # Stream through file to reach segment
-        char_idx = 0
-        for char in loader.iter_chars():
-            if observable_only and char not in '01':
-                continue
+    for char in loader.iter_chars():
+        if observable_only and char not in '01':
+            continue
 
-            if char_idx >= seg_start:
-                segment_chars.append(char)
-                if len(segment_chars) >= segment_size:
-                    break
-            char_idx += 1
+        # Activate new segments that start at this position
+        while next_segment_idx < n_segments:
+            seg_start, seg_end, seg_idx = segment_ranges[next_segment_idx]
+            if seg_start <= char_idx:
+                if char_idx < seg_end:  # Only activate if we haven't passed it
+                    active_segments[seg_idx] = seg_end
+                next_segment_idx += 1
+            else:
+                break
 
-        sampled_chars.extend(segment_chars)
-        segment_info.append({
-            'start': seg_start,
-            'end': seg_start + len(segment_chars),
-            'length': len(segment_chars)
-        })
+        # Add char to all active segments
+        completed_this_char = []
+        for seg_idx, seg_end in active_segments.items():
+            if char_idx < seg_end:
+                segments_data[seg_idx].append(char)
 
-        if pbar:
-            pbar.update(1)
-            pbar.set_postfix({'chars': f'{len(sampled_chars)/1e6:.0f}M'})
+                # Check if segment is complete
+                if len(segments_data[seg_idx]) >= segment_size:
+                    completed_this_char.append(seg_idx)
 
-        # Reset loader for next segment
-        loader = StreamingPhiLoader(struct_gz_path)
+        # Remove completed segments
+        for seg_idx in completed_this_char:
+            del active_segments[seg_idx]
+            segment_info[seg_idx]['length'] = len(segments_data[seg_idx])
+            completed_segments += 1
+            if pbar:
+                pbar.update(1)
+                pbar.set_postfix({'done': f'{completed_segments}/{n_segments}'})
+
+        char_idx += 1
+
+        # Early exit: all segments collected
+        if completed_segments >= n_segments:
+            break
+
+        # Early exit: passed all segment ranges
+        if char_idx > last_segment_end and not active_segments:
+            break
 
     if pbar:
         pbar.close()
+
+    # Finalize any incomplete segments (e.g., at end of file)
+    for seg_idx in range(n_segments):
+        if segment_info[seg_idx]['length'] == 0:
+            segment_info[seg_idx]['length'] = len(segments_data[seg_idx])
+            segment_info[seg_idx]['end'] = segment_starts[seg_idx] + len(segments_data[seg_idx])
+
+    # Concatenate all segments in order
+    sampled_chars = []
+    for seg_data in segments_data:
+        sampled_chars.extend(seg_data)
 
     elapsed = time.time() - start_time
     if show_progress:
