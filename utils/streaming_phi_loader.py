@@ -408,7 +408,9 @@ def load_phi_sampled(
                                    show_progress=show_progress, total_chars_hint=total_chars)
 
     # Calculate sampling parameters
-    n_segments = max(1, max_chars // segment_size)
+    # Use only 60% of max_memory to leave room for concatenation and other overhead
+    effective_max_chars = int(max_chars * 0.6)
+    n_segments = max(1, effective_max_chars // segment_size)
     total_sampled = n_segments * segment_size
     sampling_rate = total_sampled / total_chars
 
@@ -511,14 +513,20 @@ def load_phi_sampled(
             segment_info[seg_idx]['length'] = len(segments_data[seg_idx])
             segment_info[seg_idx]['end'] = segment_starts[seg_idx] + len(segments_data[seg_idx])
 
-    # Concatenate all segments in order
-    sampled_chars = []
-    for seg_data in segments_data:
-        sampled_chars.extend(seg_data)
+    # Concatenate all segments efficiently (join strings directly, avoid intermediate list)
+    # Convert each segment's list to string first, then join
+    segment_strings = [''.join(seg_data) for seg_data in segments_data]
+    # Free memory from segments_data
+    del segments_data
+
+    result_string = ''.join(segment_strings)
+    total_sampled_chars = len(result_string)
+    # Free segment_strings
+    del segment_strings
 
     elapsed = time.time() - start_time
     if show_progress:
-        print(f"   ✓ Sampled {len(sampled_chars):,} chars from {n_segments} segments in {elapsed:.1f}s", flush=True)
+        print(f"   ✓ Sampled {total_sampled_chars:,} chars from {n_segments} segments in {elapsed:.1f}s", flush=True)
 
     # Add sampling info to metadata
     sampling_metadata = {
@@ -528,14 +536,14 @@ def load_phi_sampled(
             'seed': random_seed,
             'n_segments': n_segments,
             'segment_size': segment_size,
-            'total_sampled': len(sampled_chars),
+            'total_sampled': total_sampled_chars,
             'total_original': total_chars,
             'sampling_rate': sampling_rate,
             'segments': segment_info
         }
     }
 
-    return ''.join(sampled_chars), sampling_metadata
+    return result_string, sampling_metadata
 
 
 if __name__ == "__main__":

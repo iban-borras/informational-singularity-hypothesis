@@ -834,6 +834,298 @@ def _interpret_hurst(h: float) -> str:
         return "Non-stationary (unbounded drift)"
 
 
+# =============================================================================
+# MULTIFRACTAL DFA (MF-DFA) AND SINGULARITY SPECTRUM f(α)
+# =============================================================================
+
+def calculate_mfdfa(sequence: str, q_range: Tuple[float, float] = (-5, 5),
+                    q_steps: int = 21, min_box: int = 16, max_box: int = None,
+                    verbose: bool = False) -> Dict[str, Any]:
+    """
+    Multifractal Detrended Fluctuation Analysis (MF-DFA).
+
+    MF-DFA extends standard DFA by computing the generalized Hurst exponent
+    h(q) for different moment orders q. This reveals the multifractal nature
+    of the sequence:
+
+    - **Monofractal**: h(q) is constant for all q (single scaling behavior)
+    - **Multifractal**: h(q) varies with q (rich, multi-scale structure)
+
+    For HSI analysis:
+    - Variant B (structured) should show wider h(q) range (multifractal)
+    - Variant F (saturated) may show narrower h(q) range (monofractal)
+
+    The algorithm:
+    1. Integrate the sequence: Y(k) = Σ(x_i - <x>)
+    2. Divide into non-overlapping boxes of size s
+    3. Fit polynomial trend in each box, compute residual variance
+    4. For each q, compute generalized fluctuation: F_q(s) = [1/N Σ |F²(s)|^(q/2)]^(1/q)
+    5. Fit log(F_q) vs log(s) → slope = h(q)
+
+    References:
+    - Kantelhardt et al. (2002) "Multifractal detrended fluctuation analysis"
+    - Ihlen (2012) "Introduction to Multifractal Detrended Fluctuation Analysis"
+
+    Args:
+        sequence: Binary string
+        q_range: Range of moment orders (default: -5 to 5)
+        q_steps: Number of q values to compute
+        min_box: Minimum box size
+        max_box: Maximum box size (default: len/8)
+        verbose: Print progress
+
+    Returns:
+        Dictionary with h(q), tau(q), and quality metrics
+    """
+    # Convert to numeric array and compute profile
+    y = np.array([int(b) for b in sequence], dtype=np.float64)
+    y = y - y.mean()
+    profile = np.cumsum(y)
+
+    n = len(profile)
+    if max_box is None:
+        max_box = n // 8
+
+    # Generate box sizes (logarithmically spaced)
+    box_sizes = np.unique(np.logspace(
+        np.log10(min_box),
+        np.log10(max_box),
+        num=15
+    ).astype(int))
+    box_sizes = box_sizes[box_sizes >= min_box]
+
+    # Generate q values (exclude q=0, handled separately)
+    q_values = np.linspace(q_range[0], q_range[1], q_steps)
+    q_values = q_values[q_values != 0]  # Remove q=0
+
+    # Compute fluctuation for each box size
+    F_sq = {}  # F²(ν, s) for each box
+    for s in box_sizes:
+        n_boxes = n // s
+        if n_boxes < 4:
+            continue
+
+        variances = []
+        for v in range(n_boxes):
+            start = v * s
+            segment = profile[start:start + s]
+
+            # Linear detrending
+            x = np.arange(s)
+            coeffs = np.polyfit(x, segment, 1)
+            trend = np.polyval(coeffs, x)
+            residual = segment - trend
+
+            var = np.mean(residual ** 2)
+            variances.append(var)
+
+        F_sq[s] = np.array(variances)
+
+    if len(F_sq) < 3:
+        return {
+            'q_values': [],
+            'h_q': [],
+            'tau_q': [],
+            'delta_h': np.nan,
+            'interpretation': 'Insufficient data for MF-DFA',
+            'is_multifractal': False
+        }
+
+    # Compute h(q) for each q
+    h_q = []
+    tau_q = []
+    valid_q = []
+
+    for q in q_values:
+        log_s = []
+        log_Fq = []
+
+        for s, vars in F_sq.items():
+            if len(vars) < 2:
+                continue
+
+            # Generalized fluctuation function
+            if q == 0:
+                # Special case: geometric mean
+                Fq = np.exp(0.5 * np.mean(np.log(vars + 1e-10)))
+            else:
+                # Standard case: q-th order moment
+                Fq = (np.mean(vars ** (q / 2))) ** (1 / q)
+
+            if Fq > 0:
+                log_s.append(np.log(s))
+                log_Fq.append(np.log(Fq))
+
+        if len(log_s) >= 3:
+            # Linear regression: log(Fq) = h(q) * log(s) + const
+            slope, intercept, r_value, _, _ = linregress(log_s, log_Fq)
+            h_q.append(slope)
+            tau_q.append(q * slope - 1)  # τ(q) = q·h(q) - 1
+            valid_q.append(q)
+
+    if len(h_q) < 3:
+        return {
+            'q_values': [],
+            'h_q': [],
+            'tau_q': [],
+            'delta_h': np.nan,
+            'interpretation': 'Could not compute h(q) for enough q values',
+            'is_multifractal': False
+        }
+
+    h_q = np.array(h_q)
+    tau_q = np.array(tau_q)
+    valid_q = np.array(valid_q)
+
+    # Multifractality indicators
+    delta_h = np.max(h_q) - np.min(h_q)  # Width of h(q) spectrum
+    h_mean = np.mean(h_q)
+    h_std = np.std(h_q)
+
+    # h(2) corresponds to standard Hurst exponent
+    idx_q2 = np.argmin(np.abs(valid_q - 2))
+    h2 = h_q[idx_q2] if len(h_q) > idx_q2 else np.nan
+
+    return {
+        'q_values': valid_q.tolist(),
+        'h_q': h_q.tolist(),
+        'tau_q': tau_q.tolist(),
+        'h_2': float(h2),
+        'h_mean': float(h_mean),
+        'h_std': float(h_std),
+        'delta_h': float(delta_h),
+        'box_sizes': list(F_sq.keys()),
+        'is_multifractal': bool(delta_h > 0.1),
+        'interpretation': _interpret_mfdfa(delta_h, h_mean)
+    }
+
+
+def _interpret_mfdfa(delta_h: float, h_mean: float) -> str:
+    """Interpret MF-DFA results."""
+    if np.isnan(delta_h):
+        return "Could not compute multifractal spectrum"
+
+    # Multifractality assessment
+    if delta_h < 0.1:
+        mf_type = "Monofractal (single scaling)"
+    elif delta_h < 0.3:
+        mf_type = "Weak multifractal"
+    elif delta_h < 0.5:
+        mf_type = "Moderate multifractal"
+    else:
+        mf_type = "Strong multifractal (rich structure)"
+
+    # Persistence assessment from h_mean
+    if h_mean < 0.5:
+        pers = "anti-persistent"
+    elif h_mean < 0.6:
+        pers = "near-random"
+    elif h_mean < 0.9:
+        pers = "persistent"
+    else:
+        pers = "strongly persistent"
+
+    return f"{mf_type}, {pers} (Δh={delta_h:.3f}, <h>={h_mean:.3f})"
+
+
+def calculate_singularity_spectrum(mfdfa_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate the singularity spectrum f(α) from MF-DFA results.
+
+    The singularity spectrum transforms h(q) into f(α) via Legendre transform:
+    - α(q) = h(q) + q·h'(q)   (singularity strength / Hölder exponent)
+    - f(α) = q·(α - h(q)) + 1 (fractal dimension of points with exponent α)
+
+    The spectrum f(α) is typically an inverted parabola:
+    - Width Δα = α_max - α_min → measures multifractality strength
+    - Maximum f(α) → typically near 1 (space-filling dimension)
+    - Asymmetry → indicates dominant scaling type
+
+    For HSI analysis:
+    - Wide spectrum → rich multifractal structure (expected for B)
+    - Narrow spectrum → monofractal (expected for F after saturation)
+    - Left-skewed → dominated by large fluctuations
+    - Right-skewed → dominated by small fluctuations
+
+    Args:
+        mfdfa_result: Output from calculate_mfdfa()
+
+    Returns:
+        Dictionary with α, f(α), and derived metrics
+    """
+    q_values = np.array(mfdfa_result.get('q_values', []))
+    h_q = np.array(mfdfa_result.get('h_q', []))
+    tau_q = np.array(mfdfa_result.get('tau_q', []))
+
+    if len(q_values) < 3 or len(h_q) < 3:
+        return {
+            'alpha': [],
+            'f_alpha': [],
+            'delta_alpha': np.nan,
+            'f_max': np.nan,
+            'alpha_0': np.nan,
+            'asymmetry': np.nan,
+            'interpretation': 'Insufficient MF-DFA data for singularity spectrum'
+        }
+
+    # Numerical derivative dτ/dq = α
+    # Using centered differences where possible
+    alpha = np.gradient(tau_q, q_values)
+
+    # f(α) = q·α - τ(q)
+    f_alpha = q_values * alpha - tau_q
+
+    # Spectrum metrics
+    delta_alpha = np.max(alpha) - np.min(alpha)  # Spectrum width
+    f_max = np.max(f_alpha)  # Maximum dimension
+    idx_max = np.argmax(f_alpha)
+    alpha_0 = alpha[idx_max]  # α at f_max (most probable Hölder exponent)
+
+    # Asymmetry: compare left and right widths
+    alpha_left = alpha_0 - np.min(alpha)
+    alpha_right = np.max(alpha) - alpha_0
+    asymmetry = (alpha_right - alpha_left) / (delta_alpha + 1e-10)
+    # asymmetry > 0 → right-skewed (small fluctuations dominate)
+    # asymmetry < 0 → left-skewed (large fluctuations dominate)
+
+    return {
+        'alpha': alpha.tolist(),
+        'f_alpha': f_alpha.tolist(),
+        'q_values': q_values.tolist(),
+        'delta_alpha': float(delta_alpha),
+        'f_max': float(f_max),
+        'alpha_0': float(alpha_0),
+        'asymmetry': float(asymmetry),
+        'interpretation': _interpret_singularity_spectrum(delta_alpha, asymmetry, f_max)
+    }
+
+
+def _interpret_singularity_spectrum(delta_alpha: float, asymmetry: float, f_max: float) -> str:
+    """Interpret singularity spectrum results."""
+    if np.isnan(delta_alpha):
+        return "Could not compute singularity spectrum"
+
+    # Width interpretation
+    if delta_alpha < 0.2:
+        width_desc = "Narrow (monofractal-like)"
+    elif delta_alpha < 0.5:
+        width_desc = "Moderate width"
+    elif delta_alpha < 1.0:
+        width_desc = "Wide (multifractal)"
+    else:
+        width_desc = "Very wide (strongly multifractal)"
+
+    # Asymmetry interpretation
+    if abs(asymmetry) < 0.1:
+        asym_desc = "symmetric"
+    elif asymmetry > 0:
+        asym_desc = "right-skewed (fine structure dominates)"
+    else:
+        asym_desc = "left-skewed (coarse structure dominates)"
+
+    return f"{width_desc}, {asym_desc} (Δα={delta_alpha:.3f})"
+
+
 def calculate_multiscale_entropy(sequence: str,
                                   max_scale: int = 20,
                                   m: int = 2,
@@ -1321,6 +1613,32 @@ def calculate_emergence_index(sequence: str,
         'score': dfa_score,
         'interpretation': dfa_result['interpretation']
     }
+
+    # 6. MF-DFA - Multifractal Analysis (optional, for advanced analysis)
+    log("🔬 [6/6] Calculating MF-DFA (multifractal spectrum)...")
+    t0 = time.time()
+    try:
+        mfdfa_result = calculate_mfdfa(seq, verbose=False)
+        spectrum = calculate_singularity_spectrum(mfdfa_result)
+        log(f"   Done in {time.time()-t0:.1f}s - Δh={mfdfa_result['delta_h']:.3f}, Δα={spectrum['delta_alpha']:.3f}")
+
+        results['mfdfa'] = {
+            'delta_h': mfdfa_result['delta_h'],
+            'h_mean': mfdfa_result['h_mean'],
+            'h_2': mfdfa_result['h_2'],
+            'is_multifractal': mfdfa_result['is_multifractal'],
+            'interpretation': mfdfa_result['interpretation']
+        }
+        results['singularity_spectrum'] = {
+            'delta_alpha': spectrum['delta_alpha'],
+            'alpha_0': spectrum['alpha_0'],
+            'asymmetry': spectrum['asymmetry'],
+            'interpretation': spectrum['interpretation']
+        }
+    except Exception as e:
+        log(f"   MF-DFA failed: {e}")
+        results['mfdfa'] = {'error': str(e)}
+        results['singularity_spectrum'] = {'error': str(e)}
 
     # =========================================================================
     # STRUCTURAL EMERGENCE INDEX (SEI) - Dec 2025 Reformulation
