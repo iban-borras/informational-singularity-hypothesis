@@ -188,7 +188,7 @@ All scripts can be run directly from the project root:
 | `level0_refresh_plots.py` | Regenerate plots from cached data | `python level0_refresh_plots.py -v B -i 18` |
 | `level0_estimate_storage.py` | Estimate storage needs for high iterations | `python level0_estimate_storage.py --max-iteration 24` |
 | `level1_analyze_patterns.py` | Pattern detection and rule inference | `python level1_analyze_patterns.py -v B -i 18 --report` |
-| `level1_emergence_index.py` | Calculate Emergence Index (Level 2 potential) | `python level1_emergence_index.py -v B -i 18` |
+| `level1_emergence_index.py` | Calculate Emergence Index (Level 2 potential) | `python level1_emergence_index.py -v B` (auto-detects latest) |
 | `level1_sci_icc.py` | Calculate SCI & ICC metrics from emergence data | `python level1_sci_icc.py --from-emergence results/emergence_*.json` |
 | `level1_trend_analysis.py` | Trend analysis across iterations with extrapolation | `python level1_trend_analysis.py --variants B E I --plot` |
 | `level1_visualize.py` | Generate publication-quality figures | `python level1_visualize.py --all` |
@@ -310,11 +310,14 @@ python level0_refresh_plots.py -v D --hilbert-bits 1048576
 python level1_analyze_patterns.py --variant B --iteration 18 --report
 python level1_analyze_patterns.py --variant B --iteration 18 --min-len 10 --max-len 50 --report
 
-# Calculate Emergence Index (potential for Level 2)
+# Calculate Emergence Index (auto-detects latest iteration)
+python level1_emergence_index.py --variant B
+
+# Explicit iteration
 python level1_emergence_index.py --variant B --iteration 18
 
-# Compare emergence potential across variants
-python level1_emergence_index.py --variants A B D E F --iteration 18 --compare
+# Compare variants (auto-detects latest iteration per variant)
+python level1_emergence_index.py --variants A B D E F --compare
 
 # Calculate SCI & ICC metrics from emergence data
 python level1_sci_icc.py --from-emergence results/emergence_vars_A_B_D_E_F_G_iter18.json
@@ -1186,17 +1189,20 @@ Based on Langton (1990) and Kauffman (1993), seeks the computational "sweet spot
 
 **Usage:**
 ```bash
-# Single variant analysis (shows both SEI and ECI)
+# Single variant (auto-detects latest iteration)
+python level1_emergence_index.py --variant B
+
+# Explicit iteration
 python level1_emergence_index.py --variant B --iteration 18
 
-# Compare multiple variants
-python level1_emergence_index.py --variants A B D E F G H --iteration 18 --compare
+# Compare multiple variants (auto-detects latest iteration per variant)
+python level1_emergence_index.py --variants A B D E F G H --compare
 
 # Save results to JSON
-python level1_emergence_index.py --variant B --iteration 18 --output results/emergence_B.json
+python level1_emergence_index.py --variant B --output results/emergence_B.json
 
 # Statistical significance testing (compare against null model)
-python level1_emergence_index.py --variant B --iteration 18 --null-test --null-samples 100
+python level1_emergence_index.py --variant B --null-test --null-samples 100
 ```
 
 **Statistical Significance Testing:**

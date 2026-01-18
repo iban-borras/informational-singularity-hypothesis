@@ -2806,13 +2806,21 @@ def load_phi_sequence(variant: str, iteration: int,
     return None
 
 
-def compare_variants_emergence(variants: list, iteration: int) -> Dict[str, Any]:
+def compare_variants_emergence(variants: list, iteration: int,
+                               chunk_size: int = 50_000_000,
+                               max_cpu_percent: int = 50,
+                               no_cache: bool = False) -> Dict[str, Any]:
     """
     Compare emergence index across multiple variants.
+
+    Uses streaming mode for memory efficiency with large files.
 
     Args:
         variants: List of variant codes (e.g., ['A', 'B', 'D'])
         iteration: Iteration number to compare
+        chunk_size: Bits per chunk for streaming (default 50M)
+        max_cpu_percent: Maximum CPU usage (default 50%)
+        no_cache: If True, ignore existing checkpoints
 
     Returns:
         Dictionary with comparison results and ranking
@@ -2821,16 +2829,22 @@ def compare_variants_emergence(variants: list, iteration: int) -> Dict[str, Any]
 
     for variant in variants:
         print(f"   Analyzing variant {variant}...", flush=True)
-        seq = load_phi_sequence(variant, iteration)
 
-        if seq is None:
-            print(f"   ⚠️ Could not load variant {variant} iter {iteration}")
+        # Use streaming mode - memory efficient for large files
+        emergence = calculate_emergence_index_streaming(
+            variant, iteration,
+            chunk_size=chunk_size,
+            verbose=True,
+            max_cpu_percent=max_cpu_percent,
+            no_cache=no_cache
+        )
+
+        if 'error' in emergence:
+            print(f"   ⚠️ Could not analyze variant {variant} iter {iteration}: {emergence['error']}")
             results[variant] = None
             continue
 
-        emergence = calculate_emergence_index(seq)
         results[variant] = emergence
-
         print(f"   ✓ Variant {variant}: EI = {emergence['emergence_index']:.3f}")
 
     # Rank variants by emergence index
@@ -2852,6 +2866,35 @@ def compare_variants_emergence(variants: list, iteration: int) -> Dict[str, Any]
 # CLI INTERFACE
 # =============================================================================
 
+def _discover_latest_iteration(variant: str) -> Optional[int]:
+    """
+    Find the latest available iteration for a variant.
+
+    Scans level0/phi_snapshots/var_{X}/ for existing files.
+    Returns None if no iterations found.
+    """
+    import re
+    from pathlib import Path
+
+    # Try to find snapshots directory
+    script_dir = Path(__file__).parent.parent
+    snapshots_dir = script_dir / "results" / "level0" / "phi_snapshots" / f"var_{variant}"
+
+    if not snapshots_dir.exists():
+        return None
+
+    iterations = []
+    pattern = re.compile(r'phi_iter(\d+)\.struct\.gz$')
+
+    for f in snapshots_dir.iterdir():
+        if f.is_file():
+            match = pattern.match(f.name)
+            if match:
+                iterations.append(int(match.group(1)))
+
+    return max(iterations) if iterations else None
+
+
 def main():
     """Command-line interface for Emergence Index calculation."""
     import argparse
@@ -2863,9 +2906,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python emergence_index.py --variant B --iteration 18
-  python emergence_index.py --variants A B D E F --iteration 18 --compare
-  python emergence_index.py --variant B --iteration 18 --output results/emergence_B.json
+  python emergence_index.py --variant B                    # Auto-detect latest iteration
+  python emergence_index.py --variants A B D E F --compare # Auto-detect per variant
+  python emergence_index.py --variant B --iteration 18     # Explicit iteration
+  python emergence_index.py --variant B -i 18 --output results/emergence_B.json
         """
     )
 
@@ -2873,8 +2917,8 @@ Examples:
                         help='Single variant to analyze (A, B, D, E, F, G, H)')
     parser.add_argument('--variants', nargs='+',
                         help='Multiple variants for comparison')
-    parser.add_argument('--iteration', '-i', type=int, required=True,
-                        help='Iteration number')
+    parser.add_argument('--iteration', '-i', type=int, default=None,
+                        help='Iteration number (default: auto-detect latest available)')
     parser.add_argument('--compare', action='store_true',
                         help='Compare multiple variants and rank them')
     parser.add_argument('--output', '-o', type=str,
@@ -2909,9 +2953,49 @@ Examples:
         # Multi-variant comparison mode
         variants = args.variants or [args.variant]
         print(f"\n📊 Comparing variants: {', '.join(variants)}")
-        print(f"   Iteration: {args.iteration}\n")
 
-        results = compare_variants_emergence(variants, args.iteration)
+        # Auto-detect iterations per variant if not specified
+        variant_iterations = {}
+        for v in variants:
+            if args.iteration is not None:
+                variant_iterations[v] = args.iteration
+            else:
+                detected = _discover_latest_iteration(v)
+                if detected:
+                    variant_iterations[v] = detected
+                    print(f"   Variant {v}: auto-detected iteration {detected}")
+                else:
+                    print(f"   ⚠️ Variant {v}: no iterations found, skipping")
+
+        if not variant_iterations:
+            print("❌ No valid iterations found for any variant")
+            return
+
+        # Process each variant with its iteration (streaming mode for memory efficiency)
+        all_results = {'variants': {}, 'ranking': [], 'best_variant': None}
+        for v, iteration in variant_iterations.items():
+            print(f"\n   Processing {v}@{iteration}...")
+            try:
+                result = compare_variants_emergence(
+                    [v], iteration,
+                    chunk_size=args.chunk_size,
+                    max_cpu_percent=args.max_cpu,
+                    no_cache=args.no_cache
+                )
+                if v in result['variants']:
+                    all_results['variants'][v] = result['variants'][v]
+                    all_results['variants'][v]['iteration'] = iteration
+            except Exception as e:
+                print(f"   ⚠️ Error processing {v}: {e}")
+
+        # Rank by emergence_index
+        if all_results['variants']:
+            ranked = sorted(all_results['variants'].items(),
+                          key=lambda x: x[1].get('emergence_index', 0), reverse=True)
+            all_results['ranking'] = [v for v, _ in ranked]
+            all_results['best_variant'] = ranked[0][0] if ranked else None
+
+        results = all_results
 
         # Print summary
         print("\n" + "=" * 50)
@@ -2922,20 +3006,29 @@ Examples:
             data = results['variants'][variant]
             ei = data['emergence_index']
             interp = data['interpretation']
-            print(f"   {rank}. Variant {variant}: {ei:.4f} - {interp}")
+            iter_num = data.get('iteration', '?')
+            print(f"   {rank}. Variant {variant}@{iter_num}: {ei:.4f} - {interp}")
 
         if results['best_variant']:
             print(f"\n🏆 Best candidate for Level 2: Variant {results['best_variant']}")
 
     else:
-        # Single variant mode
+        # Single variant mode - auto-detect iteration if not specified
+        iteration = args.iteration
+        if iteration is None:
+            iteration = _discover_latest_iteration(args.variant)
+            if iteration is None:
+                print(f"❌ No iterations found for variant {args.variant}")
+                return
+            print(f"   Auto-detected latest iteration: {iteration}")
+
         mode_str = " [STREAMING - full sequence]" if args.streaming else ""
-        print(f"\n📊 Analyzing variant {args.variant}, iteration {args.iteration}{mode_str}\n")
+        print(f"\n📊 Analyzing variant {args.variant}, iteration {iteration}{mode_str}\n")
 
         if args.streaming:
             # STREAMING MODE: Process entire sequence with parallel processing
             results = calculate_emergence_index_streaming(
-                args.variant, args.iteration,
+                args.variant, iteration,
                 chunk_size=args.chunk_size,
                 max_cpu_percent=args.max_cpu,
                 force_mmap=args.force_mmap,
@@ -2947,9 +3040,9 @@ Examples:
         else:
             # SAMPLE MODE: Load sequence and sample
             print(f"   Loading Φ sequence...", flush=True)
-            seq = load_phi_sequence(args.variant, args.iteration)
+            seq = load_phi_sequence(args.variant, iteration)
             if seq is None:
-                print(f"❌ Could not load variant {args.variant} iteration {args.iteration}")
+                print(f"❌ Could not load variant {args.variant} iteration {iteration}")
                 return
 
             print(f"   ✓ Loaded {len(seq):,} bits", flush=True)
@@ -3143,15 +3236,44 @@ Examples:
     else:
         # Auto-generate filename using unified structure
         from utils.file_saver import get_output_path, relative_path
-        if args.compare and args.variants:
-            variants_str = "_".join(args.variants)
-            filename = f"emergence_{variants_str}_iter{args.iteration}.json"
+        if args.compare or args.variants:
+            # Multi-variant mode - include all variants and their iterations
+            variants_str = "_".join(results['ranking']) if results.get('ranking') else "_".join(args.variants or [args.variant])
+            # Get iteration info from results
+            iter_parts = []
+            for v in (results.get('ranking') or []):
+                v_iter = results['variants'].get(v, {}).get('iteration', '?')
+                iter_parts.append(f"{v}{v_iter}")
+            iter_str = "_".join(iter_parts) if iter_parts else f"iter{args.iteration or 'auto'}"
+            filename = f"emergence_{iter_str}.json"
         else:
             variant = args.variant or (args.variants[0] if args.variants else "unknown")
-            filename = f"emergence_{variant}_iter{args.iteration}.json"
+            iter_num = iteration if 'iteration' in dir() else args.iteration
+            filename = f"emergence_{variant}_iter{iter_num}.json"
         output_path = get_output_path(1, "metrics", filename)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Add metadata to results for self-describing JSON
+    from datetime import datetime
+    if args.compare or args.variants:
+        # Multi-variant mode - metadata already in results['variants'][v]['iteration']
+        results['_metadata'] = {
+            'type': 'emergence_comparison',
+            'variants': list(results.get('ranking', [])),
+            'generated_at': datetime.now().isoformat(),
+            'script': 'level1_emergence_index.py'
+        }
+    else:
+        # Single variant mode
+        results['_metadata'] = {
+            'type': 'emergence_analysis',
+            'variant': args.variant,
+            'iteration': iteration,
+            'generated_at': datetime.now().isoformat(),
+            'script': 'level1_emergence_index.py'
+        }
+
     with open(output_path, 'w') as f:
         json.dump(results, f, indent=2)
 
