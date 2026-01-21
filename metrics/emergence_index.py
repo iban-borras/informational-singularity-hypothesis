@@ -2091,6 +2091,82 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
     file_size_mb = data_path.stat().st_size / (1024 * 1024)
     log(f"📂 File: {data_path.name} ({file_size_mb:.1f} MB compressed)")
 
+    # =========================================================================
+    # EARLY CACHE CHECK: Skip loading entirely if we have complete results
+    # =========================================================================
+    temp_dir = Path(__file__).parent.parent / "results" / "temp"
+    checkpoint_path = temp_dir / f"emergence_checkpoint_{variant}_{iteration}.json"
+
+    if not no_cache and checkpoint_path.exists():
+        try:
+            import json as json_mod
+            with open(checkpoint_path, 'r') as f:
+                ckpt = json_mod.load(f)
+
+            ckpt_completed = ckpt.get('completed', 0)
+            ckpt_total = ckpt.get('n_chunks', 0)
+
+            # Check if this is a COMPLETE cache (all chunks processed)
+            if ckpt_completed >= ckpt_total and ckpt_total > 0:
+                log(f"✅ CACHE HIT: Complete results found ({ckpt_completed} chunks)")
+                log(f"   Skipping data loading entirely!")
+
+                # Reconstruct the result from cached data
+                power_slopes = ckpt.get('power_slopes', [])
+                lz_values = ckpt.get('lz_values', [])
+                mi_values = ckpt.get('mi_values', [])
+                dfa_hursts = ckpt.get('dfa_hursts', [])
+                hierarchy_scores = ckpt.get('hierarchy_scores', [])
+
+                # Calculate aggregated metrics
+                import numpy as np
+
+                # Order score from LZ
+                lz_norm = np.mean(lz_values) if lz_values else 0.5
+                order_score = 1 - lz_norm
+
+                # Hierarchy from block entropy
+                avg_hierarchy = np.mean(hierarchy_scores) if hierarchy_scores else 0.5
+                hierarchy_score = avg_hierarchy * 2
+
+                # Coherence from MI
+                avg_mi = np.mean(mi_values) if mi_values else 0.3
+                coherence_score = min(1.0, avg_mi / 0.3)
+
+                # Non-randomness from DFA
+                avg_hurst = np.mean(dfa_hursts) if dfa_hursts else 0.5
+                non_randomness = abs(avg_hurst - 0.5) * 2
+
+                # Emergence Index
+                ei = (0.35 * order_score +
+                      0.25 * hierarchy_score +
+                      0.25 * coherence_score +
+                      0.15 * non_randomness)
+
+                # Use cached φ-tendency if available
+                phi_tendency = ckpt.get('phi_tendency', 0.5)
+
+                # Criticality from power slopes
+                avg_slope = np.mean(power_slopes) if power_slopes else -1.0
+
+                return {
+                    'variant': variant,
+                    'iteration': iteration,
+                    'total_bits': ckpt.get('total_bits', ckpt_total * 50_000_000),
+                    'chunks_processed': ckpt_completed,
+                    'analysis_mode': 'cached_complete',
+                    'emergence_index': float(ei),
+                    'phi_tendency': float(phi_tendency),
+                    'order': {'lz_normalized': float(lz_norm), 'order_score': float(order_score)},
+                    'hierarchy': {'avg_hierarchy': float(avg_hierarchy), 'score': float(hierarchy_score)},
+                    'coherence': {'avg_mi': float(avg_mi), 'score': float(coherence_score)},
+                    'non_randomness': {'score': float(non_randomness)},
+                    'dfa': {'avg_hurst': float(avg_hurst)},
+                    'criticality': {'avg_slope': float(avg_slope)},
+                }
+        except Exception as e:
+            log(f"⚠️ Cache check failed: {e}, will recompute")
+
     # Decide whether to use MMAP based on estimated decompressed size vs available RAM
     # Typical compression ratio for binary data: ~8-12x, use 10x as estimate
     estimated_decompressed_gb = (file_size_mb * 10) / 1024  # Estimated GB when decompressed
@@ -2394,8 +2470,16 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
     else:
         # FAST: Small file, load all at once
         log(f"   Loading into memory...")
-        with gzip.open(data_path, 'rb') as f:
-            data = f.read()
+        try:
+            with gzip.open(data_path, 'rb') as f:
+                data = f.read()
+        except EOFError as e:
+            log(f"   ⚠️ ERROR: Corrupted gzip file (truncated): {e}")
+            return {'error': f'Corrupted gzip file: {data_path}', 'variant': variant, 'iteration': iteration}
+        except Exception as e:
+            log(f"   ⚠️ ERROR reading file: {e}")
+            return {'error': f'Error reading file: {e}', 'variant': variant, 'iteration': iteration}
+
         ba = bitarray()
         ba.frombytes(data)
         total_bits = len(ba)
@@ -2561,9 +2645,35 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
                             failed_chunks.append(args[1])
                             log(f"   ❌ Chunk {args[1]} failed permanently after {MAX_RETRIES} retries: {e}")
 
+        # Save checkpoint after processing (for "load into memory" mode)
+        # This ensures cache is saved even for small files!
+        temp_dir = Path(__file__).parent.parent / "results" / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_path = temp_dir / f"emergence_checkpoint_{variant}_{iteration}.json"
+
+        if completed >= n_chunks and not failed_chunks:
+            try:
+                import json as json_mod
+                ckpt_data = {
+                    'completed': n_chunks,
+                    'n_chunks': n_chunks,
+                    'power_slopes': power_slopes,
+                    'lz_values': lz_values,
+                    'mi_values': mi_values,
+                    'dfa_hursts': dfa_hursts,
+                    'hierarchy_scores': hierarchy_scores,
+                    'failed_chunks': []
+                }
+                with open(checkpoint_path, 'w') as f:
+                    json_mod.dump(ckpt_data, f)
+                log(f"💾 Results cached for future use")
+            except Exception as e:
+                log(f"⚠️ Could not save cache: {e}")
+
     log(f"✅ Processed all {n_chunks} chunks in {(time.time()-t0)/60:.1f} min")
 
     # Aggregate results (weighted average by chunk)
+    import numpy as np  # Local import to ensure availability in this scope
     def safe_mean(values):
         return np.mean(values) if values else np.nan
 
@@ -2635,6 +2745,7 @@ def calculate_emergence_index_streaming(variant: str, iteration: int,
         'chunks_processed': n_chunks,
         'analysis_mode': 'streaming_full',
         'emergence_index': emergence_index,
+        'interpretation': _interpret_emergence(emergence_index),
         'phi_tendency': phi_strength,
         'phi_data': {
             'run_ratios_count': len(all_phi_run_ratios),
@@ -2683,8 +2794,8 @@ def load_phi_sequence(variant: str, iteration: int,
     """
     Load a SAMPLE of Φ sequence from phi_snapshots for a given variant and iteration.
 
-    To avoid memory issues with large sequences (2GB+), we only load a sample
-    from the middle portion of the sequence.
+    Uses STREAMING mode for large files (>100MB) to avoid loading entire file into RAM.
+    Only reads the required number of bits from the beginning of the sequence.
 
     Args:
         variant: Variant code (A, B, D, E, F, G, H)
@@ -2706,37 +2817,37 @@ def load_phi_sequence(variant: str, iteration: int,
 
     if struct_path.exists():
         try:
-            from bitarray import bitarray
-            import threading
-            import time as time_module
-
             file_size_mb = struct_path.stat().st_size / (1024 * 1024)
-            # Estimate: ~10-20 MB/s decompression speed
-            est_seconds = int(file_size_mb / 15)
+
+            # For large files (>100MB), use streaming to avoid loading entire file
+            if file_size_mb > 100:
+                print(f"   📂 File: {struct_path.name} ({file_size_mb:.1f} MB) [STREAMING]", flush=True)
+
+                # Use streaming loader - only read what we need!
+                try:
+                    from utils.streaming_phi_loader import StreamingPhiLoader
+                    loader = StreamingPhiLoader(str(struct_path))
+
+                    bits = []
+                    for char in loader.iter_chars():
+                        if char in '01':
+                            bits.append(char)
+                            if len(bits) >= max_bits:
+                                break
+
+                    result = ''.join(bits)
+                    print(f"   ✓ Streamed {len(result):,} bits (no full decompression!)", flush=True)
+                    return result
+                except ImportError:
+                    print(f"   ⚠️ StreamingPhiLoader not available, falling back to full load", flush=True)
+                    # Fall through to full load below
+
+            # For small files, load normally
+            from bitarray import bitarray
             print(f"   📂 File: {struct_path.name} ({file_size_mb:.1f} MB)", flush=True)
-            print(f"   ⏳ Decompressing (~{est_seconds}s estimated)...", flush=True)
-
-            # Progress indicator in background thread
-            stop_spinner = threading.Event()
-            def spinner():
-                start = time_module.time()
-                chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-                i = 0
-                while not stop_spinner.is_set():
-                    elapsed = int(time_module.time() - start)
-                    print(f"\r      {chars[i % len(chars)]} {elapsed}s elapsed...", end="", flush=True)
-                    time_module.sleep(0.2)
-                    i += 1
-                print(f"\r      ✓ Decompression complete ({elapsed}s)   ", flush=True)
-
-            spinner_thread = threading.Thread(target=spinner, daemon=True)
-            spinner_thread.start()
 
             with gzip.open(struct_path, 'rb') as f:
                 data = f.read()
-
-            stop_spinner.set()
-            spinner_thread.join(timeout=1)
 
             ba = bitarray()
             ba.frombytes(data)
