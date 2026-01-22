@@ -51,6 +51,23 @@ sys.path.insert(0, str(Path(__file__).parent))
 PHI = (1 + math.sqrt(5)) / 2
 
 
+def safe_corrcoef(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Calculate Pearson correlation coefficient safely.
+
+    Returns 0.0 if either array has zero variance (all values equal),
+    avoiding the numpy RuntimeWarning for division by zero.
+    """
+    a_flat = a.flatten()
+    b_flat = b.flatten()
+
+    # Check for zero variance (would cause divide by zero)
+    if np.std(a_flat) == 0 or np.std(b_flat) == 0:
+        return 0.0
+
+    return float(np.corrcoef(a_flat, b_flat)[0, 1])
+
+
 # =============================================================================
 # NUMBA-OPTIMIZED HILBERT FUNCTIONS
 # =============================================================================
@@ -93,10 +110,60 @@ def bits_to_hilbert_grid_fast(bits_array: np.ndarray, order: int) -> np.ndarray:
     num_bits = min(len(bits_array), n * n)
 
     for d in prange(num_bits):
-        x, y = hilbert_d2xy_fast(n, d)
+        # Explicit int64 cast to avoid Numba type inference issues with prange
+        d_int = np.int64(d)
+        x, y = hilbert_d2xy_fast(n, d_int)
         grid[y, x] = bits_array[d]
 
     return grid
+
+
+@njit(parallel=True, cache=True)
+def map_bits_chunk_to_grid(grid: np.ndarray, bits_array: np.ndarray, start_d: int, n: int):
+    """
+    Map a chunk of bits to their Hilbert positions in an existing grid.
+
+    Numba-optimized for processing large orders in chunks.
+
+    Args:
+        grid: 2D numpy array to write to (modified in-place)
+        bits_array: 1D numpy array of uint8 (0 or 1)
+        start_d: Starting Hilbert index for this chunk
+        n: Grid dimension (2^order)
+    """
+    num_bits = len(bits_array)
+    for i in prange(num_bits):
+        d = np.int64(start_d + i)
+        x, y = hilbert_d2xy_fast(n, d)
+        grid[y, x] = bits_array[i]
+
+
+@njit(parallel=True, cache=True)
+def compute_hilbert_coords_batch(bits_array: np.ndarray, start_d: int, n: int) -> np.ndarray:
+    """
+    Compute Hilbert coordinates for a batch of bit positions.
+
+    Returns array of (y, x) coordinates for each bit.
+    Memory efficient: only stores coordinates, not full grid.
+
+    Args:
+        bits_array: 1D numpy array (used only for length)
+        start_d: Starting Hilbert index
+        n: Grid dimension (2^order)
+
+    Returns:
+        2D array of shape (num_bits, 2) with (y, x) coordinates
+    """
+    num_bits = len(bits_array)
+    coords = np.zeros((num_bits, 2), dtype=np.int32)
+
+    for i in prange(num_bits):
+        d = np.int64(start_d + i)
+        x, y = hilbert_d2xy_fast(n, d)
+        coords[i, 0] = y
+        coords[i, 1] = x
+
+    return coords
 
 
 # Legacy function for compatibility
@@ -162,8 +229,8 @@ def calculate_grid_features(grid: np.ndarray, verbose: bool = False) -> Dict:
     # Spatial autocorrelation (Moran's I approximation)
     grid_shifted_h = np.roll(grid, 1, axis=1)
     grid_shifted_v = np.roll(grid, 1, axis=0)
-    spatial_corr_h = float(np.corrcoef(grid.flatten(), grid_shifted_h.flatten())[0, 1])
-    spatial_corr_v = float(np.corrcoef(grid.flatten(), grid_shifted_v.flatten())[0, 1])
+    spatial_corr_h = safe_corrcoef(grid, grid_shifted_h)
+    spatial_corr_v = safe_corrcoef(grid, grid_shifted_v)
     
     if verbose:
         print("✓")
@@ -316,16 +383,444 @@ def stream_bits_for_order(data_dir: str, iteration: int, order: int) -> Optional
     # Try to find the structural file
     struct_path = Path(data_dir) / f"phi_iter{iteration}.struct.gz"
 
-    if struct_path.exists():
-        try:
-            from utils.bitarray_encoder import stream_phi_prefix_gz
-            bits = stream_phi_prefix_gz(str(struct_path), required_bits, clean=True)
-            if len(bits) >= required_bits:
-                return bits[:required_bits]
-        except Exception as e:
-            print(f"      Warning: streaming failed: {e}")
+    if not struct_path.exists():
+        print(f"   [Order {order}] ⚠️ File not found", flush=True)
+        return None
 
-    return None
+    try:
+        from utils.bitarray_encoder import stream_phi_prefix_gz
+        bits = stream_phi_prefix_gz(str(struct_path), required_bits, clean=True)
+        if len(bits) >= required_bits:
+            return bits[:required_bits]
+        else:
+            print(f"   [Order {order}] ⚠️ Only {len(bits):,}/{required_bits:,} bits available", flush=True)
+            return None
+    except Exception as e:
+        print(f"   [Order {order}] ⚠️ Load failed: {e}", flush=True)
+        return None
+
+
+def estimate_memory_for_order(order: int) -> float:
+    """Estimate memory required for a Hilbert order in GB."""
+    n = 2 ** order
+    grid_size = n * n
+    # float32 grid + uint8 bits array + working memory
+    bytes_needed = grid_size * 4 + grid_size + grid_size * 8  # grid + bits + ops
+    return bytes_needed / (1024 ** 3)
+
+
+def get_available_memory_gb() -> float:
+    """Get available system memory in GB."""
+    try:
+        import psutil
+        return psutil.virtual_memory().available / (1024 ** 3)
+    except ImportError:
+        # Fallback: assume 4GB available if psutil not installed
+        return 4.0
+
+
+# =============================================================================
+# CHUNKED PROCESSING FOR LARGE ORDERS (Order 15+)
+# =============================================================================
+
+def bits_to_hilbert_grid_chunked(
+    data_dir: str,
+    iteration: int,
+    order: int,
+    chunk_size: int = 10_000_000,
+    temp_dir: Optional[str] = None,
+    verbose: bool = True
+) -> Optional[np.ndarray]:
+    """
+    Convert bits to Hilbert grid using chunked processing and memory-mapped file.
+
+    This allows processing Order 15+ without running out of RAM.
+
+    Args:
+        data_dir: Path to variant data directory
+        iteration: Iteration number
+        order: Hilbert curve order
+        chunk_size: Bits to process per chunk (default 10M)
+        temp_dir: Directory for temp mmap file (default: system temp)
+        verbose: Show progress bar
+
+    Returns:
+        Memory-mapped numpy array with the Hilbert grid, or None if failed
+    """
+    import tempfile
+    import gzip
+
+    n = 2 ** order
+    total_bits = n * n
+
+    # Setup progress indicator (using project's standard class)
+    try:
+        from utils.progress import ProgressIndicator
+        use_progress = True
+    except ImportError:
+        use_progress = False
+
+    if temp_dir is None:
+        temp_dir = tempfile.gettempdir()
+
+    mem_for_grid = total_bits / (1024**3)  # uint8 = 1 byte per element
+
+    # For Order 16+ (>2GB), use HDF5 instead of mmap (Windows mmap limit)
+    use_hdf5 = order >= 16
+
+    if use_hdf5:
+        try:
+            import h5py
+        except ImportError:
+            print(f"   [Order {order}] ❌ h5py not installed. Run: pip install h5py", flush=True)
+            return None
+
+        h5_path = Path(temp_dir) / f"hilbert_grid_order{order}_iter{iteration}.h5"
+        if verbose:
+            print(f"   [Order {order}] HDF5 mode: {n}×{n} grid ({mem_for_grid:.2f} GB)", flush=True)
+    else:
+        mmap_path = Path(temp_dir) / f"hilbert_grid_order{order}_iter{iteration}.mmap"
+        if verbose:
+            print(f"   [Order {order}] mmap mode: {n}×{n} grid ({mem_for_grid:.2f} GB)", flush=True)
+
+    try:
+        # Create storage backend
+        if use_hdf5:
+            h5_file = h5py.File(h5_path, 'w')
+            grid = h5_file.create_dataset('grid', shape=(n, n), dtype='uint8',
+                                          chunks=(min(1024, n), min(1024, n)))
+        else:
+            # Use uint8 instead of float32: reduces file size by 4x (1GB vs 4GB for order 15)
+            # This avoids Windows WinError 87 for large files (>2GB mmap limit on some systems)
+            grid = np.memmap(mmap_path, dtype=np.uint8, mode='w+', shape=(n, n))
+            h5_file = None
+
+        # Find the data file and stream bits using proper decoder
+        struct_path = Path(data_dir) / f"phi_iter{iteration}.struct.gz"
+        if not struct_path.exists():
+            print(f"   [Order {order}] ❌ File not found: {struct_path}", flush=True)
+            return None
+
+        # Use stream_phi_prefix_gz which handles the 2-bit binary format correctly
+        from utils.bitarray_encoder import stream_phi_prefix_gz
+
+        # Stream all bits needed in one call (memory-efficient, reads only what's needed)
+        if verbose:
+            print(f"   [Order {order}] 📥 Decompressing {total_bits:,} bits...", flush=True)
+
+        try:
+            import time
+            start_time = time.time()
+            bits_string = stream_phi_prefix_gz(str(struct_path), total_bits, clean=True, verbose=verbose)
+            elapsed = time.time() - start_time
+            if verbose:
+                print(f"   [Order {order}] ✅ Loaded {len(bits_string):,} bits ({elapsed:.1f}s)", flush=True)
+        except Exception as e:
+            print(f"   [Order {order}] ❌ Decompression failed: {e}", flush=True)
+            return None
+
+        if len(bits_string) < total_bits:
+            if verbose:
+                print(f"   [Order {order}] ⚠️ Partial: {len(bits_string):,}/{total_bits:,} bits", flush=True)
+            # Continue with what we have
+            total_bits = len(bits_string)
+
+        # Process bits in chunks to avoid RAM issues
+        bits_processed = 0
+        progress = None
+
+        if verbose and use_progress:
+            progress = ProgressIndicator(f"Mapping {total_bits:,} bits", total=total_bits)
+            progress.__enter__()
+        elif verbose:
+            print(f"         Processing {total_bits:,} bits in chunks of {chunk_size:,}...")
+
+        while bits_processed < total_bits:
+            # Get next chunk
+            chunk_end = min(bits_processed + chunk_size, total_bits)
+            bits_chunk = bits_string[bits_processed:chunk_end]
+
+            if not bits_chunk:
+                break
+
+            # Convert to numpy array (bits_chunk is already clean '0'/'1' string)
+            bits_array = np.frombuffer(bits_chunk.encode('ascii'), dtype=np.uint8) - ord('0')
+
+            # Pre-compute all Hilbert coordinates using Numba (parallel)
+            coords = compute_hilbert_coords_batch(bits_array, bits_processed, n)
+
+            # Write to grid (works for both mmap and HDF5)
+            ys = coords[:, 0]
+            xs = coords[:, 1]
+
+            if use_hdf5:
+                # HDF5: group writes by row for efficiency (avoid element-by-element)
+                # Sort by row to minimize h5py I/O operations
+                sorted_idx = np.argsort(ys)
+                ys_sorted = ys[sorted_idx]
+                xs_sorted = xs[sorted_idx]
+                vals_sorted = bits_array[sorted_idx]
+
+                # Find unique rows and their boundaries
+                unique_rows, row_starts = np.unique(ys_sorted, return_index=True)
+                row_ends = np.append(row_starts[1:], len(ys_sorted))
+
+                for row, start, end in zip(unique_rows, row_starts, row_ends):
+                    row_data = grid[row, :]  # Read full row
+                    if isinstance(row_data, np.ndarray):
+                        row_data[xs_sorted[start:end]] = vals_sorted[start:end]
+                    else:
+                        row_data = np.array(row_data)
+                        row_data[xs_sorted[start:end]] = vals_sorted[start:end]
+                    grid[row, :] = row_data  # Write back
+            else:
+                grid[ys, xs] = bits_array  # mmap supports fancy indexing
+
+            bits_processed += len(bits_array)
+
+            if progress:
+                progress.update(bits_processed)
+
+        if progress:
+            progress.__exit__(None, None, None)
+
+        # Data integrity validation
+        if bits_processed < total_bits:
+            coverage_pct = 100 * bits_processed / total_bits
+            print(f"   [Order {order}] ⚠️ Partial: {bits_processed:,}/{total_bits:,} bits ({coverage_pct:.1f}%)", flush=True)
+
+        if verbose:
+            print(f"   [Order {order}] ✅ Mapped {bits_processed:,} bits to {n}×{n} grid", flush=True)
+
+        # Flush/close and return
+        if use_hdf5:
+            h5_file.flush()
+            # Return wrapper with path for cleanup
+            grid._h5_file = h5_file
+            grid._h5_path = str(h5_path)
+        else:
+            grid.flush()
+            grid._mmap_path = str(mmap_path)
+
+        return grid
+
+    except Exception as e:
+        print(f"   [Order {order}] ❌ Error: {e}", flush=True)
+        # Cleanup
+        if use_hdf5:
+            if 'h5_file' in dir() and h5_file:
+                h5_file.close()
+            if h5_path.exists():
+                try:
+                    os.remove(h5_path)
+                except:
+                    pass
+        else:
+            if 'mmap_path' in dir() and mmap_path.exists():
+                try:
+                    os.remove(mmap_path)
+                except:
+                    pass
+        return None
+
+
+def cleanup_grid(grid, verbose: bool = False) -> bool:
+    """
+    Clean up a grid file (mmap or HDF5) after processing.
+
+    Call this when you're done with a grid returned by bits_to_hilbert_grid_chunked()
+    to free disk space.
+
+    Args:
+        grid: The memory-mapped array or HDF5 dataset
+        verbose: Print status messages
+
+    Returns:
+        True if cleanup succeeded, False otherwise
+    """
+    if grid is None:
+        return False
+
+    # Check for HDF5
+    h5_path = getattr(grid, '_h5_path', None)
+    h5_file = getattr(grid, '_h5_file', None)
+
+    if h5_path is not None:
+        try:
+            if h5_file:
+                h5_file.close()
+            if os.path.exists(h5_path):
+                os.remove(h5_path)
+                if verbose:
+                    print(f"   🗑️ Cleaned up HDF5: {h5_path}", flush=True)
+                return True
+        except Exception as e:
+            if verbose:
+                print(f"   ⚠️ Failed to cleanup HDF5: {e}", flush=True)
+        return False
+
+    # Check for mmap
+    mmap_path = getattr(grid, '_mmap_path', None)
+    if mmap_path is None:
+        return False
+
+    try:
+        del grid
+        if os.path.exists(mmap_path):
+            os.remove(mmap_path)
+            if verbose:
+                print(f"   🗑️ Cleaned up mmap: {mmap_path}", flush=True)
+            return True
+    except Exception as e:
+        if verbose:
+            print(f"   ⚠️ Failed to cleanup mmap: {e}", flush=True)
+    return False
+
+
+# Alias for backwards compatibility
+cleanup_mmap_grid = cleanup_grid
+
+
+def calculate_grid_features_chunked(grid: np.ndarray, order: int, verbose: bool = False) -> Dict:
+    """
+    Calculate features from a large Hilbert grid using chunked operations.
+
+    Optimized for memory-mapped arrays (avoids loading entire grid into RAM).
+    """
+    n = grid.shape[0]
+
+    try:
+        from utils.progress import ProgressIndicator
+        use_progress = True
+    except ImportError:
+        use_progress = False
+
+    if verbose:
+        print(f"   [Order {order}] 📊 Computing features for {n}×{n} grid...", flush=True)
+
+    # Basic stats - can be computed incrementally
+    total_sum = 0
+    total_count = n * n
+    chunk_rows = min(1024, n)  # Process 1024 rows at a time
+    progress = None
+
+    if verbose and use_progress:
+        progress = ProgressIndicator("Computing density", total=n)
+        progress.__enter__()
+
+    for start_row in range(0, n, chunk_rows):
+        end_row = min(start_row + chunk_rows, n)
+        chunk = grid[start_row:end_row, :]
+        total_sum += np.sum(chunk)
+        if progress:
+            progress.update(end_row)
+
+    if progress:
+        progress.__exit__(None, None, None)
+
+    density = float(total_sum / total_count)
+
+    # Block densities - sample for large grids
+    block_sizes = [2, 4, 8, 16, 32, 64] if n >= 64 else [2, 4, 8, 16]
+    block_densities = {}
+
+    for bs in block_sizes:
+        if n % bs != 0:
+            continue
+
+        n_blocks = n // bs
+        total_blocks = n_blocks * n_blocks
+        # For very large grids, sample blocks instead of computing all
+        if n_blocks > 1000:
+            # Sample 2500 random blocks (provides ~2% margin of error at 95% CI)
+            sample_size = min(2500, total_blocks)
+            np.random.seed(42)  # Reproducible
+            block_means = []
+            for _ in range(sample_size):
+                bi, bj = np.random.randint(0, n_blocks, 2)
+                block = grid[bi*bs:(bi+1)*bs, bj*bs:(bj+1)*bs]
+                block_means.append(np.mean(block))
+            block_means = np.array(block_means)
+            is_sampled = True
+        else:
+            # Compute all blocks
+            block_means = []
+            for bi in range(n_blocks):
+                for bj in range(n_blocks):
+                    block = grid[bi*bs:(bi+1)*bs, bj*bs:(bj+1)*bs]
+                    block_means.append(np.mean(block))
+            block_means = np.array(block_means)
+            is_sampled = False
+
+        # Standard error for sampled statistics
+        se = float(np.std(block_means) / np.sqrt(len(block_means)))
+
+        block_densities[bs] = {
+            'mean': float(np.mean(block_means)),
+            'std': float(np.std(block_means)),
+            'std_error': se,
+            'max': float(np.max(block_means)),
+            'min': float(np.min(block_means)),
+            'n_samples': len(block_means),
+            'n_total': total_blocks,
+            'is_sampled': is_sampled
+        }
+
+    # Spatial autocorrelation - stratified sampling for large grids
+    is_corr_sampled = False
+    if n > 4096:
+        # Stratified sampling: sample from 9 regions (3x3 grid) for representativeness
+        sample_size = 1024
+        regions_corr_h = []
+        regions_corr_v = []
+        np.random.seed(42)  # Reproducible
+
+        # Sample from 9 regions: corners, edges, and center
+        positions = [
+            (0, 0), (0, n//2 - sample_size//2), (0, n - sample_size),
+            (n//2 - sample_size//2, 0), (n//2 - sample_size//2, n//2 - sample_size//2), (n//2 - sample_size//2, n - sample_size),
+            (n - sample_size, 0), (n - sample_size, n//2 - sample_size//2), (n - sample_size, n - sample_size)
+        ]
+
+        for row_start, col_start in positions:
+            region = grid[row_start:row_start+sample_size, col_start:col_start+sample_size]
+            region_h = np.roll(region, 1, axis=1)
+            region_v = np.roll(region, 1, axis=0)
+            corr_h = safe_corrcoef(region, region_h)
+            corr_v = safe_corrcoef(region, region_v)
+            if corr_h != 0.0:  # safe_corrcoef returns 0.0 for invalid
+                regions_corr_h.append(corr_h)
+            if corr_v != 0.0:
+                regions_corr_v.append(corr_v)
+
+        spatial_corr_h = float(np.mean(regions_corr_h)) if regions_corr_h else 0.0
+        spatial_corr_v = float(np.mean(regions_corr_v)) if regions_corr_v else 0.0
+        spatial_corr_std = float(np.std(regions_corr_h + regions_corr_v)) if regions_corr_h else 0.0
+        is_corr_sampled = True
+    else:
+        grid_shifted_h = np.roll(grid, 1, axis=1)
+        grid_shifted_v = np.roll(grid, 1, axis=0)
+        spatial_corr_h = safe_corrcoef(grid, grid_shifted_h)
+        spatial_corr_v = safe_corrcoef(grid, grid_shifted_v)
+        spatial_corr_std = 0.0  # Exact value, no sampling error
+
+    if verbose:
+        print(f"   ✅ Features computed", flush=True)
+
+    return {
+        'grid_size': n,
+        'total_bits': n * n,
+        'density': density,
+        'block_densities': block_densities,
+        'spatial_correlation': {
+            'horizontal': spatial_corr_h,
+            'vertical': spatial_corr_v,
+            'mean': (spatial_corr_h + spatial_corr_v) / 2,
+            'std': spatial_corr_std,
+            'is_sampled': is_corr_sampled,
+            'n_regions': 9 if is_corr_sampled else 1
+        }
+    }
 
 
 def analyze_single_order(args: Tuple) -> Tuple[int, Optional[Dict]]:
@@ -341,25 +836,56 @@ def analyze_single_order(args: Tuple) -> Tuple[int, Optional[Dict]]:
     order, bits_or_path, is_streaming, data_dir, iteration = args
 
     try:
-        if is_streaming:
-            # Stream bits for this specific order
-            bits = stream_bits_for_order(data_dir, iteration, order)
-            if bits is None:
+        mem_needed = estimate_memory_for_order(order)
+        mem_available = get_available_memory_gb()
+
+        # Use chunked mode for large orders (Order 14+ or when memory is tight)
+        use_chunked = order >= 14 or mem_needed > mem_available * 0.5
+
+        if use_chunked:
+            # CHUNKED MODE: Uses memory-mapped file, processes bits incrementally
+            pass  # Message will be printed by bits_to_hilbert_grid_chunked
+
+            grid = bits_to_hilbert_grid_chunked(data_dir, iteration, order, verbose=True)
+            if grid is None:
                 return order, None
+
+            features = calculate_grid_features_chunked(grid, order, verbose=True)
+            features['grid'] = grid  # Memory-mapped, doesn't consume RAM
+            features['mode'] = 'chunked'
+            return order, features
+
         else:
-            bits = bits_or_path
+            # STANDARD MODE: Load all bits into memory
+            if is_streaming:
+                bits = stream_bits_for_order(data_dir, iteration, order)
+                if bits is None:
+                    return order, None
+            else:
+                bits = bits_or_path
 
-        required = 4 ** order
-        if len(bits) < required:
-            return order, None
+            required = 4 ** order
+            if len(bits) < required:
+                print(f"   [Order {order}] ⚠️ Insufficient: {len(bits):,}/{required:,} bits", flush=True)
+                return order, None
 
-        grid = bits_to_hilbert_grid(bits, order)
-        features = calculate_grid_features(grid, verbose=False)
-        features['grid'] = grid  # Keep for visualization
-        return order, features
+            grid = bits_to_hilbert_grid(bits, order)
+            features = calculate_grid_features(grid, verbose=False)
+            features['grid'] = grid
+            features['mode'] = 'standard'
+            return order, features
 
+    except MemoryError:
+        print(f"   [Order {order}] ❌ Out of memory", flush=True)
+        return order, None
+    except OSError as e:
+        if "WinError 87" in str(e) or "parameter is incorrect" in str(e).lower():
+            print(f"   [Order {order}] ⚠️ Windows mmap limit — grid too large for this system", flush=True)
+        else:
+            print(f"   [Order {order}] ❌ OS error: {e}", flush=True)
+        return order, None
     except Exception as e:
-        print(f"      Error processing order {order}: {e}")
+        print(f"   [Order {order}] ❌ Error: {e}", flush=True)
         return order, None
 
 
@@ -413,6 +939,13 @@ def analyze_multi_resolution_parallel(
         print(f"   {'Orders:':16} {orders}")
         print(f"   {'Target φ:':16} {PHI:.6f}")
 
+        # Memory warning for large orders
+        mem_available = get_available_memory_gb()
+        for order in orders:
+            mem_needed = estimate_memory_for_order(order)
+            if mem_needed > mem_available * 0.8:
+                print(f"   ⚠️  Warning: Order {order} needs ~{mem_needed:.1f}GB (available: {mem_available:.1f}GB)")
+
     results_by_order = {}
     grids = {}
 
@@ -451,11 +984,18 @@ def analyze_multi_resolution_parallel(
 
     cross_scale = calculate_cross_scale_ratios(results_by_order, orders)
 
+    # Calculate total data size from the largest order processed
+    data_size = 0
+    if results_by_order:
+        max_order = max(results_by_order.keys())
+        data_size = 4 ** max_order
+
     return {
         'orders': orders,
         'results_by_order': results_by_order,
         'cross_scale': cross_scale,
         'phi_target': PHI,
+        'data_size': data_size,
         'grids': grids  # For visualization
     }
 
@@ -595,7 +1135,8 @@ def print_results(results: Dict) -> None:
     print(f"🗺️  HILBERT MULTI-RESOLUTION — Hidden φ Discovery")
     print(f"{'='*60}")
     print(f"   φ target: {results['phi_target']:.6f}")
-    print(f"   Data: {results['data_size']:,} bits")
+    if 'data_size' in results and results['data_size'] > 0:
+        print(f"   Data: {results['data_size']:,} bits")
 
     print(f"\n📐 Resolution Analysis:")
     for order, data in results['results_by_order'].items():

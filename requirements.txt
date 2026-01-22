@@ -18,6 +18,9 @@ pandas>=1.3.0
 # Efficient compression and encoding
 bitarray>=2.8.0
 
+# Large array storage (for Hilbert orders >= 16)
+h5py>=3.8.0
+
 # Arbitrary precision math (for Variant J - Pi binary control)
 mpmath>=1.3.0
 

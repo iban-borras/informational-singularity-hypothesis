@@ -225,7 +225,7 @@ def _decompress_to_temp(gz_path, verbose: bool = False) -> Optional[str]:
 
     try:
         import time
-        from tqdm import tqdm
+        from utils.progress import ProgressIndicator
         t0 = time.time()
 
         with gzip.open(gz_path, 'rb') as f_in:
@@ -234,10 +234,10 @@ def _decompress_to_temp(gz_path, verbose: bool = False) -> Optional[str]:
                 chunk_size = 64 * 1024 * 1024  # 64 MB chunks
                 total_written = 0
 
-                # Progress bar with estimated size
-                pbar = tqdm(total=estimated_size, unit='B', unit_scale=True,
-                           desc="      Decompressing", disable=not verbose,
-                           leave=False)
+                # Progress indicator (estimated size in MB for readability)
+                if verbose:
+                    progress = ProgressIndicator("Decompressing", total=estimated_size)
+                    progress.__enter__()
 
                 while True:
                     chunk = f_in.read(chunk_size)
@@ -245,13 +245,14 @@ def _decompress_to_temp(gz_path, verbose: bool = False) -> Optional[str]:
                         break
                     f_out.write(chunk)
                     total_written += len(chunk)
-                    pbar.update(len(chunk))
+                    if verbose:
+                        progress.update(total_written, f"{total_written / 1e6:.0f} MB")
 
-                # Adjust total if we went over estimate
-                if total_written > estimated_size:
-                    pbar.total = total_written
-                    pbar.refresh()
-                pbar.close()
+                # Update total if we went over estimate
+                if verbose:
+                    if total_written > estimated_size:
+                        progress.total = total_written
+                    progress.__exit__(None, None, None)
 
         if verbose:
             elapsed = time.time() - t0
@@ -307,52 +308,55 @@ def _cleanup_temp_file(temp_path: str, verbose: bool = False):
             print(f"   ⚠️ Could not clean temp file: {e}", flush=True)
 
 
-def calculate_power_spectrum_slope(sequence: str, min_freq_idx: int = 1) -> Tuple[float, float]:
+def calculate_power_spectrum_slope(sequence: str, min_freq_idx: int = 1) -> Tuple[float, float, float]:
     """
     Calculate the power spectrum slope to detect 1/f criticality.
-    
+
     A slope of -1 indicates perfect 1/f noise (criticality).
     A slope of 0 indicates white noise (pure randomness).
     A slope of -2 indicates Brownian motion (over-correlated).
-    
+
     Args:
         sequence: Binary string (e.g., "01101001...")
         min_freq_idx: Minimum frequency index to avoid DC component
-        
+
     Returns:
-        Tuple of (slope, r_squared) where slope ~ -1 indicates criticality
+        Tuple of (slope, r_squared, std_err) where:
+            - slope ~ -1 indicates criticality
+            - r_squared: coefficient of determination
+            - std_err: standard error of the slope estimate
     """
     # Convert to numpy array
     bits = np.array([int(b) for b in sequence], dtype=np.float64)
-    
+
     # Subtract mean to remove DC component
     bits = bits - np.mean(bits)
-    
+
     # Apply window to reduce spectral leakage
     window = np.hanning(len(bits))
     bits_windowed = bits * window
-    
+
     # Compute FFT
     spectrum = np.abs(fft(bits_windowed)[:len(bits)//2])**2
-    
+
     # Frequency bins (skip DC)
     freqs = np.arange(min_freq_idx, len(spectrum))
     power = spectrum[min_freq_idx:]
-    
+
     # Filter zero/negative values for log
     mask = power > 0
     if np.sum(mask) < 10:
-        return 0.0, 0.0
-    
+        return 0.0, 0.0, 0.0
+
     log_freq = np.log10(freqs[mask])
     log_power = np.log10(power[mask])
-    
+
     # Linear regression in log-log space
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         slope, intercept, r_value, p_value, std_err = linregress(log_freq, log_power)
-    
-    return slope, r_value**2
+
+    return slope, r_value**2, std_err
 
 
 def _get_lz76_numba_kernel():
@@ -487,12 +491,17 @@ def calculate_lempel_ziv_complexity(sequence: str, max_sample: int = 500_000, ve
         return 0.0
 
     # Sample if sequence is too long
+    # SAMPLING RATIONALE: Center portion is used because:
+    # 1. Edge effects from file headers/footers are avoided
+    # 2. For most binary data, the center is representative of overall structure
+    # 3. Deterministic sampling ensures reproducibility (no random component)
+    # For stratified sampling across regions, use calculate_emergence_index() instead.
     if n > max_sample:
         start = (n - max_sample) // 2
         sequence = sequence[start:start + max_sample]
         n = max_sample
         if verbose:
-            print(f"      (Sampling {max_sample:,} bits for LZ complexity)")
+            print(f"      (Sampling {max_sample:,} center bits for LZ complexity)")
 
     # Try Numba-accelerated version
     if _LZ76_KERNEL is None:
@@ -572,7 +581,8 @@ def _lz76_pure_python(sequence: str, verbose: bool = True) -> int:
 
 def calculate_long_range_mutual_info(sequence: str,
                                       block_size: int = 100,
-                                      max_distance: int = 10000) -> float:
+                                      max_distance: int = 10000,
+                                      seed: int = 42) -> dict:
     """
     Calculate mutual information between distant blocks.
 
@@ -583,16 +593,24 @@ def calculate_long_range_mutual_info(sequence: str,
         sequence: Binary string
         block_size: Size of blocks to compare
         max_distance: Maximum distance between blocks
+        seed: Random seed for reproducibility
 
     Returns:
-        Average MI ratio (actual MI / max possible MI)
+        Dictionary with:
+            - mi_ratio: Average MI ratio (actual MI / max possible MI)
+            - std_error: Standard error of the mean
+            - n_samples: Number of block pairs sampled
+            - is_sampled: Always True (uses random sampling)
     """
     n = len(sequence)
     if n < block_size * 2 + max_distance:
         max_distance = (n - block_size * 2) // 2
 
     if max_distance < block_size:
-        return 0.0
+        return {'mi_ratio': 0.0, 'std_error': 0.0, 'n_samples': 0, 'is_sampled': True}
+
+    # Set seed for reproducibility
+    np.random.seed(seed)
 
     # Convert to numpy array once (much faster for slicing)
     seq_array = np.frombuffer(sequence.encode('ascii'), dtype=np.uint8) - ord('0')
@@ -617,7 +635,16 @@ def calculate_long_range_mutual_info(sequence: str,
             mi = _calculate_block_mi_fast(block1, block2)
             mi_values.append(mi)
 
-    return np.mean(mi_values) if mi_values else 0.0
+    if not mi_values:
+        return {'mi_ratio': 0.0, 'std_error': 0.0, 'n_samples': 0, 'is_sampled': True}
+
+    mi_array = np.array(mi_values)
+    return {
+        'mi_ratio': float(np.mean(mi_array)),
+        'std_error': float(np.std(mi_array) / np.sqrt(len(mi_array))),
+        'n_samples': len(mi_values),
+        'is_sampled': True
+    }
 
 
 def _calculate_block_mi_fast(block1: np.ndarray, block2: np.ndarray) -> float:
@@ -1198,11 +1225,19 @@ def calculate_multiscale_entropy(sequence: str,
 
 
 def _sample_entropy_fast(data: np.ndarray, m: int, r_factor: float,
-                          max_samples: int = 1000) -> float:
+                          max_samples: int = 1000, seed: int = 42) -> float:
     """
     Fast Sample Entropy using sampling for large sequences.
 
     For n > max_samples, we sample random pairs instead of checking all O(n²) pairs.
+    Uses a fixed seed for reproducibility.
+
+    Args:
+        data: Numeric array
+        m: Embedding dimension
+        r_factor: Tolerance factor (multiplied by std)
+        max_samples: Max samples before switching to random sampling
+        seed: Random seed for reproducibility
     """
     n = len(data)
     if n < m + 2:
@@ -1216,6 +1251,9 @@ def _sample_entropy_fast(data: np.ndarray, m: int, r_factor: float,
     # If small enough, do exact calculation
     if n <= max_samples:
         return _sample_entropy_exact(data, m, r)
+
+    # Set seed for reproducibility
+    np.random.seed(seed)
 
     # Sample-based approximation for large sequences
     n_samples = min(max_samples * max_samples // 2, 50000)
@@ -1487,8 +1525,11 @@ def calculate_emergence_index(sequence: str,
             print(f"   {msg}", flush=True)
 
     # Sample if sequence is too large
-    if len(sequence) > sample_size:
-        # Take middle portion for representative sample
+    # SAMPLING RATIONALE: Center portion is used for consistency with LZ/DFA metrics.
+    # The center is typically representative for binary data and avoids edge artifacts.
+    # This is deterministic (no random component) for full reproducibility.
+    is_sampled = len(sequence) > sample_size
+    if is_sampled:
         start = (len(sequence) - sample_size) // 2
         seq = sequence[start:start + sample_size]
     else:
@@ -1496,18 +1537,21 @@ def calculate_emergence_index(sequence: str,
 
     results = {
         'sequence_length': len(sequence),
-        'sample_size': len(seq)
+        'sample_size': len(seq),
+        'is_sampled': is_sampled,
+        'sampling_method': 'center' if is_sampled else 'none'
     }
 
     # 1. Criticality (1/f spectrum)
     log("⚡ [1/5] Calculating power spectrum (FFT)...")
     t0 = time.time()
-    slope, r_sq = calculate_power_spectrum_slope(seq)
+    slope, r_sq, slope_std_err = calculate_power_spectrum_slope(seq)
     log(f"   Done in {time.time()-t0:.1f}s - slope={slope:.3f}")
     # Perfect 1/f has slope = -1; score based on distance from -1
     criticality_score = max(0, 1 - abs(slope + 1) / 2)  # 0-1 scale
     results['criticality'] = {
         'slope': slope,
+        'slope_std_err': slope_std_err,
         'r_squared': r_sq,
         'target': -1.0,
         'score': criticality_score,
@@ -1543,12 +1587,16 @@ def calculate_emergence_index(sequence: str,
     # 3. Long-Range Coherence
     log("🔗 [3/5] Calculating long-range MI...")
     t0 = time.time()
-    mi_ratio = calculate_long_range_mutual_info(seq)
+    mi_result = calculate_long_range_mutual_info(seq)
+    mi_ratio = mi_result['mi_ratio']
     log(f"   Done in {time.time()-t0:.1f}s - MI={mi_ratio:.4f}")
     # Higher MI = more coherence = better
     coherence_score = min(1.0, mi_ratio * 10)  # Scale to 0-1
     results['coherence'] = {
         'mi_ratio': mi_ratio,
+        'std_error': mi_result['std_error'],
+        'n_samples': mi_result['n_samples'],
+        'is_sampled': mi_result['is_sampled'],
         'score': coherence_score,
         'interpretation': _interpret_mi(mi_ratio)
     }
@@ -1968,8 +2016,9 @@ def _process_chunk(args):
     try:
         if DEBUG_CHUNK:
             print(f"      [CHUNK {chunk_idx}] Step 1/6: Power spectrum...", flush=True)
-        slope, _ = calculate_power_spectrum_slope(chunk_str)
+        slope, _, slope_std_err = calculate_power_spectrum_slope(chunk_str)
         result['power_slope'] = slope
+        result['power_slope_std_err'] = slope_std_err
     except:
         pass
 
@@ -1989,8 +2038,9 @@ def _process_chunk(args):
     try:
         if DEBUG_CHUNK:
             print(f"      [CHUNK {chunk_idx}] Step 3/6: Long-range MI...", flush=True)
-        mi = calculate_long_range_mutual_info(chunk_str)
-        result['mi'] = mi
+        mi_result = calculate_long_range_mutual_info(chunk_str)
+        result['mi'] = mi_result['mi_ratio']
+        result['mi_std_error'] = mi_result['std_error']
     except:
         pass
 

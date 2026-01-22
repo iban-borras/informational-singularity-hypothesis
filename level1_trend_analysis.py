@@ -94,18 +94,32 @@ def print_discovery_summary(discoveries: Dict[str, List[int]]):
         print()
 
 
-def generate_trend_plots(results: Dict, output_dir: Path, extrapolate_to: int = 30):
+def generate_trend_plots(results: Dict, output_dir: Path, extrapolate_to: int = 30,
+                         min_r2: float = 0.5, significance_level: float = 0.05):
     """
     Generate trend plots for each metric across iterations.
-    Includes linear regression extrapolation.
+    Includes linear regression extrapolation with confidence intervals.
 
     File naming convention: trend_{variants}_{metric}_iter{min}-{max}.png
     Example: trend_B_E_I_emergence_index_iter17-23.png
+
+    Statistical rigor:
+        - Only reports trends with R² >= min_r2
+        - Only reports trends with p-value < significance_level
+        - Shows 95% confidence bands on extrapolation
+        - Calculates prediction intervals for future values
+
+    Args:
+        results: Dictionary with variant data
+        output_dir: Output directory for plots
+        extrapolate_to: Target iteration for extrapolation
+        min_r2: Minimum R² to consider trend significant (default 0.5)
+        significance_level: p-value threshold (default 0.05)
     """
     try:
         import matplotlib.pyplot as plt
         import numpy as np
-        from scipy.stats import linregress
+        from scipy.stats import linregress, t as t_dist
     except ImportError:
         print("   ⚠️ matplotlib/scipy not available, skipping plots")
         return
@@ -135,8 +149,22 @@ def generate_trend_plots(results: Dict, output_dir: Path, extrapolate_to: int = 
         'phi_tendency': 'φ-Tendency'
     }
 
-    colors = {'B': '#2ecc71', 'E': '#3498db', 'I': '#9b59b6',
-              'A': '#e74c3c', 'D': '#f39c12', 'F': '#1abc9c'}
+    # HSI variants: vibrant colors
+    # Control variants: muted/grayish tones (distinguishable from each other)
+    colors = {
+        # HSI Variants (vibrant)
+        'B': '#2ecc71',  # Green - Gold standard
+        'D': '#f39c12',  # Orange
+        'E': '#3498db',  # Blue
+        'F': '#1abc9c',  # Teal
+        'I': '#9b59b6',  # Purple
+        # Control Variants (muted/grayish - distinguishable)
+        'A': '#c0392b',  # Muted red (random control)
+        'J': '#7f8c8d',  # Gray (π digits)
+        'K': '#5d6d7e',  # Steel blue-gray (Rule 30)
+        'L': '#85929e',  # Light slate gray (Logistic)
+        'M': '#a04000',  # Brown/rust (Fibonacci - positive control)
+    }
 
     # Collect all extrapolations: {variant: {metric: {slope, intercept, r2, predicted}}}
     all_extrapolations = {}
@@ -158,25 +186,74 @@ def generate_trend_plots(results: Dict, output_dir: Path, extrapolate_to: int = 
             ax.plot(iterations, values, 'o-', color=color,
                    label=f'Variant {variant}', linewidth=2, markersize=8)
 
-            # Linear regression for extrapolation
-            if len(iterations) >= 2:
-                slope, intercept, r_value, _, _ = linregress(iterations, values)
+            # Linear regression with full statistical validation
+            if len(iterations) >= 3:  # Need at least 3 points for meaningful stats
+                x = np.array(iterations)
+                y = np.array(values)
+                n = len(x)
 
-                # Extrapolate
-                future_iters = list(range(max(iterations), extrapolate_to + 1))
-                future_values = [slope * x + intercept for x in future_iters]
+                # Full linregress with all statistics
+                slope, intercept, r_value, p_value, std_err = linregress(x, y)
+                r_squared = r_value ** 2
 
-                ax.plot(future_iters, future_values, '--', color=color,
-                       alpha=0.5, linewidth=1.5)
+                # Check statistical significance
+                is_significant = p_value < significance_level and r_squared >= min_r2
+
+                # Calculate prediction intervals
+                x_mean = np.mean(x)
+                ss_xx = np.sum((x - x_mean) ** 2)
+                y_pred = slope * x + intercept
+                residuals = y - y_pred
+                mse = np.sum(residuals ** 2) / (n - 2)  # Mean squared error
+                se_regression = np.sqrt(mse)  # Standard error of regression
+
+                # t-value for 95% CI
+                t_val = t_dist.ppf(0.975, n - 2)
+
+                # Extrapolate with confidence bands
+                future_iters = np.array(range(max(iterations), extrapolate_to + 1))
+                future_values = slope * future_iters + intercept
+
+                # Prediction interval (wider than confidence interval)
+                # SE_pred = SE_reg * sqrt(1 + 1/n + (x-x_mean)^2/SS_xx)
+                future_se = se_regression * np.sqrt(
+                    1 + 1/n + (future_iters - x_mean)**2 / ss_xx
+                )
+                future_ci_lower = future_values - t_val * future_se
+                future_ci_upper = future_values + t_val * future_se
+
+                # Only plot extrapolation if significant
+                if is_significant:
+                    ax.plot(future_iters, future_values, '--', color=color,
+                           alpha=0.7, linewidth=1.5)
+                    ax.fill_between(future_iters, future_ci_lower, future_ci_upper,
+                                   color=color, alpha=0.15)
+                else:
+                    # Show as dotted with warning
+                    ax.plot(future_iters, future_values, ':', color=color,
+                           alpha=0.3, linewidth=1)
 
                 # Store extrapolation per variant per metric
                 if variant not in all_extrapolations:
                     all_extrapolations[variant] = {}
+
+                pred_value = slope * extrapolate_to + intercept
+                pred_se = se_regression * np.sqrt(
+                    1 + 1/n + (extrapolate_to - x_mean)**2 / ss_xx
+                )
+
                 all_extrapolations[variant][metric] = {
                     'slope': slope,
+                    'slope_std_err': std_err,
                     'intercept': intercept,
-                    'r_squared': r_value ** 2,
-                    f'predicted_{extrapolate_to}': slope * extrapolate_to + intercept
+                    'r_squared': r_squared,
+                    'p_value': p_value,
+                    'is_significant': is_significant,
+                    'n_points': n,
+                    'se_regression': se_regression,
+                    f'predicted_{extrapolate_to}': pred_value,
+                    f'prediction_ci_lower_{extrapolate_to}': pred_value - t_val * pred_se,
+                    f'prediction_ci_upper_{extrapolate_to}': pred_value + t_val * pred_se,
                 }
 
         ax.set_xlabel('Iteration', fontsize=12)
@@ -333,16 +410,31 @@ def run_emergence_analysis(variant: str, iteration: int,
             include_phi=True
         )
 
+        n_chunks = result['chunks_processed']
         print(f"      ✅ EI={emergence_index:.4f} SCI={sci_result['sci']:.4f} ICC={icc_result['icc']:.4f} φ={phi_strength:.4f}")
-        print(f"         (Full sequence: {result['total_bits']:,} bits in {result['chunks_processed']} chunks)")
+        print(f"         (Full sequence: {result['total_bits']:,} bits in {n_chunks} chunks)")
+
+        # Extract n_samples for error estimation (sqrt(n) scaling)
+        n_lz = result.get('order', {}).get('n_samples', n_chunks)
+        n_mi = result.get('coherence', {}).get('n_samples', n_chunks)
+        n_hier = result.get('hierarchy', {}).get('n_samples', n_chunks)
+        n_dfa = result.get('dfa', {}).get('n_samples', n_chunks)
 
         return {
             'emergence_index': emergence_index,
             'sci': sci_result['sci'],
             'icc': icc_result['icc'],
-            'phi_tendency': phi_strength,  # From full sequence!
+            'phi_tendency': phi_strength,
             'total_bits': result['total_bits'],
             'analysis_mode': 'streaming_full',
+            'n_chunks': n_chunks,
+            # Sample sizes for error estimation
+            'n_samples': {
+                'lz': n_lz,
+                'mi': n_mi,
+                'hierarchy': n_hier,
+                'dfa': n_dfa
+            },
             'details': result
         }
 
@@ -640,16 +732,26 @@ Examples:
         extrapolations = generate_trend_plots(results, plot_dir, args.extrapolate)
 
         if extrapolations:
-            print(f"\n📊 EXTRAPOLATION TO ITERATION {args.extrapolate}")
-            print("=" * 60)
+            print(f"\n📊 EXTRAPOLATION TO ITERATION {args.extrapolate} (with statistical validation)")
+            print("=" * 70)
             pred_key = f'predicted_{args.extrapolate}'
+            ci_lower_key = f'prediction_ci_lower_{args.extrapolate}'
+            ci_upper_key = f'prediction_ci_upper_{args.extrapolate}'
+
             for variant, metrics_data in sorted(extrapolations.items()):
                 print(f"\n   Variant {variant}:")
-                print(f"   {'Metric':<20} {'Slope/iter':<12} {'R²':<8} {'@iter {}'.format(args.extrapolate):<10}")
-                print(f"   {'-'*52}")
+                print(f"   {'Metric':<18} {'Slope':<10} {'R²':<6} {'p-val':<8} {'Pred.':<8} {'95% CI':<16} {'Sig?'}")
+                print(f"   {'-'*76}")
                 for metric, ext in metrics_data.items():
                     pred_val = ext.get(pred_key, 0)
-                    print(f"   {metric:<20} {ext['slope']:+.6f}   {ext['r_squared']:.3f}    {pred_val:.4f}")
+                    ci_lo = ext.get(ci_lower_key, pred_val)
+                    ci_hi = ext.get(ci_upper_key, pred_val)
+                    p_val = ext.get('p_value', 1.0)
+                    is_sig = ext.get('is_significant', False)
+                    sig_mark = "✓" if is_sig else "✗"
+
+                    print(f"   {metric:<18} {ext['slope']:+.5f}  {ext['r_squared']:.3f}  "
+                          f"{p_val:.4f}   {pred_val:.4f}   [{ci_lo:.3f}, {ci_hi:.3f}]  {sig_mark}")
 
     print("\n✅ Analysis complete!")
 

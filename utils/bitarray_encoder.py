@@ -258,17 +258,20 @@ def load_phi_structural_gz(filepath: str) -> str:
     return decode_phi_with_structure(bits)
 
 
-def stream_phi_prefix_gz(filepath: str, max_chars: int, clean: bool = True) -> str:
+def stream_phi_prefix_gz(filepath: str, max_chars: int, clean: bool = True,
+                         verbose: bool = False) -> str:
     """
     Stream and decode only a prefix of Φ from gzip file.
 
-    Memory-efficient: reads only the bytes needed for max_chars characters.
-    Each character uses 2 bits, so we need (max_chars * 2) / 8 = max_chars / 4 bytes.
+    Memory-efficient: reads in chunks until we have enough clean characters.
+    Each character uses 2 bits, so we need (max_chars * 2) / 8 = max_chars / 4 bytes
+    (more if clean=True due to skipped parentheses).
 
     Args:
         filepath: Input file path (should end with .gz)
         max_chars: Maximum number of output characters to read
         clean: If True, remove structural characters '(' and ')' from output
+        verbose: If True, show progress during decompression
 
     Returns:
         String containing decoded characters (length <= max_chars)
@@ -277,26 +280,25 @@ def stream_phi_prefix_gz(filepath: str, max_chars: int, clean: bool = True) -> s
         >>> stream_phi_prefix_gz("phi_iter23.struct.gz", 1000000, clean=True)
         '0110101...'  # only 0s and 1s
     """
-    # Calculate bytes needed: 2 bits per char, 8 bits per byte
-    # Add extra margin for clean mode (we need more input to get enough clean output)
-    if clean:
-        # Estimate: parentheses are ~10% of structural data, so read 20% more
-        bytes_needed = (int(max_chars * 1.25) + 3) // 4
-    else:
-        bytes_needed = (max_chars + 3) // 4  # Round up
-
-    # Read in chunks for memory efficiency (1MB at a time)
-    chunk_size = 1_048_576
+    # Read in chunks for memory efficiency (4MB at a time for better I/O)
+    chunk_size = 4_194_304
     result_chars = []
-    bytes_read = 0
+    chunks_read = 0
+
+    # Progress reporting interval (every 10 chunks = ~40MB)
+    progress_interval = 10
 
     with gzip.open(filepath, "rb") as f:
-        while bytes_read < bytes_needed and len(result_chars) < max_chars:
-            read_amount = min(chunk_size, bytes_needed - bytes_read)
-            raw = f.read(read_amount)
+        # Keep reading until we have enough chars or EOF
+        while len(result_chars) < max_chars:
+            raw = f.read(chunk_size)
             if not raw:
-                break
-            bytes_read += len(raw)
+                break  # EOF
+
+            chunks_read += 1
+            if verbose and chunks_read % progress_interval == 0:
+                pct = 100 * len(result_chars) / max_chars
+                print(f"      ... {pct:.0f}% ({len(result_chars):,}/{max_chars:,} bits)", flush=True)
 
             # Decode this chunk
             bits = bitarray()
