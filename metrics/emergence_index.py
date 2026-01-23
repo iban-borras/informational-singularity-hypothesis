@@ -3143,18 +3143,26 @@ Examples:
                     max_cpu_percent=args.max_cpu,
                     no_cache=args.no_cache
                 )
-                if v in result['variants']:
-                    all_results['variants'][v] = result['variants'][v]
-                    all_results['variants'][v]['iteration'] = iteration
+                # Check if result is valid and variant exists with non-None value
+                if result and 'variants' in result and v in result['variants']:
+                    variant_result = result['variants'][v]
+                    if variant_result is not None:
+                        all_results['variants'][v] = variant_result
+                        all_results['variants'][v]['iteration'] = iteration
+                    else:
+                        print(f"   ⚠️ Variant {v} returned None result (possibly corrupted data)")
             except Exception as e:
                 print(f"   ⚠️ Error processing {v}: {e}")
 
-        # Rank by emergence_index
-        if all_results['variants']:
-            ranked = sorted(all_results['variants'].items(),
+        # Rank by emergence_index (filter out None values)
+        valid_variants = {k: v for k, v in all_results['variants'].items() if v is not None}
+        if valid_variants:
+            ranked = sorted(valid_variants.items(),
                           key=lambda x: x[1].get('emergence_index', 0), reverse=True)
             all_results['ranking'] = [v for v, _ in ranked]
             all_results['best_variant'] = ranked[0][0] if ranked else None
+            # Replace variants dict with only valid ones
+            all_results['variants'] = valid_variants
 
         results = all_results
 
@@ -3163,12 +3171,20 @@ Examples:
         print("📈 EMERGENCE INDEX RANKING")
         print("=" * 50)
 
-        for rank, variant in enumerate(results['ranking'], 1):
-            data = results['variants'][variant]
-            ei = data['emergence_index']
-            interp = data['interpretation']
-            iter_num = data.get('iteration', '?')
-            print(f"   {rank}. Variant {variant}@{iter_num}: {ei:.4f} - {interp}")
+        if not results['ranking']:
+            print("   ⚠️ No valid variants to rank")
+        else:
+            for rank, variant in enumerate(results['ranking'], 1):
+                data = results['variants'].get(variant)
+                if data:
+                    ei = data.get('emergence_index', 0)
+                    # Re-interpret if missing (cache may not have it)
+                    interp = data.get('interpretation')
+                    if not interp:
+                        interp = _interpret_emergence(ei)
+                        data['interpretation'] = interp  # Update for save
+                    iter_num = data.get('iteration', '?')
+                    print(f"   {rank}. Variant {variant}@{iter_num}: {ei:.4f} - {interp}")
 
         if results['best_variant']:
             print(f"\n🏆 Best candidate for Level 2: Variant {results['best_variant']}")

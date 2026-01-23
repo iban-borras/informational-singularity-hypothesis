@@ -18,7 +18,7 @@ Version: v33
 """
 
 from bitarray import bitarray
-from typing import Optional
+from typing import Optional, List, Tuple
 import gzip
 
 # Progress bar support
@@ -354,4 +354,148 @@ def get_format_info(phi_str: str) -> dict:
         'structural_savings_vs_text': 1.0 - (structural_bytes / text_bytes) if text_bytes > 0 else 0.0,
         'structural_overhead_vs_clean': (structural_bytes / clean_bytes) if clean_bytes > 0 else 0.0
     }
+
+
+def stream_multi_segment_gz(
+    filepath: str,
+    segment_size: int,
+    num_segments: int = 4,
+    total_chars: Optional[int] = None,
+    clean: bool = False,
+    verbose: bool = False
+) -> List[Tuple[int, str]]:
+    """
+    Stream gzip file and extract multiple segments from different positions.
+
+    Reads the file once (streaming) and captures segments at evenly spaced
+    positions for scientific validation of consistency across the sequence.
+
+    Args:
+        filepath: Input gzip file path
+        segment_size: Size of each segment to capture (e.g., 1_000_000)
+        num_segments: Number of segments to capture (default: 4)
+        total_chars: Total chars in file (if known, improves progress reporting)
+        clean: If True, remove structural characters '(' and ')'
+        verbose: Show progress
+
+    Returns:
+        List of (position, segment_string) tuples
+
+    Example:
+        >>> segments = stream_multi_segment_gz("phi.struct.gz", 1_000_000, 4)
+        >>> for pos, seg in segments:
+        ...     print(f"Position {pos}: {len(seg)} chars")
+    """
+    import os
+
+    # Estimate total if not provided (based on compressed size * ~4 decompression ratio)
+    if total_chars is None:
+        compressed_size = os.path.getsize(filepath)
+        # Rough estimate: 2 bits per char, ~4x compression ratio
+        total_chars = compressed_size * 4 * 4  # Very rough estimate
+
+    # Calculate capture positions (evenly spaced)
+    # We want segments at 0%, 25%, 50%, 75% (for 4 segments)
+    capture_positions = []
+    for i in range(num_segments):
+        pos = int((i / num_segments) * (total_chars - segment_size))
+        capture_positions.append(max(0, pos))
+
+    # Stream through file, capturing segments
+    segments = []
+    current_segment_idx = 0
+    current_segment_buffer = []
+    capturing = False
+
+    chunk_size = 4_194_304  # 4MB chunks
+    char_position = 0
+
+    # Setup progress bar if available
+    pbar = None
+    if verbose and HAS_TQDM:
+        # Create progress bar for streaming to next capture point
+        next_target = capture_positions[0] if capture_positions else total_chars
+        pbar = tqdm(
+            total=total_chars,
+            desc="   Streaming",
+            unit="chars",
+            unit_scale=True,
+            ncols=100,
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]"
+        )
+    elif verbose:
+        print(f"   Streaming through {total_chars:,} chars to capture {num_segments} segments...")
+
+    with gzip.open(filepath, "rb") as f:
+        while current_segment_idx < num_segments:
+            raw = f.read(chunk_size)
+            if not raw:
+                break  # EOF
+
+            # Decode chunk
+            bits = bitarray()
+            bits.frombytes(raw)
+            bit_str = bits.to01()
+
+            chars_in_chunk = 0
+
+            # Process 2 bits at a time
+            for i in range(0, len(bit_str) - 1, 2):
+                two_bits = bit_str[i:i+2]
+                char = DECODING_MAP.get(two_bits)
+                if char:
+                    if clean and char in '()':
+                        char_position += 1
+                        chars_in_chunk += 1
+                        continue
+
+                    # Check if we should start capturing
+                    if not capturing and current_segment_idx < num_segments:
+                        if char_position >= capture_positions[current_segment_idx]:
+                            capturing = True
+                            if pbar:
+                                pbar.set_description(f"   📍 Seg {current_segment_idx + 1}/{num_segments}")
+
+                    # Capture if active
+                    if capturing:
+                        current_segment_buffer.append(char)
+
+                        # Check if segment is complete
+                        if len(current_segment_buffer) >= segment_size:
+                            segment_str = ''.join(current_segment_buffer)
+                            segments.append((capture_positions[current_segment_idx], segment_str))
+
+                            if pbar:
+                                pbar.set_description(f"   ✓ Seg {current_segment_idx + 1}/{num_segments}")
+                            elif verbose:
+                                print(f"   ✓ Segment {current_segment_idx + 1}/{num_segments} captured at position {capture_positions[current_segment_idx]:,}")
+
+                            current_segment_buffer = []
+                            capturing = False
+                            current_segment_idx += 1
+
+                            if current_segment_idx >= num_segments:
+                                break
+
+                    char_position += 1
+                    chars_in_chunk += 1
+
+            # Update progress bar
+            if pbar:
+                pbar.update(chars_in_chunk)
+
+    # Close progress bar
+    if pbar:
+        pbar.close()
+        if verbose:
+            print(f"   ✅ All {len(segments)} segments captured successfully")
+
+    # Capture any remaining partial segment
+    if current_segment_buffer and current_segment_idx < num_segments:
+        segment_str = ''.join(current_segment_buffer)
+        segments.append((capture_positions[current_segment_idx], segment_str))
+        if verbose:
+            print(f"   ⚠️ Partial segment {current_segment_idx + 1} ({len(segment_str):,} chars)")
+
+    return segments
 

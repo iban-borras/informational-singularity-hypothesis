@@ -149,8 +149,9 @@ def load_phi_for_level1(
     # Load metadata to detect format
     metadata = load_metadata(data_dir, iteration)
 
-    # Detect format
-    is_v33 = metadata.get("format") == "v33_structural"
+    # Detect format (v33_structural or v33_structural_streaming)
+    format_str = metadata.get("format", "")
+    is_v33 = format_str.startswith("v33_structural")
 
     phi_structural = None
     phi_observable = None

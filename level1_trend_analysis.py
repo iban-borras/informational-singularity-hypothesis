@@ -550,9 +550,6 @@ def run_batch_analysis(discoveries: Dict[str, List[int]],
         'variants': {}
     }
 
-    output_dir = RESULTS_DIR / "level1" / "trend_analysis"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     for variant, available_iters in discoveries.items():
         if not available_iters:
             continue

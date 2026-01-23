@@ -81,39 +81,16 @@ This is precisely the situation:
 
 ## 🚀 Proposed Extensions
 
-### Extension 1: Multi-Scale Ratio Analyzer (MSRA)
+### ~~Extension 1: Multi-Scale Ratio Analyzer (MSRA)~~ [DEPRECATED]
 
-**Goal:** Find φ in the PROPORTIONS between structures at different scales.
-
-**Method:**
-1. Segment Φ into blocks of size 2^k for k = 4, 5, 6, ..., 12
-2. For each scale k, measure: block lengths, pattern frequencies, entropy
-3. Calculate RATIOS between consecutive scales: metric(k+1) / metric(k)
-4. Check if these ratios cluster around φ (1.618)
-
-**Expected finding:** Ratios between scales may converge to φ even if individual scales don't show it.
-
-**Implementation:**
-```python
-def analyze_scale_ratios(phi_bits, scales=[16, 32, 64, 128, 256, 512, 1024]):
-    metrics_by_scale = {}
-    for scale in scales:
-        blocks = segment_into_blocks(phi_bits, scale)
-        metrics_by_scale[scale] = {
-            'entropy': mean_block_entropy(blocks),
-            'density': mean_ones_density(blocks),
-            'pattern_count': unique_patterns(blocks)
-        }
-    
-    ratios = []
-    for i in range(len(scales) - 1):
-        for metric in ['entropy', 'density', 'pattern_count']:
-            ratio = metrics_by_scale[scales[i+1]][metric] / metrics_by_scale[scales[i]][metric]
-            ratios.append(ratio)
-    
-    phi_proximity = mean(|ratio - 1.618| for ratio in ratios)
-    return phi_proximity, ratios
-```
+> ⚠️ **Eliminated (2026-01-22)**: This approach was scientifically flawed.
+>
+> **Problem**: The metrics used (entropy, density) have no theoretical reason to produce φ ratios:
+> - `density_mean` ratio = 1.0 exactly (conservation of mass)
+> - `entropy_mean` ratio → 1.0 (law of large numbers)
+> - `unique_ratio` → <1.0 (decreasing unique blocks)
+>
+> **Replaced by**: LZ φ-scaling in `level1_deep_analysis.py`, which uses Lempel-Ziv complexity — a metric that CAN show φ-scaling in self-similar structures.
 
 ---
 
@@ -225,9 +202,10 @@ def analyze_nesting_tree(phi_structural):
 
 | Task | Priority | Effort | Impact |
 |------|----------|--------|--------|
-| Multi-Scale Ratio Analyzer (MSRA) | 🔴 High | Medium | High — directly tests hidden φ hypothesis |
+| ~~Multi-Scale Ratio Analyzer (MSRA)~~ | ❌ Deprecated | — | Scientifically flawed |
 | Pre-Collapse Structure Analysis (PCSA) | 🔴 High | Medium | High — exploits existing structural data |
 | Hilbert Multi-Resolution Comparison | 🟡 Medium | Low | Medium — visual validation |
+| **LZ φ-Scaling** (in `level1_deep_analysis.py`) | 🔴 High | ✅ Done | **Validated** — B shows 0.019 distance from φ |
 
 ### Phase 2: Deep Analysis (2-4 weeks)
 
@@ -332,11 +310,12 @@ This would suggest:
 
 ## 🚀 Next Steps
 
-1. **Implement MSRA** (Multi-Scale Ratio Analyzer) — Highest priority
+1. ~~**Implement MSRA**~~ — ❌ Deprecated (scientifically flawed)
 2. **Implement PCSA** (Pre-Collapse Structure Analysis) — Uses existing data
 3. **Generate B at iteration 25** — Need more data for robust analysis
 4. **Compare B vs F at same iteration** — Fair comparison
 5. **Document findings** — Update this roadmap with results
+6. **Validate LZ φ-scaling** — Already implemented in `level1_deep_analysis.py` ✅
 
 ---
 

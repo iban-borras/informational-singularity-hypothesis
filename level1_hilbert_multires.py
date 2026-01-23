@@ -1001,7 +1001,443 @@ def analyze_multi_resolution_parallel(
 
 
 # =============================================================================
-# FIGURE GENERATION
+# AGGREGATED METRICS FOR VISUALIZATION (Level 0 approach)
+# =============================================================================
+
+def compute_local_entropy(density_grid: np.ndarray, window: int = 5) -> np.ndarray:
+    """
+    Compute local Shannon entropy using sliding window.
+
+    Args:
+        density_grid: 2D array with density values (0-1)
+        window: Size of sliding window
+
+    Returns:
+        2D array with local entropy values (0-1)
+    """
+    try:
+        from scipy.ndimage import uniform_filter
+    except ImportError:
+        # Fallback: return uniform entropy if scipy unavailable
+        return np.full_like(density_grid, 0.5)
+
+    # Smooth the density with uniform filter
+    p1_smooth = uniform_filter(density_grid.astype(float), size=window, mode='constant')
+
+    # Shannon entropy: -p*log2(p) - (1-p)*log2(1-p)
+    eps = 1e-10
+    p1_safe = np.clip(p1_smooth, eps, 1 - eps)
+    p0_safe = 1.0 - p1_safe
+    entropy = -p1_safe * np.log2(p1_safe) - p0_safe * np.log2(p0_safe)
+
+    return entropy
+
+
+def compute_aggregated_metrics(
+    grids: Dict[int, np.ndarray],
+    target_resolution: int = 256
+) -> Dict[int, Dict[str, np.ndarray]]:
+    """
+    Compute aggregated metrics for each Hilbert order.
+
+    Applies the same approach as Level 0: rebinning + density/differential/entropy.
+    All orders are rebinned to the same target resolution for comparability.
+
+    Args:
+        grids: Dictionary {order: grid_array} with raw bit grids
+        target_resolution: Target grid size for all orders (default 256x256)
+
+    Returns:
+        Dictionary {order: {'density': array, 'differential': array, 'entropy': array}}
+    """
+    metrics = {}
+
+    for order, grid in sorted(grids.items()):
+        grid_size = grid.shape[0]
+
+        # Rebinning factor
+        pool = max(1, grid_size // target_resolution)
+
+        if pool > 1:
+            # Rebin to target resolution by averaging blocks
+            new_size = grid_size // pool
+            rebinned = grid[:new_size * pool, :new_size * pool].reshape(
+                new_size, pool, new_size, pool
+            ).mean(axis=(1, 3))
+        else:
+            rebinned = grid.astype(float)
+
+        # Density is the rebinned mean (proportion of 1s)
+        density = rebinned
+
+        # Differential: deviation from 50% random
+        differential = density - 0.5
+
+        # Local entropy
+        entropy = compute_local_entropy(density, window=5)
+
+        # φ-alignment: how close each local region is to φ-related ratios
+        # We compute this as the local variance scaled by φ
+        local_std = np.zeros_like(density)
+        try:
+            from scipy.ndimage import generic_filter
+            local_std = generic_filter(density, np.std, size=5, mode='constant')
+        except ImportError:
+            pass
+
+        metrics[order] = {
+            'density': density,
+            'differential': differential,
+            'entropy': entropy,
+            'local_std': local_std,
+            'bits_per_cell': pool * pool,
+            'effective_resolution': rebinned.shape[0]
+        }
+
+    return metrics
+
+
+def compute_phi_alignment_map(
+    metrics: Dict[int, Dict[str, np.ndarray]]
+) -> Dict[int, np.ndarray]:
+    """
+    Compute φ-alignment maps showing where structure scales by φ.
+
+    Compares density patterns between consecutive orders to find
+    regions where the ratio approximates φ.
+
+    Args:
+        metrics: Output from compute_aggregated_metrics()
+
+    Returns:
+        Dictionary {order: phi_alignment_array} for each order pair
+    """
+    orders = sorted(metrics.keys())
+    phi_maps = {}
+
+    for i in range(len(orders) - 1):
+        o1, o2 = orders[i], orders[i + 1]
+
+        # Get density maps (already at same resolution)
+        d1 = metrics[o1]['density']
+        d2 = metrics[o2]['density']
+
+        # Ensure same shape
+        min_size = min(d1.shape[0], d2.shape[0])
+        d1 = d1[:min_size, :min_size]
+        d2 = d2[:min_size, :min_size]
+
+        # Compute local ratio (avoid division by zero)
+        eps = 1e-6
+        with np.errstate(divide='ignore', invalid='ignore'):
+            ratio = np.where(np.abs(d1) > eps, d2 / d1, 1.0)
+
+        # φ-distance: how far each local ratio is from φ or 1/φ
+        phi_dist = np.minimum(np.abs(ratio - PHI), np.abs(ratio - 1/PHI))
+
+        # Convert to alignment (1 = perfect φ, 0 = far from φ)
+        # Use exponential decay: alignment = exp(-distance)
+        phi_alignment = np.exp(-phi_dist * 2)
+
+        phi_maps[o2] = phi_alignment
+
+    return phi_maps
+
+
+def compute_cross_scale_coherence(
+    metrics: Dict[int, Dict[str, np.ndarray]]
+) -> Tuple[np.ndarray, Dict]:
+    """
+    Compute coherence map showing where structure persists across scales.
+
+    Args:
+        metrics: Output from compute_aggregated_metrics()
+
+    Returns:
+        Tuple of (coherence_map, stats_dict)
+    """
+    orders = sorted(metrics.keys())
+
+    if len(orders) < 2:
+        return np.zeros((256, 256)), {'mean': 0, 'std': 0}
+
+    # Get common resolution
+    first_density = metrics[orders[0]]['density']
+    size = first_density.shape[0]
+
+    # Stack all differential maps
+    differentials = []
+    for order in orders:
+        diff = metrics[order]['differential']
+        # Resize if needed
+        if diff.shape[0] != size:
+            from scipy.ndimage import zoom
+            factor = size / diff.shape[0]
+            diff = zoom(diff, factor, order=1)
+        differentials.append(diff)
+
+    diffs_stack = np.stack(differentials, axis=0)
+
+    # Coherence = 1 - normalized variance across scales
+    # High coherence means the pattern is consistent across scales
+    variance = np.var(diffs_stack, axis=0)
+    max_var = np.max(variance) if np.max(variance) > 0 else 1.0
+    coherence = 1.0 - (variance / max_var)
+
+    stats = {
+        'mean': float(np.mean(coherence)),
+        'std': float(np.std(coherence)),
+        'high_coherence_fraction': float(np.mean(coherence > 0.8))
+    }
+
+    return coherence, stats
+
+
+# =============================================================================
+# SCIENTIFICALLY MEANINGFUL FIGURE GENERATION
+# =============================================================================
+
+def generate_multiscale_comparison_figure(
+    metrics: Dict[int, Dict[str, np.ndarray]],
+    phi_maps: Dict[int, np.ndarray],
+    variant: str,
+    iteration: int,
+    output_dir: Path,
+    fmt: str = 'png',
+    dpi: int = 300
+) -> Optional[str]:
+    """
+    Generate Figure 1: Multi-scale comparison with 3×N panels.
+
+    Row 1: Differential (deviation from random) per order
+    Row 2: Local entropy per order
+    Row 3: φ-alignment per order
+    """
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import TwoSlopeNorm
+    except ImportError:
+        print("      ⚠️ matplotlib not available")
+        return None
+
+    orders = sorted(metrics.keys())
+    n_orders = len(orders)
+
+    if n_orders == 0:
+        return None
+
+    # Create figure with 3 rows × N columns
+    fig, axes = plt.subplots(3, n_orders, figsize=(3 * n_orders, 9))
+
+    # Handle single column case
+    if n_orders == 1:
+        axes = axes.reshape(3, 1)
+
+    # Row 1: Differential maps
+    for i, order in enumerate(orders):
+        ax = axes[0, i]
+        diff = metrics[order]['differential']
+        vabs = max(abs(diff.min()), abs(diff.max()), 0.01)
+        norm = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
+        im = ax.imshow(diff, cmap='RdBu_r', origin='lower', norm=norm, aspect='auto')
+        ax.set_title(f'Order {order}\n{metrics[order]["bits_per_cell"]} bits/cell', fontsize=9)
+        ax.axis('off')
+        if i == n_orders - 1:
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label('Diff', fontsize=8)
+
+    axes[0, 0].set_ylabel('Differential\n(red=1s, blue=0s)', fontsize=10)
+
+    # Row 2: Entropy maps (adaptive scale to show subtle variations)
+    all_ent = np.concatenate([metrics[o]['entropy'].flatten() for o in orders])
+    ent_vmin, ent_vmax = np.min(all_ent), np.max(all_ent)
+    # Ensure some range if all values are identical
+    if ent_vmax - ent_vmin < 0.01:
+        ent_vmin, ent_vmax = 0, 1
+    for i, order in enumerate(orders):
+        ax = axes[1, i]
+        ent = metrics[order]['entropy']
+        im = ax.imshow(ent, cmap='viridis_r', origin='lower', vmin=ent_vmin, vmax=ent_vmax, aspect='auto')
+        ax.axis('off')
+        if i == n_orders - 1:
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label('H', fontsize=8)
+
+    axes[1, 0].set_ylabel('Local Entropy\n(dark=ordered)', fontsize=10)
+
+    # Row 3: φ-alignment maps
+    for i, order in enumerate(orders):
+        ax = axes[2, i]
+        if order in phi_maps:
+            phi_align = phi_maps[order]
+            im = ax.imshow(phi_align, cmap='hot', origin='lower', vmin=0, vmax=1, aspect='auto')
+        else:
+            # First order has no φ-map (no previous order to compare)
+            ax.text(0.5, 0.5, 'N/A\n(first order)', ha='center', va='center',
+                   transform=ax.transAxes, fontsize=8)
+            ax.set_facecolor('#f0f0f0')
+        ax.axis('off')
+        if i == n_orders - 1 and order in phi_maps:
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label('φ', fontsize=8)
+
+    axes[2, 0].set_ylabel('φ-Alignment\n(bright=φ scaling)', fontsize=10)
+
+    fig.suptitle(f'Multi-Scale Hilbert Analysis — Variant {variant}, Iter {iteration}\n'
+                 f'Aggregated metrics reveal emergent patterns (φ ≈ {PHI:.3f})',
+                 fontsize=12, fontweight='bold')
+    plt.tight_layout()
+
+    filename = f'hilbert_multiscale_{variant}_iter{iteration}.{fmt}'
+    filepath = output_dir / filename
+    plt.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    return filename
+
+
+def generate_coherence_figure(
+    coherence_map: np.ndarray,
+    coherence_stats: Dict,
+    variant: str,
+    iteration: int,
+    output_dir: Path,
+    fmt: str = 'png',
+    dpi: int = 300
+) -> Optional[str]:
+    """
+    Generate Figure 2: Cross-scale coherence analysis.
+
+    Panel 1: Coherence map (where patterns persist across scales)
+    Panel 2: Histogram of coherence distribution
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Panel 1: Coherence map
+    ax1 = axes[0]
+    im = ax1.imshow(coherence_map, cmap='plasma', origin='lower', vmin=0, vmax=1)
+    ax1.set_title('Cross-Scale Coherence Map\n(bright = pattern persists across scales)', fontsize=11)
+    ax1.axis('off')
+    cbar = plt.colorbar(im, ax=ax1, fraction=0.046, pad=0.04)
+    cbar.set_label('Coherence', fontsize=10)
+
+    # Panel 2: Histogram
+    ax2 = axes[1]
+    values = coherence_map.flatten()
+    ax2.hist(values, bins=50, color='steelblue', edgecolor='white', alpha=0.8)
+    ax2.axvline(coherence_stats['mean'], color='red', linestyle='--', linewidth=2,
+                label=f'Mean: {coherence_stats["mean"]:.3f}')
+    ax2.axvline(0.8, color='green', linestyle=':', linewidth=2,
+                label=f'High coherence (>0.8): {coherence_stats["high_coherence_fraction"]*100:.1f}%')
+    ax2.set_xlabel('Coherence', fontsize=11)
+    ax2.set_ylabel('Frequency', fontsize=11)
+    ax2.set_title('Coherence Distribution', fontsize=11)
+    ax2.legend(fontsize=9)
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(f'Cross-Scale Structure Persistence — Variant {variant}, Iter {iteration}',
+                 fontsize=12, fontweight='bold')
+    plt.tight_layout()
+
+    filename = f'hilbert_coherence_{variant}_iter{iteration}.{fmt}'
+    filepath = output_dir / filename
+    plt.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    return filename
+
+
+def generate_statistics_summary_figure(
+    metrics: Dict[int, Dict[str, np.ndarray]],
+    phi_maps: Dict[int, np.ndarray],
+    variant: str,
+    iteration: int,
+    output_dir: Path,
+    fmt: str = 'png',
+    dpi: int = 300
+) -> Optional[str]:
+    """
+    Generate Figure 3: Statistical summary across scales.
+
+    Shows how key metrics evolve across Hilbert orders.
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+
+    orders = sorted(metrics.keys())
+
+    # Extract statistics per order
+    mean_entropy = [float(np.mean(metrics[o]['entropy'])) for o in orders]
+    std_density = [float(np.std(metrics[o]['density'])) for o in orders]
+    mean_abs_diff = [float(np.mean(np.abs(metrics[o]['differential']))) for o in orders]
+
+    # φ-alignment stats
+    phi_orders = sorted(phi_maps.keys())
+    phi_means = [float(np.mean(phi_maps[o])) for o in phi_orders]
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    # Plot 1: Entropy vs Order
+    ax1 = axes[0, 0]
+    ax1.plot(orders, mean_entropy, 'o-', color='purple', linewidth=2, markersize=8)
+    ax1.set_xlabel('Hilbert Order', fontsize=11)
+    ax1.set_ylabel('Mean Local Entropy', fontsize=11)
+    ax1.set_title('Entropy Evolution Across Scales', fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_ylim(0, 1)
+
+    # Plot 2: Density Variation vs Order
+    ax2 = axes[0, 1]
+    ax2.plot(orders, std_density, 's-', color='teal', linewidth=2, markersize=8)
+    ax2.set_xlabel('Hilbert Order', fontsize=11)
+    ax2.set_ylabel('Std(Density)', fontsize=11)
+    ax2.set_title('Density Variation Across Scales', fontsize=11)
+    ax2.grid(True, alpha=0.3)
+
+    # Plot 3: Mean |Differential| vs Order
+    ax3 = axes[1, 0]
+    ax3.plot(orders, mean_abs_diff, '^-', color='crimson', linewidth=2, markersize=8)
+    ax3.set_xlabel('Hilbert Order', fontsize=11)
+    ax3.set_ylabel('Mean |Differential|', fontsize=11)
+    ax3.set_title('Deviation from Random Across Scales', fontsize=11)
+    ax3.grid(True, alpha=0.3)
+
+    # Plot 4: φ-Alignment vs Order
+    ax4 = axes[1, 1]
+    if phi_means:
+        ax4.plot(phi_orders, phi_means, 'D-', color='gold', linewidth=2, markersize=8,
+                markeredgecolor='black')
+        ax4.axhline(y=np.exp(-0.1 * 2), color='green', linestyle='--', alpha=0.7,
+                    label='Strong φ threshold')
+    ax4.set_xlabel('Hilbert Order', fontsize=11)
+    ax4.set_ylabel('Mean φ-Alignment', fontsize=11)
+    ax4.set_title('φ-Scaling Alignment Across Scales', fontsize=11)
+    ax4.grid(True, alpha=0.3)
+    ax4.set_ylim(0, 1)
+    ax4.legend(fontsize=9)
+
+    fig.suptitle(f'Multi-Scale Statistics Summary — Variant {variant}, Iter {iteration}\n'
+                 f'How structure properties change with Hilbert order',
+                 fontsize=12, fontweight='bold')
+    plt.tight_layout()
+
+    filename = f'hilbert_stats_{variant}_iter{iteration}.{fmt}'
+    filepath = output_dir / filename
+    plt.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    return filename
+
+
+# =============================================================================
+# ORIGINAL FIGURE GENERATION (enhanced)
 # =============================================================================
 
 def generate_hilbert_figures(
@@ -1043,88 +1479,54 @@ def generate_hilbert_figures(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Color scheme
-    cmap = plt.cm.viridis
+    # =================================================================
+    # Scientifically meaningful aggregated visualizations
+    # =================================================================
+    print("      📊 Computing aggregated metrics for scientific visualization...", flush=True)
 
-    # 1. Individual Hilbert curves for each order
-    for order, grid in sorted(grids.items()):
-        fig, ax = plt.subplots(figsize=(8, 8))
+    try:
+        # Compute aggregated metrics (density, differential, entropy per order)
+        metrics = compute_aggregated_metrics(grids, target_resolution=256)
 
-        im = ax.imshow(grid, cmap=cmap, interpolation='nearest')
-        ax.set_title(f'Hilbert Curve — Variant {variant}, Iter {iteration}\n'
-                     f'Order {order} ({grid.shape[0]}×{grid.shape[0]} = {grid.size:,} bits)',
-                     fontsize=12)
-        ax.axis('off')
+        # Compute φ-alignment maps
+        phi_maps = compute_phi_alignment_map(metrics)
 
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label('Bit Value', fontsize=10)
+        # Compute cross-scale coherence
+        coherence_map, coherence_stats = compute_cross_scale_coherence(metrics)
 
-        filename = f'hilbert_{variant}_iter{iteration}_order{order}.{fmt}'
-        filepath = output_dir / filename
-        plt.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        plt.close()
-        generated.append(filename)
+        # Figure 1: Multi-scale comparison (3×N panels)
+        print("      🎨 Generating multi-scale comparison figure...", flush=True)
+        f1 = generate_multiscale_comparison_figure(
+            metrics, phi_maps, variant, iteration, output_dir, fmt, dpi
+        )
+        if f1:
+            generated.append(f1)
+            print(f"         ✅ {f1}", flush=True)
 
-    # 2. Multi-resolution comparison (all orders side by side)
-    if len(grids) >= 2:
-        n_grids = len(grids)
-        fig, axes = plt.subplots(1, n_grids, figsize=(4 * n_grids, 4))
+        # Figure 2: Cross-scale coherence
+        print("      🔗 Generating coherence analysis figure...", flush=True)
+        f2 = generate_coherence_figure(
+            coherence_map, coherence_stats, variant, iteration, output_dir, fmt, dpi
+        )
+        if f2:
+            generated.append(f2)
+            print(f"         ✅ {f2}", flush=True)
 
-        if n_grids == 1:
-            axes = [axes]
+        # Figure 3: Statistics summary
+        print("      📈 Generating statistics summary figure...", flush=True)
+        f3 = generate_statistics_summary_figure(
+            metrics, phi_maps, variant, iteration, output_dir, fmt, dpi
+        )
+        if f3:
+            generated.append(f3)
+            print(f"         ✅ {f3}", flush=True)
 
-        for ax, (order, grid) in zip(axes, sorted(grids.items())):
-            ax.imshow(grid, cmap=cmap, interpolation='nearest')
-            ax.set_title(f'Order {order}\n{grid.shape[0]}×{grid.shape[0]}', fontsize=10)
-            ax.axis('off')
+        print(f"      ✅ Generated {len([f for f in [f1, f2, f3] if f])} new scientific figures", flush=True)
 
-        fig.suptitle(f'Hilbert Multi-Resolution — Variant {variant}, Iter {iteration}\n'
-                     f'Looking for φ ≈ {PHI:.3f} scaling', fontsize=12)
-        plt.tight_layout()
-
-        filename = f'hilbert_multires_{variant}_iter{iteration}.{fmt}'
-        filepath = output_dir / filename
-        plt.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        plt.close()
-        generated.append(filename)
-
-    # 3. φ-distance analysis chart
-    cross_scale = results.get('cross_scale', {})
-    if cross_scale.get('order_pairs'):
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        pairs = cross_scale['order_pairs']
-        x = range(len(pairs))
-
-        # Plot different ratio types
-        if cross_scale.get('std_ratios'):
-            ax.plot(x[:len(cross_scale['std_ratios'])], cross_scale['std_ratios'],
-                   'o-', label='Std Ratios', markersize=8)
-        if cross_scale.get('spatial_corr_ratios'):
-            ax.plot(x[:len(cross_scale['spatial_corr_ratios'])], cross_scale['spatial_corr_ratios'],
-                   's-', label='Spatial Corr Ratios', markersize=8)
-
-        # φ reference line
-        ax.axhline(y=PHI, color='gold', linestyle='--', linewidth=2, label=f'φ = {PHI:.3f}')
-        ax.axhline(y=1.0, color='gray', linestyle=':', linewidth=1, label='1.0')
-
-        ax.set_xlabel('Order Pair', fontsize=12)
-        ax.set_ylabel('Ratio', fontsize=12)
-        ax.set_xticks(x)
-        ax.set_xticklabels(pairs)
-        ax.set_title(f'Cross-Scale Ratios — Variant {variant}, Iter {iteration}\n'
-                     f'φ-distance: {cross_scale.get("phi_distance_mean", 0):.4f}', fontsize=12)
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-
-        filename = f'hilbert_phi_ratios_{variant}_iter{iteration}.{fmt}'
-        filepath = output_dir / filename
-        plt.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white')
-        plt.close()
-        generated.append(filename)
+    except Exception as e:
+        print(f"      ⚠️ Error generating scientific figures: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
     return generated
 
@@ -1289,25 +1691,31 @@ Examples:
         else:
             print(f"   ⚠️ No figures generated")
 
-    # Save JSON results
+    # Save JSON results (always, with auto-generated filename if not specified)
     if args.output:
-        def convert_for_json(obj):
-            if isinstance(obj, (np.integer, np.floating)):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, dict):
-                return {str(k): convert_for_json(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_for_json(x) for x in obj]
-            return obj
+        output_path = Path(args.output)
+    else:
+        filename = f"hilbert_analysis_{args.variant}_iter{args.iteration}.json"
+        output_path = get_output_path(1, "metrics", filename)
 
-        # Remove grids from JSON (too large)
-        results_for_json = {k: v for k, v in results.items() if k != 'grids'}
+    def convert_for_json(obj):
+        if isinstance(obj, (np.integer, np.floating)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {str(k): convert_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_for_json(x) for x in obj]
+        return obj
 
-        with open(args.output, "w", encoding="utf-8") as f:
-            json.dump(convert_for_json(results_for_json), f, indent=2)
-        print(f"\n💾 Results saved to: {args.output}")
+    # Remove grids from JSON (too large)
+    results_for_json = {k: v for k, v in results.items() if k != 'grids'}
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(convert_for_json(results_for_json), f, indent=2)
+    print(f"\n💾 Results saved to: {relative_path(output_path)}")
 
     print(f"\n{'='*60}")
     print(f"✅ Analysis complete!")

@@ -41,7 +41,6 @@ hsi_agents_project/
 ├── ════════════════════════════════════════════════════════════
 │   HIDDEN φ DISCOVERY TOOLS (Level 1+)
 ├── ════════════════════════════════════════════════════════════
-├── level1_scale_ratios.py            # Phase 1: MSRA (find φ in scale proportions)
 ├── level1_nesting_tree.py            # Phase 1: PCSA (tree branching ratios)
 ├── level1_hilbert_multires.py        # Phase 1: HMRC (Hilbert multi-resolution)
 ├── level1_deep_analysis.py           # Phase 2: Wavelet, Recurrence, LZ complexity
@@ -210,7 +209,6 @@ These tools implement the research roadmap for discovering hidden φ in variant 
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `level1_scale_ratios.py` | **MSRA** — Find φ in ratios between block metrics at different scales (2^k) | `python level1_scale_ratios.py -v B -i 15` |
 | `level1_nesting_tree.py` | **PCSA** — Analyze parentheses tree for φ in branching ratios | `python level1_nesting_tree.py -v B -i 15` |
 | `level1_hilbert_multires.py` | **HMRC** — Compare Hilbert maps at multiple resolutions | `python level1_hilbert_multires.py -v B -i 15` |
 
@@ -330,9 +328,6 @@ python level1_visualize.py --variants B A --iterations 18 --format pdf
 # ═══════════════════════════════════════════════════════════════════════════
 
 # --- Phase 1: Scale & Structure Analysis ---
-
-# MSRA: Multi-Scale Ratio Analyzer (find φ in proportions between scales)
-python level1_scale_ratios.py -v B -i 15 --max-bits 100000
 
 # PCSA: Pre-Collapse Structure Analysis (φ in tree branching)
 python level1_nesting_tree.py -v B -i 15 --max-bits 100000
@@ -1074,7 +1069,6 @@ These advanced metrics implement the research roadmap for discovering hidden φ 
 
 | Metric | Script | What it measures | φ Detection |
 |--------|--------|------------------|-------------|
-| **MSRA (Multi-Scale Ratio Analyzer)** | `level1_scale_ratios.py` | Ratios between block metrics (entropy, density) at scales 2^k | Ratios near 1.618 |
 | **PCSA (Pre-Collapse Structure Analysis)** | `level1_nesting_tree.py` | Branching ratios in parentheses tree structure | Children/parent ratios |
 | **HMRC (Hilbert Multi-Resolution)** | `level1_hilbert_multires.py` | Density gradients across Hilbert curve resolutions | Resolution scaling |
 
@@ -1603,16 +1597,13 @@ python level1_visualize.py --all
 These scripts search for hidden golden ratio relationships.
 
 ```bash
-# Step 1+.1: Scale Ratios (MSRA)
-python level1_scale_ratios.py -v B -i 18
-
-# Step 1+.2: Nesting Tree (PCSA)
+# Step 1+.1: Nesting Tree (PCSA)
 python level1_nesting_tree.py -v B -i 18
 
-# Step 1+.3: Hilbert Multi-Resolution (HMRC)
+# Step 1+.2: Hilbert Multi-Resolution (HMRC)
 python level1_hilbert_multires.py -v B -i 18
 
-# Step 1+.4: Deep Analysis (Wavelet + Recurrence + LZ)
+# Step 1+.3: Deep Analysis (Wavelet + Recurrence + LZ)
 python level1_deep_analysis.py -v B -i 18
 ```
 
@@ -1653,8 +1644,9 @@ python level2_transfer_entropy.py --variants B D E --iteration 18 --plot
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────┐
 │  PHASE 1+: HIDDEN φ DISCOVERY (Optional but recommended)            │
-│  level1_scale_ratios.py     → φ in scale proportions                │
-│  level1_deep_analysis.py    → Wavelet + Recurrence analysis         │
+│  level1_nesting_tree.py     → φ in tree branching ratios            │
+│  level1_hilbert_multires.py → Multi-scale Hilbert structure         │
+│  level1_deep_analysis.py    → LZ φ-scaling + Recurrence analysis    │
 └─────────────────────────────────────────────────────────────────────┘
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────┐

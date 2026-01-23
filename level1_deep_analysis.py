@@ -19,6 +19,7 @@ import json
 import math
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -403,22 +404,31 @@ def wavelet_analysis_multiscale(subsamples: Dict, verbose: bool = True) -> Dict:
 # Recurrence Plot Analysis
 # =============================================================================
 
-def recurrence_analysis(bits: str, max_bits: int = 10000, 
+def recurrence_analysis(bits: str, max_bits: int = 10000,
                         embedding_dim: int = 3, delay: int = 1,
-                        threshold: float = 0.1, verbose: bool = True) -> Dict:
+                        threshold: float = None, verbose: bool = True) -> Dict:
     """
     Recurrence Plot Analysis — detect temporal dynamics.
-    
+
     Args:
         bits: Binary string
         max_bits: Maximum bits (recurrence is O(n²), keep small!)
         embedding_dim: Embedding dimension for phase space
         delay: Time delay for embedding
-        threshold: Distance threshold for recurrence
+        threshold: Distance threshold for recurrence (auto-calculated if None)
         verbose: Print progress
-    
+
     Returns:
         Recurrence metrics including determinism and laminarity
+
+    Note on threshold:
+        For binary data embedded in R^d, typical distances are:
+        - Identical vectors: 0
+        - One bit different: 1
+        - Random: ~sqrt(d/2) ≈ 0.87 for d=3
+
+        Auto-threshold uses 10% of the median pairwise distance,
+        which is statistically meaningful for any data distribution.
     """
     if verbose:
         print(f"\n🔄 Recurrence Plot Analysis")
@@ -427,27 +437,41 @@ def recurrence_analysis(bits: str, max_bits: int = 10000,
     
     data = bits[:max_bits]
     data_arr = np.array([int(b) for b in data], dtype=np.float32)
-    
+
     # Create embedded vectors
     n = len(data_arr) - (embedding_dim - 1) * delay
     if n < 10:
         return {'error': 'Insufficient data for embedding'}
-    
+
     if verbose:
         print(f"   Creating {n} embedded vectors...", end=" ", flush=True)
-    
+
     embedded = np.zeros((n, embedding_dim))
     for i in range(embedding_dim):
         embedded[:, i] = data_arr[i * delay:i * delay + n]
-    
+
     if verbose:
         print(f"✓")
         print(f"   Building recurrence matrix...", end=" ", flush=True)
-    
+
     # Calculate recurrence matrix (O(n²) - that's why we limit max_bits)
     # Use vectorized approach for speed
     diff = embedded[:, np.newaxis, :] - embedded[np.newaxis, :, :]
     distances = np.sqrt(np.sum(diff**2, axis=2))
+
+    # Auto-calculate threshold if not provided
+    # Use 10% of median distance (statistically meaningful)
+    if threshold is None:
+        # Sample distances to avoid computing full median (memory efficient)
+        sample_size = min(1000, n)
+        sample_idx = np.random.choice(n, sample_size, replace=False)
+        sample_distances = distances[sample_idx][:, sample_idx]
+        # Exclude diagonal (self-distances = 0)
+        upper_tri = sample_distances[np.triu_indices(sample_size, k=1)]
+        threshold = float(np.median(upper_tri) * 0.1)
+        if verbose:
+            print(f"(auto-threshold={threshold:.3f})", end=" ", flush=True)
+
     recurrence_matrix = (distances < threshold).astype(np.int8)
     
     if verbose:
@@ -546,8 +570,13 @@ def multiscale_lz_analysis(bits: str, max_bits: int = 100000,
     """
     Analyze Lempel-Ziv complexity at multiple scales.
 
-    If φ is hidden in the structure, LZ complexity ratios between
-    φ-related scales might show special properties.
+    Uses THREE scale types to test for φ-scaling:
+    1. Geometric φ-scales: 1000, 1000×φ, 1000×φ², ... (tests if φ is preferred)
+    2. Power-of-2 scales: 1024, 2048, 4096, ... (standard control)
+    3. Arbitrary scales: 1000, 2000, 5000, ... (robustness check)
+
+    If φ is hidden in the structure, LZ complexity ratios at φ-scales
+    should show lower variance than at other scales.
 
     Args:
         bits: Binary string
@@ -555,90 +584,225 @@ def multiscale_lz_analysis(bits: str, max_bits: int = 100000,
         verbose: Print progress
 
     Returns:
-        Multi-scale LZ analysis results
+        Multi-scale LZ analysis results with φ vs 2^n comparison
     """
     if verbose:
         print(f"\n🧬 Multi-Scale Lempel-Ziv Complexity")
         print(f"   Data: {len(bits):,} bits (analyzing {min(len(bits), max_bits):,})")
 
     data = bits[:max_bits]
+    n = len(data)
 
-    # Scales to analyze
-    scales = [1000, 2000, 5000, 10000, 20000, 50000]
-    scales = [s for s in scales if s <= len(data)]
+    # Generate three types of scales
+    # 1. Geometric φ-scales: 1000 × φ^k
+    phi_scales = []
+    scale = 1000
+    while scale <= n and scale <= max_bits:
+        phi_scales.append(int(scale))
+        scale *= PHI
+
+    # 2. Power-of-2 scales
+    pow2_scales = [2**k for k in range(10, 20) if 2**k <= n and 2**k <= max_bits]
+
+    # 3. Arbitrary scales (original)
+    arb_scales = [1000, 2000, 5000, 10000, 20000, 50000]
+    arb_scales = [s for s in arb_scales if s <= n]
 
     if verbose:
-        print(f"   Scales: {scales}")
+        print(f"   φ-scales ({len(phi_scales)}): {phi_scales[:5]}...")
+        print(f"   2^n-scales ({len(pow2_scales)}): {pow2_scales[:5]}...")
+        print(f"   Arbitrary ({len(arb_scales)}): {arb_scales}")
 
-    results = {}
+    # Adaptive timeout based on scale size (aggressive to avoid eternal waits)
+    def get_timeout_for_scale(scale: int) -> int:
+        """Return timeout in seconds based on scale size."""
+        if scale < 1_000_000:       # <1M bits
+            return 15 * 60          # 15 minutes
+        elif scale < 10_000_000:    # 1M-10M bits
+            return 10 * 60          # 10 minutes
+        else:                       # >10M bits
+            return 5 * 60           # 5 minutes
 
-    # Use tqdm for progress bar if available
-    if verbose and TQDM_AVAILABLE:
-        scale_iter = tqdm(scales, desc="   LZ scales", unit="scale",
-                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
-    else:
-        scale_iter = scales
+    def analyze_scales(scales: List[int], name: str, show_progress: bool = False) -> Dict:
+        """Analyze LZ at a set of scales with optional progress bar and timeout."""
+        from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 
-    for scale in scale_iter:
-        segment = data[:scale]
-        lz = lempel_ziv_complexity(segment)
+        results = {}
+        completed_scales = 0
+        total_scales = len(scales)
+        timed_out_scales = []
 
-        # Normalized LZ: LZ / (n / log2(n))
-        normalized = lz / (scale / math.log2(scale)) if scale > 1 else 0
+        # Progress display
+        if show_progress:
+            print(f"   Analyzing {name} ({total_scales} scales)...")
 
-        results[scale] = {
-            'raw_lz': lz,
-            'normalized_lz': float(normalized)
+        for idx, scale in enumerate(scales):
+            scale_start = time.time()
+            scale_timeout = get_timeout_for_scale(scale)
+
+            # Show which scale we're working on
+            if show_progress and scale > 100000:  # Only for large scales
+                timeout_min = scale_timeout // 60
+                print(f"      Scale {idx+1}/{total_scales}: {scale:,} bits (max {timeout_min}min)...", end=" ", flush=True)
+
+            try:
+                # Use ProcessPoolExecutor - processes CAN be killed (unlike threads)
+                segment = data[:scale]
+                with ProcessPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(lempel_ziv_complexity, segment)
+
+                    try:
+                        lz = future.result(timeout=scale_timeout)
+                        normalized = lz / (scale / math.log2(scale)) if scale > 1 else 0
+                        results[scale] = {'raw_lz': lz, 'normalized_lz': float(normalized)}
+                        completed_scales += 1
+
+                        elapsed = time.time() - scale_start
+                        if show_progress and scale > 100000:
+                            print(f"✓ ({elapsed:.1f}s)")
+
+                    except FuturesTimeout:
+                        # Timeout reached - kill the process and continue
+                        elapsed = time.time() - scale_start
+                        timed_out_scales.append({
+                            'scale': scale,
+                            'index': idx,
+                            'elapsed': elapsed
+                        })
+                        if show_progress:
+                            print(f"⏱️ TIMEOUT after {elapsed/60:.1f}min (scale {scale:,})")
+
+                        # ProcessPoolExecutor will terminate on context exit
+
+            except Exception as e:
+                if show_progress:
+                    print(f"❌ Error at scale {scale}: {e}")
+                continue
+
+        # Calculate ratios
+        sorted_scales = sorted(results.keys())
+        lz_ratios = []
+        for i in range(len(sorted_scales) - 1):
+            s1, s2 = sorted_scales[i], sorted_scales[i + 1]
+            if results[s1]['normalized_lz'] > 0:
+                lz_ratios.append(results[s2]['normalized_lz'] / results[s1]['normalized_lz'])
+
+        # φ-distances
+        phi_distances = [min(abs(r - PHI), abs(r - 1/PHI)) for r in lz_ratios]
+        mean_dist = float(np.mean(phi_distances)) if phi_distances else float('nan')
+
+        # Calculate completion percentage
+        completion_pct = 100.0 * completed_scales / total_scales if total_scales > 0 else 0
+
+        # Summary
+        if show_progress and timed_out_scales:
+            print(f"   ⚠️ {name}: {completed_scales}/{total_scales} scales completed ({completion_pct:.0f}%)")
+            print(f"      Timed out: {len(timed_out_scales)} scales")
+
+        return {
+            'by_scale': results,
+            'lz_ratios': lz_ratios,
+            'phi_distances': phi_distances,
+            'mean_phi_distance': mean_dist,
+            'ratio_variance': float(np.var(lz_ratios)) if lz_ratios else 0.0,
+            # Completion metadata
+            'completion': {
+                'total_scales': total_scales,
+                'completed_scales': completed_scales,
+                'completion_pct': completion_pct,
+                'timed_out': timed_out_scales,
+                'is_complete': len(timed_out_scales) == 0
+            }
         }
 
-        # Update progress bar description with current result
-        if verbose and TQDM_AVAILABLE:
-            scale_iter.set_postfix({'scale': scale, 'LZ': lz, 'norm': f'{normalized:.3f}'})
+    # Analyze each scale type with progress bars
+    phi_results = analyze_scales(phi_scales, "φ-scales", show_progress=verbose)
+    phi_complete = phi_results.get('completion', {}).get('is_complete', True)
+    if verbose:
+        status = "✓" if phi_complete else "⚠️ partial"
+        print(f"   φ-scales: {status} (φ-dist={phi_results['mean_phi_distance']:.3f})")
 
-    # Calculate scale ratios
-    sorted_scales = sorted(results.keys())
-    scale_ratios = []
-    lz_ratios = []
+    pow2_results = analyze_scales(pow2_scales, "2^n-scales", show_progress=verbose)
+    pow2_complete = pow2_results.get('completion', {}).get('is_complete', True)
+    if verbose:
+        status = "✓" if pow2_complete else "⚠️ partial"
+        print(f"   2^n-scales: {status} (φ-dist={pow2_results['mean_phi_distance']:.3f})")
 
-    for i in range(len(sorted_scales) - 1):
-        s1, s2 = sorted_scales[i], sorted_scales[i + 1]
-        scale_ratios.append(s2 / s1)
-        if results[s1]['normalized_lz'] > 0:
-            lz_ratios.append(results[s2]['normalized_lz'] / results[s1]['normalized_lz'])
+    arb_results = analyze_scales(arb_scales, "arbitrary", show_progress=verbose)
+    arb_complete = arb_results.get('completion', {}).get('is_complete', True)
+    if verbose:
+        status = "✓" if arb_complete else "⚠️ partial"
+        print(f"   arbitrary: {status} (φ-dist={arb_results['mean_phi_distance']:.3f})")
 
-    # Check if LZ ratios are close to φ or 1/φ
-    phi_distances = [min(abs(r - PHI), abs(r - 1/PHI)) for r in lz_ratios]
-    mean_phi_distance = float(np.mean(phi_distances)) if phi_distances else float('nan')
+    # Compare: does φ-scale show better φ-alignment?
+    # Lower variance in lz_ratios at φ-scales suggests φ is "natural"
+    phi_preference = 1.0
+    if pow2_results['ratio_variance'] > 0:
+        phi_preference = pow2_results['ratio_variance'] / (phi_results['ratio_variance'] + 1e-10)
 
+    # Check overall completion status
+    all_complete = phi_complete and pow2_complete and arb_complete
+
+    # Main result uses arbitrary scales (for backward compatibility)
+    # but includes comparison data
     return {
-        'by_scale': results,
-        'scale_ratios': scale_ratios,
-        'lz_ratios': lz_ratios,
-        'phi_distances': phi_distances,
-        'mean_phi_distance': mean_phi_distance,
-        'phi_detected': mean_phi_distance < 0.3 if not math.isnan(mean_phi_distance) else False
+        'by_scale': arb_results['by_scale'],
+        'scale_ratios': [arb_scales[i+1]/arb_scales[i] for i in range(len(arb_scales)-1)],
+        'lz_ratios': arb_results['lz_ratios'],
+        'phi_distances': arb_results['phi_distances'],
+        'mean_phi_distance': arb_results['mean_phi_distance'],
+        'phi_detected': arb_results['mean_phi_distance'] < 0.3 if not math.isnan(arb_results['mean_phi_distance']) else False,
+        # New: comparison between scale types
+        'scale_comparison': {
+            'phi_scales': {
+                'scales': phi_scales,
+                'mean_phi_distance': phi_results['mean_phi_distance'],
+                'ratio_variance': phi_results['ratio_variance'],
+                'completion': phi_results.get('completion', {})
+            },
+            'pow2_scales': {
+                'scales': pow2_scales,
+                'mean_phi_distance': pow2_results['mean_phi_distance'],
+                'ratio_variance': pow2_results['ratio_variance'],
+                'completion': pow2_results.get('completion', {})
+            },
+            'arbitrary_scales': {
+                'completion': arb_results.get('completion', {})
+            },
+            'phi_preference': phi_preference,  # >1 means φ-scales more consistent
+            'interpretation': 'φ-scales more consistent' if phi_preference > 1.2 else 'No φ-preference detected'
+        },
+        # Overall completion status
+        'analysis_complete': all_complete,
+        'analysis_note': None if all_complete else 'Some scales timed out (adaptive 5-15min limits). Results based on completed scales only.'
     }
 
 
 def bootstrap_lz_confidence_interval(bits: str, max_bits: int = 100000,
                                       n_bootstrap: int = 100,
                                       confidence: float = 0.95,
+                                      block_size: int = 1000,
                                       verbose: bool = True) -> Dict:
     """
     Calculate bootstrap confidence intervals for LZ φ-distance.
+
+    Uses BLOCK BOOTSTRAP to preserve local structure in the sequence.
+    This is critical because LZ complexity depends on sequential patterns,
+    and naive resampling destroys the structure we're trying to measure.
 
     Args:
         bits: Binary string
         max_bits: Maximum bits to analyze
         n_bootstrap: Number of bootstrap samples
         confidence: Confidence level (default 95%)
+        block_size: Size of contiguous blocks for resampling (preserves structure)
         verbose: Print progress
 
     Returns:
         Bootstrap statistics with CI for mean_phi_distance
     """
     if verbose:
-        print(f"\n📊 Bootstrap Confidence Interval (n={n_bootstrap}, {confidence*100:.0f}%)")
+        print(f"\n📊 Block Bootstrap CI (n={n_bootstrap}, {confidence*100:.0f}%, block={block_size})")
 
     data = bits[:max_bits]
     n = len(data)
@@ -647,6 +811,16 @@ def bootstrap_lz_confidence_interval(bits: str, max_bits: int = 100000,
     scales = [1000, 2000, 5000, 10000, 20000, 50000]
     scales = [s for s in scales if s <= n]
 
+    # Prepare blocks for block bootstrap
+    n_blocks = n // block_size
+    if n_blocks < 10:
+        # Fall back to smaller blocks if data is small
+        block_size = max(100, n // 20)
+        n_blocks = n // block_size
+
+    if verbose:
+        print(f"   Data: {n:,} bits → {n_blocks} blocks of {block_size} bits")
+
     phi_distances_samples = []
 
     iterator = range(n_bootstrap)
@@ -654,9 +828,10 @@ def bootstrap_lz_confidence_interval(bits: str, max_bits: int = 100000,
         iterator = tqdm(iterator, desc="   Bootstrap", unit="sample")
 
     for _ in iterator:
-        # Resample with replacement
-        indices = np.random.choice(n, size=n, replace=True)
-        sample = ''.join(data[i] for i in indices)
+        # BLOCK BOOTSTRAP: resample contiguous blocks (preserves local structure)
+        block_indices = np.random.choice(n_blocks, size=n_blocks, replace=True)
+        sample_parts = [data[i*block_size:(i+1)*block_size] for i in block_indices]
+        sample = ''.join(sample_parts)
 
         # Calculate LZ at each scale
         lz_values = {}
@@ -697,6 +872,8 @@ def bootstrap_lz_confidence_interval(bits: str, max_bits: int = 100000,
         'ci_upper': float(upper),
         'confidence_level': confidence,
         'n_bootstrap': n_bootstrap,
+        'block_size': block_size,
+        'n_blocks': n_blocks,
         'samples': phi_distances_samples
     }
 
@@ -706,13 +883,14 @@ def test_multiple_constants(lz_ratios: List[float], verbose: bool = True) -> Dic
     Test LZ ratios against multiple mathematical constants.
 
     Honestly reports which constant is closest to the observed ratios.
+    Includes z-score and p-value for statistical significance.
 
     Args:
         lz_ratios: List of LZ complexity ratios between scales
         verbose: Print results
 
     Returns:
-        Comparison with multiple constants
+        Comparison with multiple constants with statistical tests
     """
     if not lz_ratios:
         return {'error': 'No LZ ratios provided'}
@@ -734,36 +912,75 @@ def test_multiple_constants(lz_ratios: List[float], verbose: bool = True) -> Dic
         '1.0 (random)': 1.0
     }
 
-    # Calculate mean ratio
-    mean_ratio = np.mean(lz_ratios)
+    # Calculate statistics
+    mean_ratio = float(np.mean(lz_ratios))
+    std_ratio = float(np.std(lz_ratios, ddof=1)) if len(lz_ratios) > 1 else 0.0
+    n_samples = len(lz_ratios)
+    se_ratio = std_ratio / math.sqrt(n_samples) if n_samples > 0 else 0.0
 
-    # Test each constant
+    # Test each constant with z-score
     results = []
     for name, value in constants.items():
         distance = abs(mean_ratio - value)
+
+        # Z-score: how many standard errors away is this constant?
+        z_score = distance / se_ratio if se_ratio > 0 else float('inf')
+
+        # Two-tailed p-value (approximate using normal distribution)
+        # p = 2 * (1 - Φ(|z|)) where Φ is standard normal CDF
+        # Use approximation: p ≈ exp(-0.5 * z²) * 0.4 for large z
+        if z_score < 6:
+            # More accurate for small z
+            from math import erfc
+            p_value = erfc(z_score / math.sqrt(2))
+        else:
+            p_value = 0.0  # Effectively zero
+
         results.append({
             'constant': name,
             'value': value,
-            'distance': distance
+            'distance': distance,
+            'z_score': z_score,
+            'p_value': p_value
         })
 
     # Sort by distance
     results.sort(key=lambda x: x['distance'])
 
+    # Find 1.0 (random) distance for comparison
+    random_distance = next((r['distance'] for r in results if r['constant'] == '1.0 (random)'), None)
+
+    # Effect size: how much closer to best match vs random?
+    best_distance = results[0]['distance']
+    effect_size = (random_distance - best_distance) / std_ratio if std_ratio > 0 and random_distance else 0.0
+
     if verbose:
         print(f"\n🔬 Multiple Constants Test")
-        print(f"   Mean LZ ratio: {mean_ratio:.4f}")
+        print(f"   Mean LZ ratio: {mean_ratio:.4f} ± {std_ratio:.4f} (n={n_samples})")
         print(f"   Closest matches:")
         for i, r in enumerate(results[:5]):
             marker = "🎯" if i == 0 else "  "
-            print(f"   {marker} {r['constant']}: {r['value']:.4f} (distance: {r['distance']:.4f})")
+            sig = "***" if r['p_value'] < 0.001 else "**" if r['p_value'] < 0.01 else "*" if r['p_value'] < 0.05 else ""
+            print(f"   {marker} {r['constant']}: {r['value']:.4f} (dist={r['distance']:.4f}, z={r['z_score']:.1f}{sig})")
+
+        # Statistical interpretation
+        if results[0]['p_value'] < 0.05:
+            print(f"   📊 Best match is statistically significant (p<0.05)")
+        if random_distance and best_distance < random_distance * 0.5:
+            print(f"   📊 Effect size: {effect_size:.2f}σ closer to {results[0]['constant']} than random")
 
     return {
-        'mean_ratio': float(mean_ratio),
+        'mean_ratio': mean_ratio,
+        'std_ratio': std_ratio,
+        'n_samples': n_samples,
         'rankings': results,
         'best_match': results[0]['constant'],
+        'best_match_value': results[0]['value'],
         'best_match_distance': results[0]['distance'],
-        'phi_rank': next((i+1 for i, r in enumerate(results) if 'φ' in r['constant']), None)
+        'best_match_p_value': results[0]['p_value'],
+        'effect_size_vs_random': effect_size,
+        'phi_rank': next((i+1 for i, r in enumerate(results) if 'φ' in r['constant']), None),
+        'statistically_significant': results[0]['p_value'] < 0.05
     }
 
 
@@ -878,10 +1095,11 @@ def run_deep_analysis(
     variant: str,
     iteration: int,
     analyses: Optional[List[str]] = None,
-    max_bits: int = 100000,
+    max_bits: int = 1_000_000_000,
     verbose: bool = True,
     output_path: Optional[str] = None,
-    use_multiscale: bool = False
+    use_multiscale: bool = False,
+    n_bootstrap: int = 100
 ) -> Dict:
     """
     Run deep analysis on a variant.
@@ -890,11 +1108,12 @@ def run_deep_analysis(
         variant: Variant code (B, F, etc.)
         iteration: Iteration number
         analyses: List of analyses to run ('wavelet', 'recurrence', 'lz', 'all')
-        max_bits: Maximum bits to analyze (ignored if use_multiscale=True)
+        max_bits: Maximum bits to analyze (default 1G for publication)
         verbose: Print progress
         output_path: Optional path to save JSON results
         use_multiscale: If True, use Nyquist-based subsampling to analyze
                        the FULL dataset (100G+ bits) with ~12M samples in RAM
+        n_bootstrap: Number of bootstrap samples for CI (default 100 for publication)
 
     Returns:
         Combined analysis results
@@ -1049,6 +1268,24 @@ def run_deep_analysis(
         if lz_ratios:
             results['lz']['constants_test'] = test_multiple_constants(lz_ratios, verbose)
 
+        # Bootstrap confidence intervals if requested
+        if n_bootstrap > 0 and not use_multiscale:
+            if verbose:
+                print(f"\n   Running bootstrap ({n_bootstrap} samples)...")
+            bootstrap_results = bootstrap_lz_confidence_interval(
+                phi_observable, max_bits, n_bootstrap, verbose=verbose
+            )
+            results['lz']['bootstrap'] = bootstrap_results
+
+            # Add interpretation
+            ci_lower = bootstrap_results['ci_lower']
+            ci_upper = bootstrap_results['ci_upper']
+            if verbose:
+                # Check if φ-distance CI excludes random (≈0.38 for random)
+                random_phi_dist = abs(1.0 - PHI)  # ≈ 0.382
+                if ci_upper < random_phi_dist * 0.8:
+                    print(f"   📊 CI excludes random: [{ci_lower:.3f}, {ci_upper:.3f}] << {random_phi_dist:.3f}")
+
         if verbose:
             elapsed = time.time() - analysis_start
             lz = results['lz']
@@ -1129,7 +1366,10 @@ Examples:
     python level1_deep_analysis.py -v B -i 15 --max-bits 100000
 
   Multiple variants (comparative analysis):
-    python level1_deep_analysis.py --variants A,B,F,J,K,L -i 15 --max-bits 100000
+    python level1_deep_analysis.py --variants A,B,F -i 15
+
+  Quick mode for development (1M bits, no bootstrap):
+    python level1_deep_analysis.py -v B -i 15 --quick
 
   Multiscale mode (analyze ALL bits using Nyquist subsampling):
     python level1_deep_analysis.py -v B -i 15 --multiscale
@@ -1142,12 +1382,16 @@ Examples:
     parser.add_argument("--variants", type=str, default=None,
                         help="Multiple variants (comma-separated, e.g., A,B,F,J,K,L)")
     parser.add_argument("--iteration", "-i", type=int, default=15, help="Iteration number")
-    parser.add_argument("--max-bits", "-m", type=int, default=100000,
-                        help="Max bits to analyze (ignored if --multiscale)")
+    parser.add_argument("--max-bits", "-m", type=int, default=1_000_000_000,
+                        help="Max bits to analyze (default: 1G for publication)")
     parser.add_argument("--analysis", "-a", type=str, default="all",
                         help="Analysis type: wavelet, recurrence, lz, all (comma-separated)")
     parser.add_argument("--multiscale", "--ms", action="store_true",
                         help="Use Nyquist-based subsampling to analyze ALL bits (100G+ capable)")
+    parser.add_argument("--bootstrap", "-b", type=int, default=100,
+                        help="Number of bootstrap samples for CI (default: 100 for publication)")
+    parser.add_argument("--quick", "-q", action="store_true",
+                        help="Quick mode: 1M bits, no bootstrap (for development)")
     parser.add_argument("--compare", "-c", type=str, default=None,
                         help="Compare with another variant (e.g., --compare F)")
     parser.add_argument("--output", "-o", type=str, default=None,
@@ -1156,6 +1400,11 @@ Examples:
                         help="Don't save results to file")
 
     args = parser.parse_args()
+
+    # Quick mode overrides for development
+    if args.quick:
+        args.max_bits = 1_000_000  # 1M instead of 1G
+        args.bootstrap = 0         # No bootstrap
 
     analyses = args.analysis.split(",") if args.analysis != "all" else ["all"]
 
@@ -1204,7 +1453,8 @@ Examples:
                     analyses=analyses,
                     max_bits=args.max_bits,
                     output_path=output_path,
-                    use_multiscale=args.multiscale
+                    use_multiscale=args.multiscale,
+                    n_bootstrap=args.bootstrap
                 )
                 all_results[variant] = results
             except FileNotFoundError as e:
@@ -1299,7 +1549,8 @@ Examples:
                 analyses=analyses,
                 max_bits=args.max_bits,
                 output_path=output_path,
-                use_multiscale=args.multiscale
+                use_multiscale=args.multiscale,
+                n_bootstrap=args.bootstrap
             )
 
             if args.compare:
@@ -1311,7 +1562,8 @@ Examples:
                     args.compare, args.iteration,
                     analyses=analyses,
                     max_bits=args.max_bits,
-                    use_multiscale=args.multiscale
+                    use_multiscale=args.multiscale,
+                    n_bootstrap=args.bootstrap
                 )
 
                 print(f"\n   Metric                    {variant:>10}  {args.compare:>10}")
