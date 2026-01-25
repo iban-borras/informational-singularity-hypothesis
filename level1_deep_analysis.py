@@ -565,6 +565,18 @@ def lempel_ziv_complexity(s: str) -> int:
     return _lempel_ziv_complexity_numba(arr)
 
 
+def _lz_worker(segment: str, result_queue) -> None:
+    """Worker function for LZ computation in separate process.
+
+    Must be at module level for multiprocessing pickle to work on Windows.
+    """
+    try:
+        lz = lempel_ziv_complexity(segment)
+        result_queue.put(('ok', lz))
+    except Exception as e:
+        result_queue.put(('error', str(e)))
+
+
 def multiscale_lz_analysis(bits: str, max_bits: int = 100000,
                            verbose: bool = True) -> Dict:
     """
@@ -625,7 +637,7 @@ def multiscale_lz_analysis(bits: str, max_bits: int = 100000,
 
     def analyze_scales(scales: List[int], name: str, show_progress: bool = False) -> Dict:
         """Analyze LZ at a set of scales with optional progress bar and timeout."""
-        from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
+        import multiprocessing as mp
 
         results = {}
         completed_scales = 0
@@ -646,33 +658,50 @@ def multiscale_lz_analysis(bits: str, max_bits: int = 100000,
                 print(f"      Scale {idx+1}/{total_scales}: {scale:,} bits (max {timeout_min}min)...", end=" ", flush=True)
 
             try:
-                # Use ProcessPoolExecutor - processes CAN be killed (unlike threads)
                 segment = data[:scale]
-                with ProcessPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(lempel_ziv_complexity, segment)
 
+                # Use multiprocessing.Process directly - can be killed on Windows
+                # _lz_worker is at module level so it can be pickled
+                result_queue = mp.Queue()
+                proc = mp.Process(target=_lz_worker, args=(segment, result_queue))
+                proc.start()
+                proc.join(timeout=scale_timeout)
+
+                if proc.is_alive():
+                    # Timeout - kill the process forcefully
+                    proc.terminate()
+                    proc.join(timeout=5)  # Wait up to 5s for termination
+                    if proc.is_alive():
+                        proc.kill()  # Force kill if still alive
+                        proc.join(timeout=2)
+
+                    elapsed = time.time() - scale_start
+                    timed_out_scales.append({
+                        'scale': scale,
+                        'index': idx,
+                        'elapsed': elapsed
+                    })
+                    if show_progress:
+                        print(f"⏱️ TIMEOUT after {elapsed/60:.1f}min (scale {scale:,})")
+                else:
+                    # Process completed - get result
                     try:
-                        lz = future.result(timeout=scale_timeout)
-                        normalized = lz / (scale / math.log2(scale)) if scale > 1 else 0
-                        results[scale] = {'raw_lz': lz, 'normalized_lz': float(normalized)}
-                        completed_scales += 1
+                        status, value = result_queue.get_nowait()
+                        if status == 'ok':
+                            lz = value
+                            normalized = lz / (scale / math.log2(scale)) if scale > 1 else 0
+                            results[scale] = {'raw_lz': lz, 'normalized_lz': float(normalized)}
+                            completed_scales += 1
 
-                        elapsed = time.time() - scale_start
-                        if show_progress and scale > 100000:
-                            print(f"✓ ({elapsed:.1f}s)")
-
-                    except FuturesTimeout:
-                        # Timeout reached - kill the process and continue
-                        elapsed = time.time() - scale_start
-                        timed_out_scales.append({
-                            'scale': scale,
-                            'index': idx,
-                            'elapsed': elapsed
-                        })
+                            elapsed = time.time() - scale_start
+                            if show_progress and scale > 100000:
+                                print(f"✓ ({elapsed:.1f}s)")
+                        else:
+                            if show_progress:
+                                print(f"❌ Error: {value}")
+                    except Exception:
                         if show_progress:
-                            print(f"⏱️ TIMEOUT after {elapsed/60:.1f}min (scale {scale:,})")
-
-                        # ProcessPoolExecutor will terminate on context exit
+                            print(f"❌ No result from process")
 
             except Exception as e:
                 if show_progress:
@@ -1332,6 +1361,8 @@ def run_deep_analysis(
             print(f"   LZ φ-scaling: {status} (φ-dist={dist:.3f})")
 
     if output_path:
+        from datetime import datetime
+
         def convert(obj):
             if isinstance(obj, (np.integer, np.floating)):
                 return float(obj)
@@ -1347,6 +1378,14 @@ def run_deep_analysis(
                 # Catch any other numpy type
                 return str(obj)
             return obj
+
+        # Add metadata for traceability
+        results['metadata'] = {
+            'script': 'level1_deep_analysis.py',
+            'generated_at': datetime.now().isoformat(),
+            'max_bits_analyzed': max_bits,
+            'analyses_run': analyses if analyses else ['all']
+        }
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(convert(results), f, indent=2, default=str)

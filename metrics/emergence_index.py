@@ -1492,8 +1492,9 @@ def _interpret_hierarchy(hierarchy_score: float, entropy_slope: float) -> str:
 
 
 def calculate_emergence_index(sequence: str,
-                               sample_size: int = 1_000_000,
-                               verbose: bool = True) -> Dict[str, Any]:
+                               sample_size: int = 1_000_000_000,
+                               verbose: bool = True,
+                               random_seed: int = 42) -> Dict[str, Any]:
     """
     Calculate the composite Emergence Index.
 
@@ -1506,8 +1507,9 @@ def calculate_emergence_index(sequence: str,
 
     Args:
         sequence: Binary Φ sequence
-        sample_size: Maximum sample size for analysis (for large sequences)
+        sample_size: Maximum sample size for analysis (default 1G for representativity)
         verbose: Print progress messages
+        random_seed: Seed for reproducible random sampling (default 42)
 
     Returns:
         Dictionary with:
@@ -1519,19 +1521,23 @@ def calculate_emergence_index(sequence: str,
         - interpretation: Human-readable interpretation
     """
     import time
+    import random
 
     def log(msg):
         if verbose:
             print(f"   {msg}", flush=True)
 
-    # Sample if sequence is too large
-    # SAMPLING RATIONALE: Center portion is used for consistency with LZ/DFA metrics.
-    # The center is typically representative for binary data and avoids edge artifacts.
-    # This is deterministic (no random component) for full reproducibility.
+    # Sample if sequence is too large using RANDOM sampling for better representativity
+    # SAMPLING RATIONALE: Random sampling across the entire sequence provides
+    # statistically representative coverage, avoiding bias from any specific region.
+    # Uses fixed seed for reproducibility.
     is_sampled = len(sequence) > sample_size
     if is_sampled:
-        start = (len(sequence) - sample_size) // 2
-        seq = sequence[start:start + sample_size]
+        random.seed(random_seed)
+        # Generate sorted random indices for efficient extraction
+        indices = sorted(random.sample(range(len(sequence)), sample_size))
+        seq = ''.join(sequence[i] for i in indices)
+        log(f"Random sampling: {sample_size:,} bits from {len(sequence):,} (seed={random_seed})")
     else:
         seq = sequence
 
@@ -1539,7 +1545,8 @@ def calculate_emergence_index(sequence: str,
         'sequence_length': len(sequence),
         'sample_size': len(seq),
         'is_sampled': is_sampled,
-        'sampling_method': 'center' if is_sampled else 'none'
+        'sampling_method': 'random' if is_sampled else 'none',
+        'random_seed': random_seed if is_sampled else None
     }
 
     # 1. Criticality (1/f spectrum)

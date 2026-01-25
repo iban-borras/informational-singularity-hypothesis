@@ -192,49 +192,222 @@ class TreeNode:
 def build_tree_from_structural(
     phi_structural: str,
     max_chars: Optional[int] = None,
-    verbose: bool = False
-) -> TreeNode:
+    verbose: bool = False,
+    max_nodes: int = 10_000_000,  # Safety limit: 10M nodes max
+    timeout_seconds: int = 600   # 10 minutes max for building
+) -> Tuple[TreeNode, Dict]:
     """
     Build a tree from the parentheses structure.
 
     Each '(' opens a new child node, ')' closes it.
     Bits between parentheses are the node's content.
+
+    Returns:
+        Tuple of (tree, metadata) where metadata includes:
+        - nodes_created: number of nodes
+        - chars_processed: characters processed
+        - completed: whether it finished normally
+        - reason: if not completed, why (timeout/node_limit)
     """
+    import time
+    start_time = time.time()
+
     if max_chars:
         phi_structural = phi_structural[:max_chars]
 
     total_chars = len(phi_structural)
     root = TreeNode(depth=0)
     stack = [root]
+    nodes_created = 1
+    max_depth_seen = 0
 
-    # Progress tracking
+    # Progress tracking - report every 10%
     report_interval = max(1, total_chars // 10)
     last_report = 0
+    last_progress_pct = 0
 
     for i, char in enumerate(phi_structural):
+        # Progress reporting (without \r for better terminal compatibility)
         if verbose and i - last_report >= report_interval:
-            progress = (i / total_chars) * 100
-            print(f"\r      Building tree: {progress:.0f}%...", end="", flush=True)
-            last_report = i
+            progress = int((i / total_chars) * 100)
+            if progress > last_progress_pct:
+                elapsed = time.time() - start_time
+                print(f"      Building tree: {progress}% ({nodes_created:,} nodes, {elapsed:.0f}s)")
+                last_progress_pct = progress
+                last_report = i
+
+        # Check timeout every 100k chars
+        if i % 100_000 == 0:
+            elapsed = time.time() - start_time
+            if elapsed > timeout_seconds:
+                if verbose:
+                    print(f"      ⏱️ TIMEOUT after {elapsed/60:.1f}min ({nodes_created:,} nodes, {i:,} chars)")
+                return root, {
+                    'nodes_created': nodes_created,
+                    'chars_processed': i,
+                    'total_chars': total_chars,
+                    'max_depth': max_depth_seen,
+                    'completed': False,
+                    'reason': 'timeout',
+                    'elapsed_seconds': elapsed
+                }
+
+        # Check node limit
+        if nodes_created >= max_nodes:
+            if verbose:
+                print(f"      ⚠️ NODE LIMIT reached ({max_nodes:,} nodes at char {i:,})")
+            return root, {
+                'nodes_created': nodes_created,
+                'chars_processed': i,
+                'total_chars': total_chars,
+                'max_depth': max_depth_seen,
+                'completed': False,
+                'reason': 'node_limit',
+                'elapsed_seconds': time.time() - start_time
+            }
 
         if char == '(':
             new_node = TreeNode(depth=len(stack))
             stack[-1].children.append(new_node)
             stack.append(new_node)
+            nodes_created += 1
+            max_depth_seen = max(max_depth_seen, len(stack))
         elif char == ')':
             if len(stack) > 1:
                 stack.pop()
         elif char in '01':
             stack[-1].content += char
 
+    elapsed = time.time() - start_time
     if verbose:
-        print(f"\r      Building tree: 100% ✓", flush=True)
+        print(f"      Building tree: 100% ✓ ({nodes_created:,} nodes, {elapsed:.1f}s)")
 
-    return root
+    return root, {
+        'nodes_created': nodes_created,
+        'chars_processed': total_chars,
+        'total_chars': total_chars,
+        'max_depth': max_depth_seen,
+        'completed': True,
+        'reason': None,
+        'elapsed_seconds': elapsed
+    }
 
 
+def compute_subtree_sizes_iterative(root: TreeNode, verbose: bool = False) -> Dict[int, int]:
+    """
+    Pre-compute subtree sizes for all nodes iteratively (avoids stack overflow).
+
+    Returns a dict mapping node id to subtree size.
+    """
+    # Use post-order traversal with explicit stack
+    sizes = {}  # id(node) -> size
+    stack = [(root, False)]  # (node, children_processed)
+
+    nodes_processed = 0
+    report_interval = 100_000
+
+    while stack:
+        node, children_done = stack.pop()
+
+        if children_done:
+            # All children processed, compute this node's size
+            size = 1 + sum(sizes.get(id(c), 0) for c in node.children)
+            sizes[id(node)] = size
+            nodes_processed += 1
+
+            if verbose and nodes_processed % report_interval == 0:
+                print(f"      Computing sizes: {nodes_processed:,} nodes...", flush=True)
+        else:
+            # First visit: push self (to process later) then children
+            stack.append((node, True))
+            for child in reversed(node.children):
+                stack.append((child, False))
+
+    return sizes
+
+
+def collect_all_metrics_iterative(
+    root: TreeNode,
+    verbose: bool = False,
+    timeout_seconds: int = 300  # 5 minutes max for collection
+) -> Tuple[List[float], Dict[int, int], List[int], List[int], bool]:
+    """
+    Collect all metrics in a single iterative pass (avoids recursion).
+
+    Returns: (branching_ratios, depth_dist, content_lengths, children_counts, completed)
+    """
+    import time
+    start_time = time.time()
+
+    branching_ratios = []
+    depth_dist = {}
+    content_lengths = []
+    children_counts = []
+
+    # First pass: compute subtree sizes
+    if verbose:
+        print(f"      [1/2] Computing subtree sizes...", flush=True)
+    sizes = compute_subtree_sizes_iterative(root, verbose)
+
+    elapsed = time.time() - start_time
+    if elapsed > timeout_seconds:
+        if verbose:
+            print(f"      ⏱️ TIMEOUT during size computation ({elapsed/60:.1f}min)")
+        return branching_ratios, depth_dist, content_lengths, children_counts, False
+
+    if verbose:
+        print(f"      [2/2] Collecting metrics...", flush=True)
+
+    # Second pass: collect all metrics using iterative traversal
+    stack = [root]
+    nodes_processed = 0
+    report_interval = 100_000
+
+    while stack:
+        # Check timeout periodically
+        if nodes_processed % 10_000 == 0:
+            elapsed = time.time() - start_time
+            if elapsed > timeout_seconds:
+                if verbose:
+                    print(f"      ⏱️ TIMEOUT during collection ({elapsed/60:.1f}min, {nodes_processed:,} nodes)")
+                return branching_ratios, depth_dist, content_lengths, children_counts, False
+
+        node = stack.pop()
+        nodes_processed += 1
+
+        if verbose and nodes_processed % report_interval == 0:
+            print(f"      Collecting: {nodes_processed:,} nodes...", flush=True)
+
+        # Depth distribution
+        depth_dist[node.depth] = depth_dist.get(node.depth, 0) + 1
+
+        # Content length
+        if node.content:
+            content_lengths.append(len(node.content))
+
+        # Children count and branching ratios
+        if node.children:
+            children_counts.append(len(node.children))
+
+            if len(node.children) >= 2:
+                # Use pre-computed sizes
+                child_sizes = sorted([sizes.get(id(c), 0) for c in node.children], reverse=True)
+                if child_sizes[1] > 0:
+                    branching_ratios.append(child_sizes[0] / child_sizes[1])
+
+            # Add children to stack
+            stack.extend(node.children)
+
+    if verbose:
+        elapsed = time.time() - start_time
+        print(f"      ✓ Collected {nodes_processed:,} nodes in {elapsed:.1f}s")
+
+    return branching_ratios, depth_dist, content_lengths, children_counts, True
+
+
+# Keep old functions for backward compatibility but mark as deprecated
 def collect_branching_ratios(node: TreeNode, ratios: List[float]) -> None:
-    """Collect branching ratios (largest/second-largest child) recursively."""
+    """DEPRECATED: Use collect_all_metrics_iterative instead. Recursive version."""
     if len(node.children) >= 2:
         sizes = sorted([c.subtree_size() for c in node.children], reverse=True)
         if sizes[1] > 0:
@@ -244,14 +417,14 @@ def collect_branching_ratios(node: TreeNode, ratios: List[float]) -> None:
 
 
 def collect_depth_distribution(node: TreeNode, dist: Dict[int, int]) -> None:
-    """Collect distribution of nodes by depth."""
+    """DEPRECATED: Use collect_all_metrics_iterative instead. Recursive version."""
     dist[node.depth] = dist.get(node.depth, 0) + 1
     for child in node.children:
         collect_depth_distribution(child, dist)
 
 
 def collect_content_lengths(node: TreeNode, lengths: List[int]) -> None:
-    """Collect content lengths at each node."""
+    """DEPRECATED: Use collect_all_metrics_iterative instead. Recursive version."""
     if node.content:
         lengths.append(len(node.content))
     for child in node.children:
@@ -259,7 +432,7 @@ def collect_content_lengths(node: TreeNode, lengths: List[int]) -> None:
 
 
 def collect_children_counts(node: TreeNode, counts: List[int]) -> None:
-    """Collect number of children at each node."""
+    """DEPRECATED: Use collect_all_metrics_iterative instead. Recursive version."""
     if node.children:
         counts.append(len(node.children))
     for child in node.children:
@@ -290,7 +463,9 @@ def analyze_nesting_tree(
     phi_structural: str,
     max_chars: Optional[int] = None,
     n_bootstrap: int = 100,
-    verbose: bool = True
+    verbose: bool = True,
+    tree_timeout: int = 600,  # 10 minutes for tree building
+    max_nodes: int = 10_000_000  # 10M nodes max
 ) -> Dict:
     """
     Main analysis: find φ in the nesting tree structure.
@@ -306,6 +481,8 @@ def analyze_nesting_tree(
         max_chars: Maximum chars to analyze (default 1G for publication)
         n_bootstrap: Bootstrap samples for CI (default 100 for publication)
         verbose: Print progress
+        tree_timeout: Max seconds for tree building (default 10 min)
+        max_nodes: Max nodes before stopping (default 10M)
     """
     if verbose:
         total_chars = len(phi_structural)
@@ -314,40 +491,86 @@ def analyze_nesting_tree(
         if max_chars and max_chars < total_chars:
             print(f"   Analyzing first: {max_chars:,} chars")
         print(f"   Bootstrap samples: {n_bootstrap}")
+        print(f"   Tree timeout: {tree_timeout//60}min, max nodes: {max_nodes:,}")
 
     if verbose:
         print(f"   Building tree...")
-    tree = build_tree_from_structural(phi_structural, max_chars, verbose=verbose)
-    
-    if verbose:
-        print(f"   Collecting metrics...")
-        print(f"      [1/4] Branching ratios...", end=" ", flush=True)
+    tree, build_meta = build_tree_from_structural(
+        phi_structural, max_chars, verbose=verbose,
+        max_nodes=max_nodes, timeout_seconds=tree_timeout
+    )
 
-    # Collect all metrics
-    branching_ratios = []
-    collect_branching_ratios(tree, branching_ratios)
-    if verbose:
-        print(f"✓ ({len(branching_ratios):,} found)")
-        print(f"      [2/4] Depth distribution...", end=" ", flush=True)
+    # Check if tree building was interrupted
+    if not build_meta['completed']:
+        reason = build_meta['reason']
+        if verbose:
+            print(f"\n   ⚠️ Tree building incomplete: {reason}")
+            print(f"      Nodes created: {build_meta['nodes_created']:,}")
+            print(f"      Chars processed: {build_meta['chars_processed']:,}/{build_meta['total_chars']:,}")
+            print(f"      Max depth seen: {build_meta['max_depth']}")
 
-    depth_dist = {}
-    collect_depth_distribution(tree, depth_dist)
+        # Detect if data is too chaotic
+        # Heuristic: if we hit node limit quickly, data is very chaotic
+        chars_per_node = build_meta['chars_processed'] / max(1, build_meta['nodes_created'])
+        is_chaotic = chars_per_node < 10  # Less than 10 chars per node = very fragmented
+
+        if verbose and is_chaotic:
+            print(f"      📊 Data appears CHAOTIC ({chars_per_node:.1f} chars/node)")
+            print(f"      → This is expected for random/noise data")
+
+        # Return partial results with chaos indicator
+        return {
+            'analysis_complete': False,
+            'interruption_reason': reason,
+            'build_metadata': build_meta,
+            'is_chaotic': is_chaotic,
+            'chars_per_node': chars_per_node,
+            'tree_stats': {
+                'total_nodes': build_meta['nodes_created'],
+                'max_depth': build_meta['max_depth'],
+                'chars_processed': build_meta['chars_processed']
+            },
+            'interpretation': f"Analysis interrupted ({reason}). Data appears {'chaotic/random' if is_chaotic else 'structured but too large'}.",
+            'phi_target': PHI
+        }
+
+    if verbose:
+        print(f"   Collecting metrics (iterative, with timeout)...")
+
+    # Collect all metrics using iterative version (avoids stack overflow and has timeout)
+    branching_ratios, depth_dist, content_lengths, children_counts, collection_complete = \
+        collect_all_metrics_iterative(tree, verbose=verbose, timeout_seconds=300)
+
+    if not collection_complete:
+        if verbose:
+            print(f"   ⚠️ Metric collection interrupted (timeout)")
+        # Return partial results
+        return {
+            'analysis_complete': False,
+            'interruption_reason': 'collection_timeout',
+            'build_metadata': build_meta,
+            'is_chaotic': False,
+            'tree_stats': {
+                'total_nodes': build_meta['nodes_created'],
+                'max_depth': build_meta['max_depth'],
+                'chars_processed': build_meta['chars_processed']
+            },
+            'partial_metrics': {
+                'branching_ratios_collected': len(branching_ratios),
+                'depths_found': len(depth_dist),
+                'content_lengths_collected': len(content_lengths)
+            },
+            'interpretation': 'Analysis interrupted during metric collection (tree too complex).',
+            'phi_target': PHI
+        }
+
     depth_ratios = analyze_depth_ratios(depth_dist)
-    if verbose:
-        print(f"✓ ({len(depth_dist)} depths)")
 
     if verbose:
-        print(f"      [3/4] Content lengths...", end=" ", flush=True)
-    content_lengths = []
-    collect_content_lengths(tree, content_lengths)
-    if verbose:
-        print(f"✓ ({len(content_lengths):,} nodes)")
-        print(f"      [4/4] Children counts...", end=" ", flush=True)
-
-    children_counts = []
-    collect_children_counts(tree, children_counts)
-    if verbose:
-        print(f"✓ ({len(children_counts):,} branching nodes)")
+        print(f"      ✓ Branching ratios: {len(branching_ratios):,}")
+        print(f"      ✓ Depth levels: {len(depth_dist)}")
+        print(f"      ✓ Content nodes: {len(content_lengths):,}")
+        print(f"      ✓ Branching nodes: {len(children_counts):,}")
 
     # Calculate φ proximity for each metric
     br_mean, br_std, br_min = phi_proximity(branching_ratios)
@@ -373,6 +596,8 @@ def analyze_nesting_tree(
         bootstrap_results = bootstrap_ratios_ci(branching_ratios, n_bootstrap, verbose=verbose)
 
     results = {
+        'analysis_complete': True,
+        'build_metadata': build_meta,
         'tree_stats': {
             'total_nodes': tree.subtree_size(),
             'total_bits': tree.subtree_bits(),
@@ -419,10 +644,28 @@ def print_results(results: Dict) -> None:
     print(f"🌳 PRE-COLLAPSE STRUCTURE ANALYSIS — Results")
     print(f"{'='*60}")
 
+    # Check if analysis was interrupted
+    if not results.get('analysis_complete', True):
+        print(f"\n⚠️  ANALYSIS INTERRUPTED: {results.get('interruption_reason', 'unknown')}")
+        ts = results.get('tree_stats', {})
+        print(f"\n📊 Partial Tree Statistics:")
+        print(f"   Nodes created: {ts.get('total_nodes', 0):,}")
+        print(f"   Chars processed: {ts.get('chars_processed', 0):,}")
+        print(f"   Max depth: {ts.get('max_depth', 0)}")
+
+        if results.get('is_chaotic'):
+            print(f"\n🎲 DATA CLASSIFICATION: CHAOTIC/RANDOM")
+            print(f"   Chars per node: {results.get('chars_per_node', 0):.1f}")
+            print(f"   → This is expected for random/noise data (variant A, etc.)")
+            print(f"   → The data lacks the structure needed for nesting analysis")
+
+        print(f"\n📝 Interpretation: {results.get('interpretation', 'N/A')}")
+        return
+
     ts = results['tree_stats']
     print(f"\n📊 Tree Statistics:")
     print(f"   Nodes: {ts['total_nodes']:,}")
-    print(f"   Bits: {ts['total_bits']:,}")
+    print(f"   Bits: {ts.get('total_bits', 0):,}")
     print(f"   Max depth: {ts['max_depth']}")
 
     ba = results['branching_analysis']
@@ -624,9 +867,12 @@ Examples:
         'segments': all_results
     }
 
-    # Calculate consistency metrics
+    # Calculate consistency metrics (only for complete analyses)
     if len(all_results) > 1:
-        mean_ratios = [r['branching_analysis']['mean_ratio'] for r in all_results
+        # Filter only complete analyses with branching_analysis
+        complete_results = [r for r in all_results
+                           if r.get('analysis_complete', True) and 'branching_analysis' in r]
+        mean_ratios = [r['branching_analysis']['mean_ratio'] for r in complete_results
                        if not math.isnan(r['branching_analysis']['mean_ratio'])]
         if mean_ratios:
             results['consistency'] = {
@@ -656,6 +902,8 @@ Examples:
         args.output = str(get_output_path(1, "analysis", filename))
 
     if args.output:
+        from datetime import datetime
+
         def convert_for_json(obj):
             if isinstance(obj, (np.integer, np.floating)):
                 return float(obj)
@@ -666,6 +914,15 @@ Examples:
             elif isinstance(obj, list):
                 return [convert_for_json(x) for x in obj]
             return obj
+
+        # Add metadata for traceability
+        results['metadata'] = {
+            'script': 'level1_nesting_tree.py',
+            'generated_at': datetime.now().isoformat(),
+            'segment_size': args.max_chars,
+            'num_segments': args.segments,
+            'bootstrap_samples': args.bootstrap
+        }
 
         with open(args.output, "w", encoding="utf-8") as f:
             json.dump(convert_for_json(results), f, indent=2)
