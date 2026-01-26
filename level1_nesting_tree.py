@@ -193,7 +193,7 @@ def build_tree_from_structural(
     phi_structural: str,
     max_chars: Optional[int] = None,
     verbose: bool = False,
-    max_nodes: int = 10_000_000,  # Safety limit: 10M nodes max
+    max_nodes: int = 50_000_000,  # Safety limit: 50M nodes max (increased from 10M)
     timeout_seconds: int = 600   # 10 minutes max for building
 ) -> Tuple[TreeNode, Dict]:
     """
@@ -465,7 +465,7 @@ def analyze_nesting_tree(
     n_bootstrap: int = 100,
     verbose: bool = True,
     tree_timeout: int = 600,  # 10 minutes for tree building
-    max_nodes: int = 10_000_000  # 10M nodes max
+    max_nodes: int = 50_000_000  # 50M nodes max (increased from 10M)
 ) -> Dict:
     """
     Main analysis: find φ in the nesting tree structure.
