@@ -25,10 +25,32 @@ import json
 import math
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# tqdm for progress bars
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    tqdm = None
+
+# Numba for JIT compilation
+try:
+    from numba import njit
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+        if len(args) == 1 and callable(args[0]):
+            return args[0]
+        return decorator
 
 sys.path.insert(0, str(Path(__file__).parent))
 from level1.data_loader import load_phi_for_level1
@@ -55,39 +77,69 @@ def log_progress(current: int, total: int, prefix: str = ""):
 # Simplified Persistent Homology
 # =============================================================================
 
+@njit(cache=True)
+def _compute_run_lengths_numba(arr: np.ndarray) -> Tuple[np.ndarray, np.ndarray, int, int]:
+    """
+    Numba-optimized run length computation.
+
+    Returns: (runs_0_arr, runs_1_arr, n_runs_0, n_runs_1)
+    Pre-allocates arrays and returns actual counts.
+    """
+    n = len(arr)
+    if n == 0:
+        return np.zeros(1, dtype=np.int32), np.zeros(1, dtype=np.int32), 0, 0
+
+    # Pre-allocate (worst case: alternating bits = n/2 runs each)
+    max_runs = n // 2 + 1
+    runs_0 = np.zeros(max_runs, dtype=np.int32)
+    runs_1 = np.zeros(max_runs, dtype=np.int32)
+    n_runs_0 = 0
+    n_runs_1 = 0
+
+    current_val = arr[0]
+    current_len = 1
+
+    for i in range(1, n):
+        if arr[i] == current_val:
+            current_len += 1
+        else:
+            if current_val == 0:
+                runs_0[n_runs_0] = current_len
+                n_runs_0 += 1
+            else:
+                runs_1[n_runs_1] = current_len
+                n_runs_1 += 1
+            current_val = arr[i]
+            current_len = 1
+
+    # Last run
+    if current_val == 0:
+        runs_0[n_runs_0] = current_len
+        n_runs_0 += 1
+    else:
+        runs_1[n_runs_1] = current_len
+        n_runs_1 += 1
+
+    return runs_0, runs_1, n_runs_0, n_runs_1
+
+
 def compute_run_lengths(bits: str) -> Tuple[List[int], List[int]]:
     """
     Compute run lengths of 0s and 1s.
-    
+
     These represent "holes" (0-runs) and "matter" (1-runs) in the sequence.
+    Uses Numba JIT for performance on large sequences.
     """
-    runs_0 = []
-    runs_1 = []
-    
     if not bits:
-        return runs_0, runs_1
-    
-    current_char = bits[0]
-    current_len = 1
-    
-    for i in range(1, len(bits)):
-        if bits[i] == current_char:
-            current_len += 1
-        else:
-            if current_char == '0':
-                runs_0.append(current_len)
-            else:
-                runs_1.append(current_len)
-            current_char = bits[i]
-            current_len = 1
-    
-    # Don't forget the last run
-    if current_char == '0':
-        runs_0.append(current_len)
-    else:
-        runs_1.append(current_len)
-    
-    return runs_0, runs_1
+        return [], []
+
+    # Convert to numpy array for Numba
+    arr = np.frombuffer(bits.encode('ascii'), dtype=np.uint8) - ord('0')
+
+    # Use Numba-optimized version
+    runs_0_arr, runs_1_arr, n0, n1 = _compute_run_lengths_numba(arr)
+
+    return runs_0_arr[:n0].tolist(), runs_1_arr[:n1].tolist()
 
 
 def compute_persistence_diagram(runs: List[int], feature_type: str = "H0") -> List[Tuple[float, float]]:
@@ -171,6 +223,53 @@ def analyze_persistence_ratios(diagram: List[Tuple[float, float]], verbose: bool
 # Betti Numbers Analysis
 # =============================================================================
 
+@njit(cache=True)
+def _coarse_grain_and_count_numba(arr: np.ndarray, scale: int) -> Tuple[int, int]:
+    """
+    Numba-optimized coarse-graining and counting.
+
+    Returns: (n_components, n_alternations)
+    """
+    n = len(arr)
+    n_blocks = n // scale
+
+    if n_blocks < 2:
+        return 0, 0
+
+    # Coarse-grain: majority vote per block
+    prev_val = -1
+    n_components = 0
+    n_alternations = 0
+    in_component = False
+
+    for i in range(n_blocks):
+        # Count ones in block
+        ones = 0
+        start = i * scale
+        end = start + scale
+        for j in range(start, end):
+            ones += arr[j]
+
+        # Majority vote
+        current_val = 1 if ones > scale // 2 else 0
+
+        # Count alternations
+        if prev_val >= 0 and current_val != prev_val:
+            n_alternations += 1
+
+        # Count components (1-runs)
+        if current_val == 1:
+            if not in_component:
+                n_components += 1
+                in_component = True
+        else:
+            in_component = False
+
+        prev_val = current_val
+
+    return n_components, n_alternations
+
+
 def compute_betti_at_scales(bits: str, scales: List[int], verbose: bool = True) -> Dict:
     """
     Compute Betti-like numbers at multiple scales.
@@ -189,37 +288,27 @@ def compute_betti_at_scales(bits: str, scales: List[int], verbose: bool = True) 
     if verbose:
         log_step("Computing Betti numbers at multiple scales...")
 
+    # Convert to numpy array once
+    arr = np.frombuffer(bits.encode('ascii'), dtype=np.uint8) - ord('0')
+
     betti_0 = []  # Connected components (1-runs after coarse-graining)
     betti_1 = []  # Cycles proxy (alternation frequency)
 
-    total_scales = len(scales)
-    for idx, scale in enumerate(scales):
-        if verbose:
-            log_progress(idx + 1, total_scales, "Scales")
+    # Use tqdm if available
+    if verbose and TQDM_AVAILABLE:
+        scale_iter = tqdm(scales, desc="   Betti scales", unit="scale",
+                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+    else:
+        scale_iter = scales
 
-        # Coarse-grain: each block becomes 1 if majority is 1, else 0
-        n_blocks = len(bits) // scale
-        if n_blocks < 2:
-            betti_0.append(0)
-            betti_1.append(0)
-            continue
+    for idx, scale in enumerate(scale_iter):
+        if not TQDM_AVAILABLE and verbose:
+            log_progress(idx + 1, len(scales), "Scales")
 
-        coarse = []
-        for i in range(n_blocks):
-            block = bits[i * scale:(i + 1) * scale]
-            ones = block.count('1')
-            coarse.append('1' if ones > scale // 2 else '0')
-
-        coarse_str = ''.join(coarse)
-
-        # H0: count connected components (1-runs)
-        runs_0, runs_1 = compute_run_lengths(coarse_str)
-        betti_0.append(len(runs_1))
-
-        # H1 proxy: count alternations (transitions between 0 and 1)
-        alternations = sum(1 for i in range(len(coarse_str) - 1)
-                          if coarse_str[i] != coarse_str[i + 1])
-        betti_1.append(alternations)
+        # Use Numba-optimized version
+        n_comp, n_alt = _coarse_grain_and_count_numba(arr, scale)
+        betti_0.append(n_comp)
+        betti_1.append(n_alt)
 
     # Analyze ratios between consecutive scales
     b0_ratios = []
@@ -272,18 +361,21 @@ def run_topological_analysis(
     Returns:
         Complete topological analysis results
     """
+    start_time = time.time()
+
     # Data requirements
     if verbose:
         print(f"\n{'='*65}")
         print(f"🔮 TOPOLOGICAL PERSISTENCE ANALYSIS")
         print(f"{'='*65}")
-        print(f"\n📋 REQUIREMENTS:")
-        print(f"   - phi_snapshots data for variant {variant}, iteration {iteration}")
-        print(f"   - Observable or structural format supported")
-        print(f"   - numpy (standard dependency)")
+        print(f"\n📋 CONFIGURATION:")
+        print(f"   - Variant: {variant}, Iteration: {iteration}")
+        print(f"   - Max bits: {max_bits:,}")
+        print(f"   - JIT acceleration: {'Numba ✅' if NUMBA_AVAILABLE else 'Not available ❌'}")
+        print(f"   - Progress bars: {'tqdm ✅' if TQDM_AVAILABLE else 'Basic'}")
         print()
 
-    # Load data
+    # Load data using streaming loader if available
     data_dir = f"results/level0/phi_snapshots/var_{variant}"
     if not os.path.exists(data_dir):
         data_dir = f"results/level0/var_{variant}"
@@ -296,23 +388,37 @@ def run_topological_analysis(
         return {'error': f'Data directory not found: {data_dir}'}
 
     if verbose:
-        log_step(f"Loading variant {variant}, iteration {iteration}...")
+        log_step(f"📥 Loading variant {variant}, iteration {iteration}...")
+
+    # Try streaming loader first (memory efficient)
+    struct_path = Path(data_dir) / f"phi_iter{iteration}.struct.gz"
 
     try:
-        _, phi_observable, metadata = load_phi_for_level1(
-            data_dir, iteration,
-            return_structural=False,
-            return_observable=True,
-            return_metadata=True
-        )
+        if struct_path.exists():
+            from utils.streaming_phi_loader import load_phi_for_agents
+            phi_observable, _ = load_phi_for_agents(
+                str(struct_path),
+                max_chars=max_bits * 2,  # Safety margin for parentheses
+                observable_only=True,
+                show_progress=verbose
+            )
+            bits = phi_observable[:max_bits]
+        else:
+            # Fallback to standard loader
+            _, phi_observable, metadata = load_phi_for_level1(
+                data_dir, iteration,
+                return_structural=False,
+                return_observable=True,
+                return_metadata=True
+            )
+            bits = phi_observable[:max_bits]
     except Exception as e:
         print(f"\n❌ FAILED TO LOAD DATA: {e}")
         return {'error': str(e)}
 
-    bits = phi_observable[:max_bits]
-
+    load_time = time.time() - start_time
     if verbose:
-        log_step(f"Loaded {len(phi_observable):,} bits, analyzing {len(bits):,}")
+        log_step(f"✅ Loaded {len(bits):,} bits in {load_time:.1f}s")
 
     results = {
         'variant': variant,
@@ -382,9 +488,14 @@ def run_topological_analysis(
         print(f"   Betti-0 φ-scaling:    {b0_status} (dist={ba.get('b0_mean_phi_distance', float('nan')):.3f})")
         print(f"   Betti-1 φ-scaling:    {b1_status} (dist={ba.get('b1_mean_phi_distance', float('nan')):.3f})")
 
+        total_time = time.time() - start_time
+        print(f"\n   ⏱️ Total time: {total_time:.1f}s ({total_time/60:.1f}min)")
+
     # Save results
     if output_path:
         def convert(obj):
+            if isinstance(obj, np.bool_):
+                return bool(obj)
             if isinstance(obj, (np.integer, np.floating)):
                 return float(obj)
             if isinstance(obj, np.ndarray):
@@ -395,6 +506,7 @@ def run_topological_analysis(
                 return [convert(x) for x in obj]
             return obj
 
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(convert(results), f, indent=2)
         if verbose:
@@ -411,14 +523,23 @@ def main():
     parser.add_argument("--iteration", "-i", type=int, default=15, help="Iteration number")
     parser.add_argument("--max-bits", "-m", type=int, default=100000, help="Max bits to analyze")
     parser.add_argument("--compare", "-c", type=str, default=None, help="Compare with another variant")
-    parser.add_argument("--output", "-o", type=str, default=None, help="Output JSON file")
+    parser.add_argument("--output", "-o", type=str, default=None, help="Output JSON file (auto-generated if not specified)")
+    parser.add_argument("--no-save", action="store_true", help="Don't save results to file")
 
     args = parser.parse_args()
+
+    # Auto-generate output path if not specified
+    output_path = args.output
+    if not args.no_save and output_path is None:
+        output_dir = Path("results/level1/analysis")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        bits_suffix = f"{args.max_bits // 1_000_000}M" if args.max_bits >= 1_000_000 else f"{args.max_bits // 1000}K"
+        output_path = str(output_dir / f"topological_var_{args.variant}_iter{args.iteration}_{bits_suffix}.json")
 
     results = run_topological_analysis(
         args.variant, args.iteration,
         max_bits=args.max_bits,
-        output_path=args.output
+        output_path=output_path
     )
 
     if args.compare and 'error' not in results:
@@ -426,9 +547,17 @@ def main():
         print(f"📊 COMPARISON: {args.variant} vs {args.compare}")
         print(f"{'='*65}")
 
+        # Auto-generate output path for comparison variant
+        cmp_output_path = None
+        if not args.no_save:
+            output_dir = Path("results/level1/analysis")
+            bits_suffix = f"{args.max_bits // 1_000_000}M" if args.max_bits >= 1_000_000 else f"{args.max_bits // 1000}K"
+            cmp_output_path = str(output_dir / f"topological_var_{args.compare}_iter{args.iteration}_{bits_suffix}.json")
+
         results_cmp = run_topological_analysis(
             args.compare, args.iteration,
-            max_bits=args.max_bits
+            max_bits=args.max_bits,
+            output_path=cmp_output_path
         )
 
         if 'error' not in results_cmp:

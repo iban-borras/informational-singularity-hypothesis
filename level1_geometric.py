@@ -4,7 +4,7 @@ Level 1 — Geometric Operators Analysis (Γ, 𝓡, 𝓣, 𝓔)
 
 Implements informational geometry operators from ISH paper Section 4.3:
 - Γ (Connection): Pattern transport between iterations
-- 𝓡 (Curvature): Rule interference / non-commutativity  
+- 𝓡 (Curvature): Rule interference / non-commutativity
 - 𝓣 (Torsion): Positional asymmetries within single iteration
 - 𝓔 (Energy): Global quality functional
 
@@ -12,7 +12,7 @@ Requirements:
     For FULL analysis (Γ, 𝓡, 𝓔):
         - Level 1 analysis results for 3 consecutive iterations (N-2, N-1, N)
         - Files: results/level1_analysis_var{X}_iter{Y}_min*_max*.json
-    
+
     For TORSION-only (𝓣):
         - phi_snapshots data for single iteration
         - No Level 1 pre-processing required
@@ -37,10 +37,32 @@ import math
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# tqdm for progress bars
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    tqdm = None
+
+# Numba for JIT compilation
+try:
+    from numba import njit
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+        if len(args) == 1 and callable(args[0]):
+            return args[0]
+        return decorator
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -172,6 +194,26 @@ def check_requirements(variant: str, iteration: int, torsion_only: bool = False,
 # Torsion 𝓣 — Positional Asymmetries (Single Iteration)
 # =============================================================================
 
+@njit(cache=True)
+def _count_pattern_in_segment_numba(arr: np.ndarray, pattern: np.ndarray) -> int:
+    """Numba-optimized pattern counting in a segment."""
+    n = len(arr)
+    p_len = len(pattern)
+    if n < p_len:
+        return 0
+
+    count = 0
+    for i in range(n - p_len + 1):
+        match = True
+        for j in range(p_len):
+            if arr[i + j] != pattern[j]:
+                match = False
+                break
+        if match:
+            count += 1
+    return count
+
+
 def compute_torsion(bits: str, n_segments: int = 5, verbose: bool = True) -> Dict:
     """
     Compute Torsion 𝓣 — measures positional asymmetries.
@@ -203,6 +245,9 @@ def compute_torsion(bits: str, n_segments: int = 5, verbose: bool = True) -> Dic
     if segment_size < 100:
         return {'error': 'Insufficient data for torsion analysis'}
 
+    # Convert to numpy array once
+    arr = np.frombuffer(bits.encode('ascii'), dtype=np.uint8) - ord('0')
+
     # Analyze several pattern types
     patterns = ['00', '11', '01', '10', '000', '111', '010', '101',
                 '0000', '1111', '0101', '1010']
@@ -215,21 +260,28 @@ def compute_torsion(bits: str, n_segments: int = 5, verbose: bool = True) -> Dic
 
     torsions = []
 
-    total_patterns = len(patterns)
-    for idx, pattern in enumerate(patterns):
-        if verbose:
-            log_progress(idx + 1, total_patterns, "Patterns")
+    # Use tqdm if available
+    if verbose and TQDM_AVAILABLE:
+        pattern_iter = tqdm(patterns, desc="   Patterns", unit="pat",
+                            bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+    else:
+        pattern_iter = patterns
+
+    for idx, pattern in enumerate(pattern_iter):
+        if not TQDM_AVAILABLE and verbose:
+            log_progress(idx + 1, len(patterns), "Patterns")
+
+        # Convert pattern to numpy array
+        pattern_arr = np.array([int(c) for c in pattern], dtype=np.uint8)
 
         counts = []
         for seg in range(n_segments):
             start = seg * segment_size
             end = (seg + 1) * segment_size
-            segment = bits[start:end]
+            segment_arr = arr[start:end]
 
-            count = 0
-            for i in range(len(segment) - len(pattern) + 1):
-                if segment[i:i+len(pattern)] == pattern:
-                    count += 1
+            # Use Numba-optimized counting
+            count = _count_pattern_in_segment_numba(segment_arr, pattern_arr)
             counts.append(count)
 
         mean_count = np.mean(counts)
@@ -571,12 +623,18 @@ def run_geometric_analysis(
     Returns:
         Complete geometric analysis results
     """
+    start_time = time.time()
+
     if verbose:
         print(f"\n{'='*65}")
         print(f"📐 GEOMETRIC OPERATORS ANALYSIS")
-        print(f"   Variant {variant}, Iteration {iteration}")
-        print(f"   Mode: {'Torsion-only (𝓣)' if torsion_only else 'Full (Γ, 𝓡, 𝓣, 𝓔)'}")
         print(f"{'='*65}")
+        print(f"\n📋 CONFIGURATION:")
+        print(f"   - Variant: {variant}, Iteration: {iteration}")
+        print(f"   - Mode: {'Torsion-only (𝓣)' if torsion_only else 'Full (Γ, 𝓡, 𝓣, 𝓔)'}")
+        print(f"   - Max bits: {max_bits:,}")
+        print(f"   - JIT acceleration: {'Numba ✅' if NUMBA_AVAILABLE else 'Not available ❌'}")
+        print(f"   - Progress bars: {'tqdm ✅' if TQDM_AVAILABLE else 'Basic'}")
 
     # Check requirements
     req = check_requirements(variant, iteration, torsion_only, verbose)
@@ -591,29 +649,49 @@ def run_geometric_analysis(
         'phi_target': PHI
     }
 
-    # Load raw phi data for Torsion
+    # Load raw phi data for Torsion using streaming loader
     if verbose:
         print(f"\n{'─'*50}")
-        log_step("📊 Loading phi data...")
+        log_step("📥 Loading phi data...")
 
-    from level1.data_loader import load_phi_for_level1
+    # Try streaming loader first (memory efficient)
+    struct_path = Path(req['phi_data_dir']) / f"phi_iter{iteration}.struct.gz"
 
-    _, phi_bits, _ = load_phi_for_level1(
-        req['phi_data_dir'], iteration,
-        return_structural=False,
-        return_observable=True,
-        return_metadata=True
-    )
+    try:
+        if struct_path.exists():
+            from utils.streaming_phi_loader import load_phi_for_agents
+            phi_bits, _ = load_phi_for_agents(
+                str(struct_path),
+                max_chars=max_bits * 2,  # Safety margin for parentheses
+                observable_only=True,
+                show_progress=verbose
+            )
+            phi_bits = phi_bits[:max_bits]
+        else:
+            # Fallback to standard loader
+            from level1.data_loader import load_phi_for_level1
+            _, phi_bits, _ = load_phi_for_level1(
+                req['phi_data_dir'], iteration,
+                return_structural=False,
+                return_observable=True,
+                return_metadata=True
+            )
+            phi_bits = phi_bits[:max_bits]
+    except Exception as e:
+        print(f"\n❌ FAILED TO LOAD DATA: {e}")
+        return {'error': str(e)}
+
+    load_time = time.time() - start_time
 
     if verbose:
-        log_step(f"Loaded {len(phi_bits):,} bits", 1)
+        log_step(f"✅ Loaded {len(phi_bits):,} bits in {load_time:.1f}s")
 
     # Torsion (always computed)
     if verbose:
         print(f"\n{'─'*50}")
         log_step("📐 STEP 1: Torsion 𝓣 (positional asymmetries)")
 
-    results['torsion'] = compute_torsion(phi_bits[:max_bits], verbose=verbose)
+    results['torsion'] = compute_torsion(phi_bits, verbose=verbose)
 
     if not torsion_only:
         # Connection
@@ -671,9 +749,14 @@ def run_geometric_analysis(
             print(f"      Survival φ: {c_phi} (dist={c.get('survival_phi_distance', float('nan')):.3f})")
             print(f"      Curvature φ: {r_phi} (dist={r.get('phi_distance', float('nan')):.3f})")
 
+        total_time = time.time() - start_time
+        print(f"\n   ⏱️ Total time: {total_time:.1f}s ({total_time/60:.1f}min)")
+
     # Save results
     if output_path:
         def convert(obj):
+            if isinstance(obj, np.bool_):
+                return bool(obj)
             if isinstance(obj, (np.integer, np.floating)):
                 return float(obj)
             if isinstance(obj, np.ndarray):
@@ -684,10 +767,128 @@ def run_geometric_analysis(
                 return [convert(x) for x in obj]
             return obj
 
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(convert(results), f, indent=2)
         if verbose:
             print(f"\n📁 Results saved to: {output_path}")
+
+    return results
+
+
+def run_scaling_analysis(variant: str, iteration: int, scales_str: str, output_path: Optional[str] = None) -> Dict:
+    """
+    Run torsion at multiple scales to compute power-law exponent α.
+
+    If Torsion ∝ N^α:
+      - α = 1.0: Linear scaling (random noise)
+      - α > 1.0: Superlinear (long-range correlations, fractal structure)
+      - α < 1.0: Sublinear (self-correction)
+    """
+    # Parse scales (e.g., "10M,50M,100M" -> [10000000, 50000000, 100000000])
+    scales = []
+    for s in scales_str.split(','):
+        s = s.strip().upper()
+        if s.endswith('M'):
+            scales.append(int(float(s[:-1]) * 1_000_000))
+        elif s.endswith('K'):
+            scales.append(int(float(s[:-1]) * 1_000))
+        else:
+            scales.append(int(s))
+    scales = sorted(scales)
+
+    print(f"\n{'='*70}")
+    print(f"📐 SCALING ANALYSIS — Torsion vs Data Size")
+    print(f"{'='*70}")
+    print(f"   Variant: {variant}, Iteration: {iteration}")
+    print(f"   Scales: {', '.join(f'{s//1_000_000}M' for s in scales)}")
+    print(f"{'='*70}\n")
+
+    # Check requirements
+    req = check_requirements(variant, iteration, torsion_only=True, verbose=False)
+    if not req['ready']:
+        print("   ❌ Requirements not met. Run with --check-only to see details.")
+        return {}
+
+    # Load max data needed (largest scale)
+    max_scale = max(scales)
+    print(f"   📥 Loading {max_scale:,} bits...")
+
+    struct_path = Path(req['phi_data_dir']) / f"phi_iter{iteration}.struct.gz"
+    try:
+        if struct_path.exists():
+            from utils.streaming_phi_loader import load_phi_for_agents
+            bits, _ = load_phi_for_agents(
+                str(struct_path),
+                max_chars=max_scale * 2,
+                observable_only=True,
+                show_progress=True
+            )
+            bits = bits[:max_scale]
+        else:
+            from level1.data_loader import load_phi_for_level1
+            _, bits, _ = load_phi_for_level1(
+                req['phi_data_dir'], iteration,
+                return_structural=False,
+                return_observable=True,
+                return_metadata=True
+            )
+            bits = bits[:max_scale]
+    except Exception as e:
+        print(f"   ❌ Failed to load data: {e}")
+        return {}
+
+    print(f"   ✅ Loaded {len(bits):,} bits\n")
+
+    # Measure torsion at each scale
+    results = {'variant': variant, 'iteration': iteration, 'measurements': []}
+
+    for scale in scales:
+        print(f"\n   📏 Scale: {scale:,} bits ({scale//1_000_000}M)")
+        subset = bits[:scale]
+        torsion_result = compute_torsion(subset, n_segments=5, verbose=False)
+        torsion = torsion_result.get('mean_torsion', 0)
+        results['measurements'].append({'bits': scale, 'torsion': torsion})
+        print(f"      𝓣 = {torsion:.4f}")
+
+    # Fit power law: log(T) = α * log(N) + c
+    if len(results['measurements']) >= 2:
+        log_n = np.array([np.log(m['bits']) for m in results['measurements']])
+        log_t = np.array([np.log(m['torsion']) if m['torsion'] > 0 else 0 for m in results['measurements']])
+
+        # Simple least squares: α = cov(log_n, log_t) / var(log_n)
+        alpha = np.cov(log_n, log_t)[0, 1] / np.var(log_n)
+        c = np.mean(log_t) - alpha * np.mean(log_n)
+
+        # R² for fit quality
+        predicted = alpha * log_n + c
+        ss_res = np.sum((log_t - predicted) ** 2)
+        ss_tot = np.sum((log_t - np.mean(log_t)) ** 2)
+        r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+
+        results['power_law'] = {'alpha': float(alpha), 'c': float(c), 'r_squared': float(r_squared)}
+
+        print(f"\n{'='*70}")
+        print(f"📊 POWER LAW FIT: Torsion ∝ N^α")
+        print(f"{'='*70}")
+        print(f"   α (exponent) = {alpha:.4f}")
+        print(f"   R² (fit)     = {r_squared:.4f}")
+        print(f"\n   Interpretation:")
+        if alpha > 1.1:
+            print(f"   🔥 SUPERLINEAR (α > 1): Long-range correlations detected!")
+            print(f"      Torsion grows faster than data size → emergent structure")
+        elif alpha < 0.9:
+            print(f"   📉 SUBLINEAR (α < 1): Self-correcting behavior")
+        else:
+            print(f"   ➡️  LINEAR (α ≈ 1): Consistent with random/independent structure")
+        print(f"{'='*70}\n")
+
+    # Save results
+    if output_path:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2)
+        print(f"📁 Results saved to: {output_path}")
 
     return results
 
@@ -704,7 +905,12 @@ def main():
                         help="Only check requirements, don't run analysis")
     parser.add_argument("--max-bits", "-m", type=int, default=100000,
                         help="Max bits for Torsion analysis")
-    parser.add_argument("--output", "-o", type=str, default=None, help="Output JSON file")
+    parser.add_argument("--output", "-o", type=str, default=None, help="Output JSON file (auto-generated if not specified)")
+    parser.add_argument("--no-save", action="store_true", help="Don't save results to file")
+    parser.add_argument("--scaling-analysis", "-s", action="store_true",
+                        help="Run torsion at multiple scales to compute power-law exponent α")
+    parser.add_argument("--scales", type=str, default="10M,50M,100M,200M,500M",
+                        help="Comma-separated scales for scaling analysis (e.g., '10M,50M,100M,500M')")
 
     args = parser.parse_args()
 
@@ -712,12 +918,32 @@ def main():
         check_requirements(args.variant, args.iteration, args.torsion_only, verbose=True)
         return
 
+    # Scaling analysis mode
+    if args.scaling_analysis:
+        output_path = args.output
+        if not args.no_save and output_path is None:
+            output_dir = Path("results/level1/analysis")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = str(output_dir / f"scaling_analysis_var_{args.variant}_iter{args.iteration}.json")
+
+        run_scaling_analysis(args.variant, args.iteration, args.scales, output_path)
+        return
+
+    # Auto-generate output path if not specified
+    output_path = args.output
+    if not args.no_save and output_path is None:
+        output_dir = Path("results/level1/analysis")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        bits_suffix = f"{args.max_bits // 1_000_000}M" if args.max_bits >= 1_000_000 else f"{args.max_bits // 1000}K"
+        mode_suffix = "torsion" if args.torsion_only else "full"
+        output_path = str(output_dir / f"geometric_{mode_suffix}_var_{args.variant}_iter{args.iteration}_{bits_suffix}.json")
+
     run_geometric_analysis(
         args.variant,
         args.iteration,
         torsion_only=args.torsion_only,
         max_bits=args.max_bits,
-        output_path=args.output
+        output_path=output_path
     )
 
 

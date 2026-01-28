@@ -2,300 +2,73 @@
 """
 🌀 HSI Level 2 - Takens Embedding & Topological Data Analysis (TDA)
 
-Implements Antigravity's Proposal 1: Discover if the Φ sequence draws a
-geometric shape (torus, sphere, strange attractor) when projected into phase space.
+Wrapper script that orchestrates local and global TDA analysis.
+
+Modes:
+- global (default): Landmark subsampling for large-scale topology (β₂ surfaces)
+- local: Windowed analysis with parallelization (β₁ consistency)
+- both: Run both analyses
 
 Method:
-1. Takens' Embedding: Convert 1D sequence to 3D/nD point clouds using time delay
-   (x_t, x_{t+τ}, x_{t+2τ})
-2. Persistent Homology (TDA): Calculate Betti numbers (β₀, β₁, β₂)
-   - β₀: Connected components
-   - β₁: 1D cycles/tunnels (indicates recurring orbits)
-   - β₂: 2D cavities (indicates closed surface, like holographic membrane)
+1. Takens' Embedding: Convert 1D sequence to 3D point cloud using time delay
+2. Persistent Homology: Calculate Betti numbers (β₀, β₁, β₂)
 
 Scientific Value:
 If we find persistent β₂ > 0, we've demonstrated that Level 1 generates
 a REAL geometric surface (emergence of space).
 
-Requirements:
-    pip install ripser giotto-tda plotly
-
 Usage:
-    python level2_takens_tda.py --variant B --iteration 18 --dim 3
-    python level2_takens_tda.py --variants B D E --iteration 18 --compare
-    python level2_takens_tda.py --variant B --iteration 18 --visualize
+    python level2_takens_tda.py -v B -i 23 --mode global
+    python level2_takens_tda.py -v B -i 23 --mode local --windows 10
+    python level2_takens_tda.py -v B -i 23 --mode both
+    python level2_takens_tda.py -v B F -i 23 --compare
 
 Author: Sophia (for Iban & Antigravity)
-Date: December 2025
+Date: January 2026
 """
 
 import argparse
 import json
 import time
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 import numpy as np
 
-try:
-    from tqdm import tqdm
-    HAS_TQDM = True
-except ImportError:
-    HAS_TQDM = False
-    def tqdm(iterable, **kwargs):
-        return iterable
-
-# TDA libraries
-try:
-    import ripser
-    HAS_RIPSER = True
-except ImportError:
-    HAS_RIPSER = False
-
-try:
-    from gtda.homology import VietorisRipsPersistence
-    from gtda.diagrams import PersistenceEntropy, Amplitude
-    HAS_GIOTTO = True
-except ImportError:
-    HAS_GIOTTO = False
-
 # Local imports
-from metrics.emergence_index import load_phi_sequence
+from utils.streaming_phi_loader import load_phi_for_agents
+from level2 import (
+    run_local_tda, run_global_tda, run_global_tda_blocks,
+    run_witness_tda, run_cubical_tda, TDA_DIR
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-RESULTS_DIR = Path("results")
-TDA_DIR = RESULTS_DIR / "level2" / "tda_analysis"
-
 # Default parameters
 DEFAULT_EMBEDDING_DIM = 3
 DEFAULT_TIME_DELAY = 1
-DEFAULT_MAX_POINTS = 10_000  # TDA is O(n³) so we must limit points
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAKENS EMBEDDING
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def takens_embedding(sequence: str,
-                     embedding_dim: int = 3,
-                     time_delay: int = 1,
-                     max_points: int = 10_000,
-                     verbose: bool = True) -> Tuple[np.ndarray, Dict[str, Any]]:
-    """
-    Convert a binary sequence to a point cloud using Takens' embedding.
-
-    For a sequence s = [s₀, s₁, s₂, ...], we create vectors:
-    v_t = (s_t, s_{t+τ}, s_{t+2τ}, ..., s_{t+(d-1)τ})
-
-    where d = embedding_dim and τ = time_delay.
-
-    Args:
-        sequence: Binary string
-        embedding_dim: Dimension of the embedding space (default 3)
-        time_delay: Time delay τ between coordinates (default 1)
-        max_points: Maximum number of points to generate
-        verbose: Print progress
-
-    Returns:
-        Tuple of (point_cloud as numpy array, metadata dict)
-    """
-    log = print if verbose else lambda *a, **k: None
-
-    log(f"\n   🌀 Creating Takens embedding...")
-    log(f"      Dimension: {embedding_dim}")
-    log(f"      Time delay (τ): {time_delay}")
-
-    n = len(sequence)
-
-    # Maximum number of vectors we can create
-    max_vectors = n - (embedding_dim - 1) * time_delay
-
-    if max_vectors <= 0:
-        log(f"   ❌ Sequence too short for embedding")
-        return np.array([]), {'error': 'sequence too short'}
-
-    # Subsample if too many points
-    if max_vectors > max_points:
-        step = max_vectors // max_points
-        indices = range(0, max_vectors, step)[:max_points]
-        log(f"      Subsampling: {max_vectors:,} → {len(indices):,} points (step={step})")
-    else:
-        indices = range(max_vectors)
-        log(f"      Points: {len(indices):,}")
-
-    # Convert sequence to numeric array
-    log(f"      Converting sequence to numeric...")
-    seq_array = np.array([int(b) for b in sequence], dtype=np.float32)
-
-    # Create embedding
-    log(f"      Building point cloud...")
-    t0 = time.perf_counter()
-
-    points = []
-    for i in tqdm(indices, desc="Embedding", disable=not HAS_TQDM or not verbose):
-        vector = [seq_array[i + j * time_delay] for j in range(embedding_dim)]
-        points.append(vector)
-
-    point_cloud = np.array(points, dtype=np.float32)
-    embed_time = time.perf_counter() - t0
-
-    log(f"      ✓ Created {point_cloud.shape[0]:,} points in {embed_time:.2f}s")
-    log(f"      Shape: {point_cloud.shape}")
-
-    metadata = {
-        'embedding_dim': embedding_dim,
-        'time_delay': time_delay,
-        'original_length': n,
-        'max_possible_points': max_vectors,
-        'actual_points': point_cloud.shape[0],
-        'subsampled': max_vectors > max_points,
-        'embedding_time_s': embed_time
-    }
-
-    return point_cloud, metadata
+DEFAULT_MAX_LANDMARKS = 10_000  # For global TDA
+DEFAULT_WINDOWS = 10  # For local TDA
+DEFAULT_POINTS_PER_WINDOW = 5_000
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PERSISTENT HOMOLOGY (TDA)
+# INTERPRETATION HELPER
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def compute_persistent_homology(point_cloud: np.ndarray,
-                                 max_dim: int = 2,
-                                 verbose: bool = True) -> Dict[str, Any]:
-    """
-    Compute persistent homology of the point cloud.
-
-    Returns Betti numbers:
-    - β₀: Connected components (how many separate clusters)
-    - β₁: 1D cycles/loops (recurring orbits, like a donut hole)
-    - β₂: 2D cavities (enclosed surfaces, like a sphere)
-
-    Args:
-        point_cloud: Numpy array of shape (n_points, n_dim)
-        max_dim: Maximum homology dimension to compute
-        verbose: Print progress
-
-    Returns:
-        Dictionary with Betti numbers, persistence diagrams, etc.
-    """
-    log = print if verbose else lambda *a, **k: None
-
-    log(f"\n   📊 Computing Persistent Homology...")
-    log(f"      Max dimension: {max_dim}")
-    log(f"      Points: {point_cloud.shape[0]:,}")
-
-    if not HAS_RIPSER and not HAS_GIOTTO:
-        log(f"   ❌ Neither ripser nor giotto-tda installed!")
-        log(f"      Install with: pip install ripser giotto-tda")
-        return {'error': 'TDA libraries not available', 'betti': None}
-
-    t0 = time.perf_counter()
-
-    result = {
-        'n_points': point_cloud.shape[0],
-        'embedding_dim': point_cloud.shape[1],
-        'max_homology_dim': max_dim,
-        'library': None,
-        'betti': {},
-        'persistence_diagrams': {},
-        'persistence_entropy': None,
-        'compute_time_s': 0
-    }
-
-    # Use ripser (faster for small point clouds)
-    if HAS_RIPSER:
-        log(f"      Using: ripser")
-        result['library'] = 'ripser'
-
-        try:
-            # Compute persistence diagrams
-            log(f"      Computing Vietoris-Rips complex...")
-            diagrams = ripser.ripser(point_cloud, maxdim=max_dim)['dgms']
-
-            # Extract Betti numbers (count persistent features)
-            for dim in range(max_dim + 1):
-                if dim < len(diagrams):
-                    dgm = diagrams[dim]
-                    # Filter out infinite persistence (usually β₀ = 1 connected component)
-                    finite_dgm = dgm[dgm[:, 1] < np.inf] if len(dgm) > 0 else np.array([])
-
-                    # Count significant features (persistence > 0.1 of max)
-                    if len(finite_dgm) > 0:
-                        lifetimes = finite_dgm[:, 1] - finite_dgm[:, 0]
-                        threshold = np.max(lifetimes) * 0.1
-                        significant = np.sum(lifetimes > threshold)
-                        total = len(lifetimes)
-                        max_persistence = np.max(lifetimes)
-                    else:
-                        significant = 0
-                        total = 0
-                        max_persistence = 0
-
-                    result['betti'][f'beta_{dim}'] = {
-                        'total_features': total,
-                        'significant_features': int(significant),
-                        'max_persistence': float(max_persistence)
-                    }
-
-                    # Store diagram for later visualization
-                    result['persistence_diagrams'][f'H{dim}'] = dgm.tolist()
-
-                    symbol = "🟢" if significant > 0 else "⚪"
-                    log(f"      {symbol} β_{dim} = {significant} significant ({total} total, max={max_persistence:.4f})")
-
-        except Exception as e:
-            log(f"   ❌ ripser error: {e}")
-            result['error'] = str(e)
-
-    elif HAS_GIOTTO:
-        log(f"      Using: giotto-tda")
-        result['library'] = 'giotto-tda'
-
-        try:
-            # Reshape for giotto-tda (expects 3D array: n_samples x n_points x n_dim)
-            point_cloud_3d = point_cloud.reshape(1, *point_cloud.shape)
-
-            # Compute persistence
-            VR = VietorisRipsPersistence(homology_dimensions=list(range(max_dim + 1)))
-            diagrams = VR.fit_transform(point_cloud_3d)
-
-            # Compute persistence entropy
-            PE = PersistenceEntropy()
-            entropy = PE.fit_transform(diagrams)
-            result['persistence_entropy'] = float(entropy[0, 0]) if entropy.size > 0 else None
-
-            log(f"      ✓ Computed via giotto-tda")
-            # Note: giotto-tda Betti extraction is more complex, simplified here
-            result['betti']['note'] = 'See persistence_diagrams for details'
-
-        except Exception as e:
-            log(f"   ❌ giotto-tda error: {e}")
-            result['error'] = str(e)
-
-    compute_time = time.perf_counter() - t0
-    result['compute_time_s'] = compute_time
-    log(f"      ⏱️ Computation time: {compute_time:.2f}s")
-
-    return result
-
-
-def interpret_betti_numbers(betti: Dict[str, Any], verbose: bool = True) -> str:
-    """
-    Interpret Betti numbers in terms of emergent geometry.
-
-    Returns interpretation string.
-    """
+def interpret_global_betti(betti: Dict[str, int], verbose: bool = True) -> str:
+    """Interpret Betti numbers from global TDA analysis."""
     log = print if verbose else lambda *a, **k: None
 
     log(f"\n   🔮 TOPOLOGICAL INTERPRETATION:")
     log(f"   {'─'*50}")
 
-    beta_0 = betti.get('beta_0', {}).get('significant_features', 0)
-    beta_1 = betti.get('beta_1', {}).get('significant_features', 0)
-    beta_2 = betti.get('beta_2', {}).get('significant_features', 0)
+    beta_0 = betti.get('beta_0', 0)
+    beta_1 = betti.get('beta_1', 0)
+    beta_2 = betti.get('beta_2', 0)
 
     interpretations = []
 
@@ -322,7 +95,7 @@ def interpret_betti_numbers(betti: Dict[str, Any], verbose: bool = True) -> str:
         interpretations.append(interp)
         log(f"      β₂={beta_2}: {interp}")
         log(f"\n      ⭐ THIS IS SIGNIFICANT: A closed surface has emerged!")
-        log(f"         This could represent a 'holographic membrane' or 'spacetime horizon'.")
+        log(f"         This could represent a 'holographic membrane'.")
     else:
         interp = "No 2D cavities (no enclosed surfaces)"
         interpretations.append(interp)
@@ -332,17 +105,14 @@ def interpret_betti_numbers(betti: Dict[str, Any], verbose: bool = True) -> str:
     log(f"\n   📋 SUMMARY:")
     if beta_2 > 0:
         assessment = "🌟 STRONG GEOMETRIC EMERGENCE: Persistent 2D surface detected"
-        log(f"      {assessment}")
     elif beta_1 > 2:
         assessment = "🔶 MODERATE EMERGENCE: Multiple orbital structures detected"
-        log(f"      {assessment}")
     elif beta_1 > 0:
         assessment = "🔸 WEAK EMERGENCE: Some cyclic structure detected"
-        log(f"      {assessment}")
     else:
         assessment = "⚪ NO CLEAR GEOMETRY: Point cloud appears unstructured"
-        log(f"      {assessment}")
 
+    log(f"      {assessment}")
     interpretations.append(f"ASSESSMENT: {assessment}")
 
     return "; ".join(interpretations)
@@ -354,20 +124,46 @@ def interpret_betti_numbers(betti: Dict[str, Any], verbose: bool = True) -> str:
 
 def analyze_variant_tda(variant: str,
                         iteration: int,
+                        mode: str = 'global',
+                        method: str = 'rips',
                         embedding_dim: int = DEFAULT_EMBEDDING_DIM,
                         time_delay: int = DEFAULT_TIME_DELAY,
-                        max_points: int = DEFAULT_MAX_POINTS,
+                        max_landmarks: int = DEFAULT_MAX_LANDMARKS,
+                        landmark_method: str = 'uniform',
+                        n_windows: int = DEFAULT_WINDOWS,
+                        points_per_window: int = DEFAULT_POINTS_PER_WINDOW,
+                        n_blocks: int = 0,
+                        landmarks_per_block: int = 5000,
+                        n_witnesses: int = 50000,
+                        cubical_mode: str = 'hilbert',
+                        hilbert_block_size: int = 64,
+                        save_hilbert: bool = False,
+                        backend: str = 'auto',
+                        max_bits: int = 50_000_000,
                         visualize: bool = False,
                         verbose: bool = True) -> Dict[str, Any]:
     """
-    Perform complete TDA analysis on a variant.
+    Perform TDA analysis on a variant using the specified mode and method.
 
     Args:
         variant: Variant letter (B, D, E, etc.)
         iteration: Iteration number
+        mode: Analysis mode ('global', 'local', or 'both')
+        method: TDA method ('rips', 'witness', 'cubical')
         embedding_dim: Dimension for Takens embedding
         time_delay: Time delay for embedding
-        max_points: Maximum points (TDA is O(n³))
+        max_landmarks: Maximum landmarks for global analysis
+        landmark_method: 'uniform' or 'random' landmark selection
+        n_windows: Number of windows for local analysis
+        points_per_window: Points per window for local analysis
+        n_blocks: Number of blocks for block processing (0=disabled)
+        landmarks_per_block: Landmarks per block
+        n_witnesses: Number of witnesses for witness complex
+        cubical_mode: 'hilbert' (density gradients) or 'binary' (raw 0/1)
+        hilbert_block_size: Bits per Hilbert cell (larger = less noise)
+        save_hilbert: Save Hilbert image to PNG file
+        backend: TDA backend ('auto', 'ripser', 'giotto', 'gudhi')
+        max_bits: Maximum bits to load from sequence
         visualize: Generate 3D visualization
         verbose: Print progress
 
@@ -379,79 +175,187 @@ def analyze_variant_tda(variant: str,
     print(f"\n{'═'*70}")
     print(f"🌀 HSI TAKENS/TDA ANALYSIS")
     print(f"{'═'*70}")
+    print(f"\n📋 CONFIGURATION:")
     print(f"   Variant: {variant}")
     print(f"   Iteration: {iteration}")
+    print(f"   Method: {method.upper()}")
+    if method == 'rips':
+        print(f"   Mode: {mode}")
+        print(f"   Backend: {backend}")
     print(f"   Embedding dim: {embedding_dim}")
     print(f"   Time delay (τ): {time_delay}")
-    print(f"   Max points: {max_points:,}")
+    if method == 'witness':
+        print(f"   Landmarks: {max_landmarks:,}")
+        print(f"   Witnesses: {n_witnesses:,}")
+    elif method == 'cubical':
+        print(f"   (Sequence converted to 2D image)")
+    elif n_blocks > 0:
+        print(f"   Block mode: {n_blocks} blocks x {landmarks_per_block:,} landmarks")
+    elif mode in ('global', 'both'):
+        print(f"   Max landmarks: {max_landmarks:,} ({landmark_method})")
+    if method == 'rips' and mode in ('local', 'both'):
+        print(f"   Windows: {n_windows} x {points_per_window:,} points")
+    print(f"   Max bits: {max_bits:,}")
     print(f"{'─'*70}")
 
     t_start = time.perf_counter()
 
-    # Load sequence
-    log(f"\n   📂 Loading Φ sequence...")
-    sequence = load_phi_sequence(variant, iteration, verbose=verbose)
+    # Find the struct file
+    struct_path = Path(f"results/level0/phi_snapshots/var_{variant}/phi_iter{iteration}.struct.gz")
 
-    if not sequence:
+    if not struct_path.exists():
+        log(f"   ❌ File not found: {struct_path}")
+        return {'error': f'file not found: {struct_path}'}
+
+    # Load sequence
+    log(f"\n   📂 Loading Φ sequence (streaming)...")
+    t_load = time.perf_counter()
+    phi_observable, _ = load_phi_for_agents(
+        str(struct_path),
+        max_chars=max_bits * 2,  # Safety margin for parentheses
+        observable_only=True,
+        show_progress=verbose
+    )
+    load_time = time.perf_counter() - t_load
+
+    if not phi_observable:
         log(f"   ❌ Failed to load sequence")
         return {'error': 'failed to load sequence'}
 
-    log(f"      Loaded {len(sequence):,} bits")
+    # Limit to max_bits and convert to numpy array
+    sequence = phi_observable[:max_bits]
+    sequence_array = np.array([int(b) for b in sequence], dtype=np.float32)
+    log(f"      ✓ Loaded {len(sequence_array):,} bits in {load_time:.2f}s")
 
-    # Takens embedding
-    point_cloud, embed_meta = takens_embedding(
-        sequence,
-        embedding_dim=embedding_dim,
-        time_delay=time_delay,
-        max_points=max_points,
-        verbose=verbose
-    )
-
-    if point_cloud.size == 0:
-        return {'error': 'embedding failed', 'embedding': embed_meta}
-
-    # Persistent homology
-    tda_results = compute_persistent_homology(point_cloud, max_dim=2, verbose=verbose)
-
-    # Interpretation
-    interpretation = ""
-    if tda_results.get('betti'):
-        interpretation = interpret_betti_numbers(tda_results['betti'], verbose=verbose)
-
-    total_time = time.perf_counter() - t_start
-
-    # Compile results
+    # Initialize results
     results = {
         'variant': variant,
         'iteration': iteration,
+        'mode': mode,
         'timestamp': datetime.now().isoformat(),
-        'sequence_length': len(sequence),
-        'embedding': embed_meta,
-        'tda': tda_results,
-        'interpretation': interpretation,
-        'total_time_s': total_time
+        'sequence_length': len(sequence_array),
+        'config': {
+            'embedding_dim': embedding_dim,
+            'time_delay': time_delay,
+            'max_bits': max_bits
+        }
     }
 
-    # Optional 3D visualization
-    if visualize and point_cloud.shape[1] >= 3:
-        plot_path = generate_3d_visualization(point_cloud, variant, iteration, TDA_DIR)
-        if plot_path:
-            results['visualization'] = str(plot_path)
-            log(f"\n   📊 3D plot saved to: {plot_path}")
+    # Run analyses based on method
+    point_cloud = None  # For visualization
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # SCALABLE METHODS (witness, cubical) - take precedence
+    # ═══════════════════════════════════════════════════════════════════════
+
+    if method == 'witness':
+        witness_results = run_witness_tda(
+            sequence=sequence_array,
+            n_landmarks=max_landmarks,
+            n_witnesses=n_witnesses,
+            embedding_dim=embedding_dim,
+            time_delay=time_delay,
+            verbose=verbose
+        )
+        results['witness'] = witness_results
+
+        # Interpret results
+        if witness_results.get('betti'):
+            interp = interpret_global_betti(witness_results['betti'], verbose=verbose)
+            results['interpretation'] = interp
+
+    elif method == 'cubical':
+        cubical_results = run_cubical_tda(
+            sequence=sequence_array,
+            cubical_mode=cubical_mode,
+            hilbert_block_size=hilbert_block_size,
+            save_hilbert=save_hilbert,
+            variant=variant,
+            iteration=iteration,
+            verbose=verbose
+        )
+        results['cubical'] = cubical_results
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # RIPS-BASED METHODS (original)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    elif n_blocks > 0:
+        log(f"\n   🧱 Running BLOCK TDA analysis...")
+        block_results = run_global_tda_blocks(
+            sequence=sequence_array,
+            n_blocks=n_blocks,
+            landmarks_per_block=landmarks_per_block,
+            embedding_dim=embedding_dim,
+            time_delay=time_delay,
+            backend=backend,
+            verbose=verbose
+        )
+        results['blocks'] = block_results
+
+        # Interpret aggregated results
+        if block_results.get('beta_1'):
+            log(f"\n   🔮 BLOCK ANALYSIS INTERPRETATION:")
+            log(f"      β₁ consistency: {block_results['beta_1']['std']:.2f} std")
+            if block_results['beta_1']['mean'] > 0:
+                log(f"      ✓ Persistent cycles detected across blocks")
+
+    elif mode in ('global', 'both'):
+        log(f"\n   🌐 Running GLOBAL TDA analysis...")
+        global_results = run_global_tda(
+            sequence=sequence_array,
+            n_landmarks=max_landmarks,
+            embedding_dim=embedding_dim,
+            time_delay=time_delay,
+            landmark_method=landmark_method,
+            backend=backend,
+            return_point_cloud=visualize,  # Only if visualization requested
+            verbose=verbose
+        )
+
+        # Extract point cloud for visualization (don't save to JSON)
+        if visualize and 'point_cloud' in global_results:
+            point_cloud = global_results.pop('point_cloud')
+
+        results['global'] = global_results
+
+        # Interpret global results
+        if global_results.get('betti'):
+            interp = interpret_global_betti(global_results['betti'], verbose=verbose)
+            results['global_interpretation'] = interp
+
+    if n_blocks == 0 and mode in ('local', 'both'):
+        log(f"\n   🔬 Running LOCAL TDA analysis...")
+        local_results = run_local_tda(
+            sequence=sequence_array,
+            n_windows=n_windows,
+            embedding_dim=embedding_dim,
+            time_delay=time_delay,
+            max_points_per_window=points_per_window,
+            verbose=verbose
+        )
+        results['local'] = local_results
+
+    total_time = time.perf_counter() - t_start
+    results['total_time_s'] = total_time
 
     # Save results
     TDA_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = TDA_DIR / f"tda_{variant}_iter{iteration}.json"
+    suffix = f"_{mode}" if mode != 'global' else ""
+    output_path = TDA_DIR / f"tda_{variant}_iter{iteration}{suffix}.json"
 
     with open(output_path, 'w', encoding='utf-8') as f:
-        # Convert non-serializable items
-        save_results = results.copy()
-        if 'persistence_diagrams' in save_results.get('tda', {}):
-            # Keep diagrams as they are (already lists)
-            pass
-        json.dump(save_results, f, indent=2, default=str)
+        json.dump(results, f, indent=2, default=str)
 
     log(f"\n   💾 Results saved to: {output_path}")
+
+    # Generate 3D visualization if requested
+    if visualize and point_cloud is not None and embedding_dim >= 3:
+        plot_path = generate_3d_visualization(point_cloud, variant, iteration, TDA_DIR)
+        if plot_path:
+            results['visualization'] = str(plot_path)
+            log(f"   📊 3D plot saved to: {plot_path}")
+
     log(f"   ⏱️ Total time: {total_time:.2f}s")
     print(f"{'═'*70}\n")
 
@@ -514,25 +418,80 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python level2_takens_tda.py --variant B --iteration 18
-  python level2_takens_tda.py --variant B --iteration 18 --dim 4 --delay 2
-  python level2_takens_tda.py --variant B --iteration 18 --visualize
-  python level2_takens_tda.py --variants B D E --iteration 18 --compare
+  # Global analysis (default)
+  python level2_takens_tda.py -v B -i 23 --mode global
+
+  # Local windowed analysis
+  python level2_takens_tda.py -v B -i 23 --mode local --windows 10
+
+  # Both analyses
+  python level2_takens_tda.py -v B -i 23 --mode both
+
+  # Compare variants
+  python level2_takens_tda.py --variants B F -i 23 --compare
         """
     )
 
+    # Variant selection
     parser.add_argument('--variant', '-v', type=str,
-                       help='Single variant to analyze (A-I)')
+                       help='Single variant to analyze (A-M)')
     parser.add_argument('--variants', type=str, nargs='+',
                        help='Multiple variants to compare')
     parser.add_argument('--iteration', '-i', type=int, required=True,
                        help='Iteration number')
+
+    # Mode selection
+    parser.add_argument('--mode', type=str, default='global',
+                       choices=['global', 'local', 'both'],
+                       help='Analysis mode (default: global)')
+
+    # Embedding parameters
     parser.add_argument('--dim', '-d', type=int, default=DEFAULT_EMBEDDING_DIM,
                        help=f'Embedding dimension (default: {DEFAULT_EMBEDDING_DIM})')
     parser.add_argument('--delay', type=int, default=DEFAULT_TIME_DELAY,
                        help=f'Time delay τ (default: {DEFAULT_TIME_DELAY})')
-    parser.add_argument('--max-points', type=int, default=DEFAULT_MAX_POINTS,
-                       help=f'Max points for TDA (default: {DEFAULT_MAX_POINTS:,})')
+
+    # Global mode parameters
+    parser.add_argument('--landmarks', type=int, default=DEFAULT_MAX_LANDMARKS,
+                       help=f'Max landmarks for global TDA (default: {DEFAULT_MAX_LANDMARKS:,})')
+    parser.add_argument('--landmark-method', type=str, default='uniform',
+                       choices=['uniform', 'random'],
+                       help='Landmark selection method (default: uniform)')
+
+    # Local mode parameters
+    parser.add_argument('--windows', type=int, default=DEFAULT_WINDOWS,
+                       help=f'Number of windows for local TDA (default: {DEFAULT_WINDOWS})')
+    parser.add_argument('--points-per-window', type=int, default=DEFAULT_POINTS_PER_WINDOW,
+                       help=f'Points per window (default: {DEFAULT_POINTS_PER_WINDOW:,})')
+
+    # Block mode parameters
+    parser.add_argument('--blocks', type=int, default=0,
+                       help='Number of blocks for block processing (0=disabled)')
+    parser.add_argument('--landmarks-per-block', type=int, default=5000,
+                       help='Landmarks per block (default: 5000)')
+
+    # Backend selection
+    parser.add_argument('--backend', type=str, default='auto',
+                       choices=['auto', 'ripser', 'giotto', 'gudhi'],
+                       help='TDA backend (default: auto - uses best available)')
+
+    # Scalable methods (witness/cubical)
+    parser.add_argument('--method', type=str, default='cubical',
+                       choices=['rips', 'witness', 'cubical'],
+                       help='TDA method: cubical (fast, default), witness (scalable), rips (exact but slow)')
+    parser.add_argument('--cubical-mode', type=str, default='hilbert',
+                       choices=['hilbert', 'binary'],
+                       help='Cubical mode: hilbert (density gradients, default) or binary (raw 0/1)')
+    parser.add_argument('--hilbert-block-size', type=int, default=64,
+                       help='Bits per Hilbert cell (default: 64). Larger = less noise, global structure')
+    parser.add_argument('--save-hilbert', action='store_true',
+                       help='Save Hilbert image used for cubical TDA (PNG)')
+    parser.add_argument('--witnesses', type=int, default=50000,
+                       help='Number of witnesses for witness complex (default: 50000)')
+
+    # General options
+    parser.add_argument('--max-bits', type=int, default=50_000_000,
+                       help='Max bits to load from sequence (default: 50M)')
     parser.add_argument('--visualize', action='store_true',
                        help='Generate 3D visualization')
     parser.add_argument('--compare', action='store_true',
@@ -551,53 +510,81 @@ Examples:
         print(f"🌀 MULTI-VARIANT TDA COMPARISON")
         print(f"   Variants: {', '.join(variants)}")
         print(f"   Iteration: {args.iteration}")
+        print(f"   Mode: {args.mode}")
         print(f"{'═'*70}")
 
         all_results = {}
         for var in variants:
             result = analyze_variant_tda(
                 var, args.iteration,
+                mode=args.mode,
+                method=args.method,
                 embedding_dim=args.dim,
                 time_delay=args.delay,
-                max_points=args.max_points,
+                max_landmarks=args.landmarks,
+                landmark_method=args.landmark_method,
+                n_windows=args.windows,
+                points_per_window=args.points_per_window,
+                n_blocks=args.blocks,
+                landmarks_per_block=args.landmarks_per_block,
+                n_witnesses=args.witnesses,
+                cubical_mode=args.cubical_mode,
+                hilbert_block_size=args.hilbert_block_size,
+                save_hilbert=args.save_hilbert,
+                backend=args.backend,
+                max_bits=args.max_bits,
                 visualize=args.visualize,
                 verbose=verbose
             )
             all_results[var] = result
 
-        # Summary comparison
-        print(f"\n📊 COMPARISON SUMMARY")
-        print(f"{'═'*70}")
-        print(f"   {'Variant':<10} {'β₀':<8} {'β₁':<8} {'β₂':<8} {'Assessment':<30}")
-        print(f"   {'─'*66}")
+        # Summary comparison (for global mode)
+        if args.mode in ('global', 'both'):
+            print(f"\n📊 GLOBAL COMPARISON SUMMARY")
+            print(f"{'═'*70}")
+            print(f"   {'Variant':<10} {'β₀':<8} {'β₁':<8} {'β₂':<8} {'Assessment':<30}")
+            print(f"   {'─'*66}")
 
-        for var, res in all_results.items():
-            betti = res.get('tda', {}).get('betti', {})
-            b0 = betti.get('beta_0', {}).get('significant_features', '?')
-            b1 = betti.get('beta_1', {}).get('significant_features', '?')
-            b2 = betti.get('beta_2', {}).get('significant_features', '?')
+            for var, res in all_results.items():
+                global_res = res.get('global', {})
+                betti = global_res.get('betti', {})
+                b0 = betti.get('beta_0', '?')
+                b1 = betti.get('beta_1', '?')
+                b2 = betti.get('beta_2', '?')
 
-            # Extract assessment from interpretation
-            interp = res.get('interpretation', '')
-            if 'STRONG' in interp:
-                assess = '🌟 STRONG'
-            elif 'MODERATE' in interp:
-                assess = '🔶 MODERATE'
-            elif 'WEAK' in interp:
-                assess = '🔸 WEAK'
-            else:
-                assess = '⚪ NONE'
+                interp = res.get('global_interpretation', '')
+                if 'STRONG' in interp:
+                    assess = '🌟 STRONG'
+                elif 'MODERATE' in interp:
+                    assess = '🔶 MODERATE'
+                elif 'WEAK' in interp:
+                    assess = '🔸 WEAK'
+                else:
+                    assess = '⚪ NONE'
 
-            print(f"   {var:<10} {b0:<8} {b1:<8} {b2:<8} {assess:<30}")
+                print(f"   {var:<10} {b0:<8} {b1:<8} {b2:<8} {assess:<30}")
 
-        print(f"{'═'*70}\n")
+            print(f"{'═'*70}\n")
     else:
         # Single variant
         analyze_variant_tda(
             variants[0], args.iteration,
+            mode=args.mode,
+            method=args.method,
             embedding_dim=args.dim,
             time_delay=args.delay,
-            max_points=args.max_points,
+            max_landmarks=args.landmarks,
+            landmark_method=args.landmark_method,
+            n_windows=args.windows,
+            points_per_window=args.points_per_window,
+            n_blocks=args.blocks,
+            landmarks_per_block=args.landmarks_per_block,
+            n_witnesses=args.witnesses,
+            cubical_mode=args.cubical_mode,
+            hilbert_block_size=args.hilbert_block_size,
+            save_hilbert=args.save_hilbert,
+            backend=args.backend,
+            max_bits=args.max_bits,
             visualize=args.visualize,
             verbose=verbose
         )

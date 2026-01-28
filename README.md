@@ -276,7 +276,37 @@ python level1_geometric.py -v B -i 17 --check-only
 
 # Torsion-only mode (always works if phi data exists)
 python level1_geometric.py -v B -i 15 --torsion-only
+
+# Large-scale torsion analysis (500M bits)
+python level1_geometric.py -v B -i 23 --torsion-only --max-bits 500000000
 ```
+
+##### Scaling Analysis Mode (NEW - Jan 2026)
+
+The `--scaling-analysis` mode measures torsion at multiple scales to detect **power-law scaling** and long-range correlations:
+
+```bash
+# Run scaling analysis with default scales (10M, 50M, 100M, 200M, 500M)
+python level1_geometric.py -v B -i 23 --scaling-analysis
+
+# Custom scales (including 1G)
+python level1_geometric.py -v B -i 23 --scaling-analysis --scales "10M,50M,100M,200M,500M,1000M"
+```
+
+**Output:** Computes the power-law exponent α where Torsion ∝ N^α:
+- **α ≈ 1.0**: Linear scaling (random/independent structure)
+- **α > 1.0**: Superlinear scaling → **long-range correlations detected!**
+- **α < 1.0**: Sublinear scaling (self-correcting behavior)
+
+**Scientific Value:** If α > 1, it indicates that torsion (positional asymmetries) grows faster than data size, suggesting emergent correlations at large scales — a potential signature of fractal or self-similar structure.
+
+**Preliminary Results (Jan 2026):**
+| Variant | 50M Torsion | 500M Torsion | Estimated α |
+|---------|-------------|--------------|-------------|
+| B@23 | 783.9 | 21,534.9 | ~1.44 (superlinear!) |
+| F@27 | 737.1 | 2,780.3 | ~0.58 (sublinear) |
+
+B@23 shows **superlinear scaling** (α ≈ 1.44), suggesting long-range correlations, while F@27 shows sublinear scaling, indicating more uniform structure.
 
 ### Usage Examples
 
