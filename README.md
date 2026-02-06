@@ -47,6 +47,13 @@ hsi_agents_project/
 ├── level1_topological.py             # Phase 3: TPA (topological persistence)
 ├── level1_geometric.py               # Phase 3: Γ, 𝓡, 𝓣, 𝓔 operators
 │
+├── ════════════════════════════════════════════════════════════
+│   APPENDIX: DEEP-DIVE INVESTIGATION SCRIPTS
+├── ════════════════════════════════════════════════════════════
+├── apendix_commutativity_analysis.py # Commutativity: B vs E vs I divergence
+├── apendix_deep_divergence_analysis_B_E.py # Why E follows B for 91M bytes
+├── streaming_subsample.py            # Multi-scale Nyquist subsampling (v2.0)
+│
 ├── Setup-virtual-envelop.ps1         # Setup/activation script (Windows)
 ├── config.json                       # Experiment configuration
 ├── requirements.txt                  # Python dependencies
@@ -201,6 +208,17 @@ All scripts can be run directly from the project root:
 | `level2_takens_tda.py` | Takens embedding + Persistent Homology (Betti numbers β₀, β₁, β₂) | `python level2_takens_tda.py --variant B --iteration 18 --visualize` |
 | `level2_transfer_entropy.py` | Multi-scale Transfer Entropy (detect causal flow direction) | `python level2_transfer_entropy.py --variant B --iteration 18 --plot` |
 
+> **New (Feb 2026):** `level2_transfer_entropy.py` now supports `--shuffle-control` to compute TE for shuffled chunks as a baseline control, validating that observed TE is statistically significant vs random.
+
+### Appendix: Deep-Dive Investigation Scripts
+
+These scripts investigate specific open questions arising from the main analysis. They run **without parameters**, auto-detecting all available data files.
+
+| Script | Purpose | Run |
+|--------|---------|-----|
+| `apendix_commutativity_analysis.py` | Analyze B vs E vs I commutativity: byte-level divergence points, post-divergence LZ ratios | `python apendix_commutativity_analysis.py` |
+| `apendix_deep_divergence_analysis_B_E.py` | **Why does E follow B for 91M bytes while I diverges immediately?** 5 analyses: asymmetry, divergence evolution, pattern density, structural snapshots, LZ around divergence | `python apendix_deep_divergence_analysis_B_E.py` |
+
 ### Hidden φ Discovery Tools
 
 These tools implement the research roadmap for discovering hidden φ in variant structures (see `Documentation/hidden_phi_discovery_roadmap.md`).
@@ -248,12 +266,14 @@ python level1_deep_analysis.py -v B -i 23 --multiscale
 
 To detect patterns of scale N, you only need to sample at frequency 2/N. The script creates 4 sampling levels:
 
-| Level | Sampling | Samples | Detects patterns |
-|-------|----------|---------|------------------|
-| Fine | every bit | max 100k | 1-1k bits |
-| Medium | every 100 bits | max 1M | 1k-1M bits |
-| Large | every 10k bits | max 10M | 1M-1G bits |
-| Huge | every 1M bits | max 100k | 1G+ bits |
+| Level | Stride | Coverage | Detects patterns |
+|-------|--------|----------|------------------|
+| Fine | every bit | first 100k bits | 1-1k bits |
+| Medium | dynamic (`max(100, total//1M)`) | **entire file** | 1k-1M bits |
+| Large | dynamic (`max(10k, total//10M)`) | **entire file** | 1M-1G bits |
+| Huge | dynamic (`max(1M, total//100k)`) | **entire file** | 1G+ bits |
+
+> **⚠️ v2.0 Frozen Start Fix (Feb 2026):** Previous versions used fixed strides that only covered the first ~100M bits. v2.0 calculates strides dynamically based on total file size, ensuring **uniform coverage of the entire sequence**. All experiments have been recalculated with this fix.
 
 **Total: ~12M samples ≈ 50MB RAM** to cover the ENTIRE spectrum from 1 bit to 100G+ bits.
 
@@ -1044,9 +1064,16 @@ results/
 │   │   ├── complexity_{variants}_iter{N}.json
 │   │   └── ...
 │   │
-│   └── transfer_entropy/                     # Information flow analysis
-│       ├── te_{var}_iter{N}.json             # Transfer entropy results
-│       └── te_heatmap_{var}_iter{N}.png      # TE visualizations
+│   ├── transfer_entropy/                     # Information flow analysis
+│   │   ├── te_{var}_iter{N}.json             # Transfer entropy results
+│   │   └── te_heatmap_{var}_iter{N}.png      # TE visualizations
+│   │
+│   ├── commutativity/                        # B vs E vs I commutativity
+│   │   ├── full_analysis_B23_vs_E_I.json     # Full commutativity results
+│   │   └── commutativity_B23_vs_{E,I}23.json # Pair comparisons
+│   │
+│   └── divergence_analysis/                  # Deep divergence investigation
+│       └── deep_divergence_B_E_I.json        # 5-analysis divergence results
 │
 ├── cache/                                    # ═══ SHARED: Caches ═══
 │   └── level1_cache_phi_iter*.pkl

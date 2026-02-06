@@ -1186,23 +1186,26 @@ def run_deep_analysis(
         total_chars_hint = metadata.get('sequence_length')
 
         # Determine how many chars to load:
-        # - In multiscale mode: load all (Nyquist subsampling handles memory)
+        # - In multiscale mode: use STREAMING (don't load full sequence!)
         # - In standard mode: only load max_bits (saves memory!)
         if use_multiscale:
-            load_max_chars = None  # Load everything
+            # STREAMING MODE: Don't load sequence into RAM
+            # We'll use streaming_multiscale_subsample later
+            phi_observable = ""  # Placeholder - not used in streaming mode
+            load_max_chars = 0
         else:
             # Load slightly more than max_bits to account for structural overhead
             # (parentheses in structural format don't count as observable bits)
             load_max_chars = max_bits * 2  # Safety margin for parentheses
 
-        # Use streaming loader with progress bar
-        phi_observable, _ = load_phi_for_agents(
-            str(struct_path),
-            max_chars=load_max_chars,
-            observable_only=True,
-            show_progress=verbose,
-            total_chars_hint=total_chars_hint if use_multiscale else load_max_chars
-        )
+            # Use streaming loader with progress bar
+            phi_observable, _ = load_phi_for_agents(
+                str(struct_path),
+                max_chars=load_max_chars,
+                observable_only=True,
+                show_progress=verbose,
+                total_chars_hint=load_max_chars
+            )
     else:
         # Fallback to standard loader (v32 format or other)
         _, phi_observable, metadata = load_phi_for_level1(
@@ -1214,38 +1217,49 @@ def run_deep_analysis(
 
     load_elapsed = time.time() - load_start
 
-    if verbose:
-        bits_size = len(phi_observable)
-        if bits_size >= 1_000_000_000:
-            size_str = f"{bits_size / 1_000_000_000:.2f}G"
-        elif bits_size >= 1_000_000:
-            size_str = f"{bits_size / 1_000_000:.2f}M"
-        elif bits_size >= 1_000:
-            size_str = f"{bits_size / 1_000:.2f}k"
-        else:
-            size_str = str(bits_size)
-        print(f"   ✓ Loaded {size_str} bits in {load_elapsed:.1f}s")
+    # Prepare subsamples if using multiscale mode (STREAMING - before other output)
+    subsamples = None
+    total_bits = 0
+    if use_multiscale:
+        if verbose:
+            print(f"\n{'─'*60}")
+        # Use STREAMING subsampling - doesn't load full sequence into RAM
+        from utils.streaming_subsample import streaming_multiscale_subsample
+        subsamples = streaming_multiscale_subsample(
+            str(struct_path),
+            verbose=verbose,
+            total_chars_hint=total_chars_hint
+        )
+        total_bits = subsamples['metadata']['total_bits']
+        phi_observable = ""  # Keep empty - we don't need it
+    else:
+        total_bits = len(phi_observable)
+        if verbose:
+            if total_bits >= 1_000_000_000:
+                size_str = f"{total_bits / 1_000_000_000:.2f}G"
+            elif total_bits >= 1_000_000:
+                size_str = f"{total_bits / 1_000_000:.2f}M"
+            elif total_bits >= 1_000:
+                size_str = f"{total_bits / 1_000:.2f}k"
+            else:
+                size_str = str(total_bits)
+            print(f"   ✓ Loaded {size_str} bits in {load_elapsed:.1f}s")
 
-        # Show metadata info
-        if metadata:
-            fmt = metadata.get('format', 'unknown')
-            print(f"   📋 Format: {fmt}")
+            # Show metadata info
+            if metadata:
+                fmt = metadata.get('format', 'unknown')
+                print(f"   📋 Format: {fmt}")
 
     results = {
         'variant': variant,
         'iteration': iteration,
-        'total_bits': len(phi_observable),
-        'max_bits_analyzed': min(max_bits, len(phi_observable)) if not use_multiscale else len(phi_observable),
+        'total_bits': total_bits,
+        'max_bits_analyzed': min(max_bits, total_bits) if not use_multiscale else total_bits,
         'phi_target': PHI,
-        'mode': 'multiscale' if use_multiscale else 'standard'
+        'mode': 'multiscale_streaming' if use_multiscale else 'standard'
     }
 
-    # Prepare subsamples if using multiscale mode
-    subsamples = None
-    if use_multiscale:
-        if verbose:
-            print(f"\n{'─'*60}")
-        subsamples = multiscale_subsample(phi_observable, verbose)
+    if use_multiscale and subsamples:
         results['subsampling_metadata'] = subsamples['metadata']
 
     # Run requested analyses with timing
@@ -1270,9 +1284,21 @@ def run_deep_analysis(
         if verbose:
             print(f"\n{'─'*60}")
         analysis_start = time.time()
-        # Recurrence is O(n²), always use small sample (not affected by multiscale)
+        # Recurrence is O(n²), always use small sample
         recurrence_bits = min(10000, max_bits // 10 if not use_multiscale else 10000)
-        results['recurrence'] = recurrence_analysis(phi_observable, recurrence_bits, verbose=verbose)
+        # In streaming mode, use MEDIUM samples (every 100th bit) for representative coverage
+        # This captures dynamics across the ENTIRE sequence, not just the first 10k bits
+        if use_multiscale and subsamples:
+            medium_samples = subsamples['samples']['medium']
+            # Take evenly spaced samples from medium to get ~10k representative bits
+            step = max(1, len(medium_samples) // recurrence_bits)
+            representative_samples = medium_samples[::step][:recurrence_bits]
+            phi_for_recurrence = ''.join(str(b) for b in representative_samples)
+            if verbose:
+                print(f"   Using {len(representative_samples):,} representative samples from full sequence")
+        else:
+            phi_for_recurrence = phi_observable
+        results['recurrence'] = recurrence_analysis(phi_for_recurrence, recurrence_bits, verbose=verbose)
         if verbose:
             elapsed = time.time() - analysis_start
             r = results['recurrence']
@@ -1333,8 +1359,8 @@ def run_deep_analysis(
         print(f"   Total time: {total_elapsed:.1f}s")
         if use_multiscale:
             meta = results.get('subsampling_metadata', {})
-            print(f"   Mode: MULTISCALE (Nyquist-based subsampling)")
-            print(f"   Total bits: {len(phi_observable):,}")
+            print(f"   Mode: MULTISCALE STREAMING (Nyquist-based subsampling)")
+            print(f"   Total bits: {meta.get('total_bits', total_bits):,}")
             print(f"   Samples in RAM: {meta.get('total_samples', 'N/A'):,} ({meta.get('memory_bytes', 0) / 1_000_000:.1f} MB)")
             print(f"   ℹ️  Nyquist theorem: patterns of scale N require sampling at 2/N frequency")
         else:

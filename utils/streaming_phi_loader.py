@@ -26,6 +26,7 @@ import gzip
 from pathlib import Path
 from typing import Iterator, Tuple, Optional, Dict, Any, Generator
 import json
+import numpy as np
 
 # Try to import tqdm for progress bars
 try:
@@ -140,7 +141,47 @@ class StreamingPhiLoader:
         
         if buffer:
             yield ''.join(buffer)
-    
+
+    def iter_bits_numpy(self, chunk_bytes: int = 10_000_000) -> Generator[np.ndarray, None, None]:
+        """
+        FAST: Iterate over chunks of observable bits as numpy arrays.
+
+        Uses vectorized operations for ~100x speedup over iter_observable_chunks.
+        Only yields bits (0/1), filters out structure (parentheses).
+
+        Args:
+            chunk_bytes: Bytes to read per chunk (default 10MB = ~20M bits)
+
+        Yields:
+            numpy int8 arrays containing only 0s and 1s
+        """
+        with gzip.open(self.path, 'rb') as f:
+            while True:
+                raw = f.read(chunk_bytes)
+                if not raw:
+                    break
+
+                # Convert bytes to numpy array
+                byte_array = np.frombuffer(raw, dtype=np.uint8)
+
+                # Extract 4 pairs of 2 bits from each byte (vectorized)
+                # Bits 7-6, 5-4, 3-2, 1-0
+                pair0 = (byte_array >> 6) & 0b11
+                pair1 = (byte_array >> 4) & 0b11
+                pair2 = (byte_array >> 2) & 0b11
+                pair3 = byte_array & 0b11
+
+                # Interleave: [p0[0], p1[0], p2[0], p3[0], p0[1], p1[1], ...]
+                all_pairs = np.column_stack([pair0, pair1, pair2, pair3]).ravel()
+
+                # Filter: keep only 0 (00) and 1 (01), discard ( (10) and ) (11)
+                # 00 -> 0, 01 -> 1, 10 -> skip, 11 -> skip
+                mask = all_pairs <= 1
+                bits = all_pairs[mask].astype(np.int8)
+
+                if len(bits) > 0:
+                    yield bits
+
     def iter_windows(self, window_size: int, step: int = 1) -> Generator[str, None, None]:
         """
         Iterate with sliding windows over the sequence.

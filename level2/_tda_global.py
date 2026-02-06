@@ -316,6 +316,10 @@ def _compute_ph_cubical(image_2d: np.ndarray, max_dim: int = 2) -> Dict[str, Any
     # For 2D images, max meaningful dimension is 1
     effective_max_dim = min(max_dim, 1)
 
+    # Calculate density range for adaptive threshold
+    density_range = float(image_2d.max() - image_2d.min())
+    result['density_range'] = density_range
+
     for dim in range(effective_max_dim + 1):
         intervals = cubical.persistence_intervals_in_dimension(dim)
 
@@ -323,15 +327,25 @@ def _compute_ph_cubical(image_2d: np.ndarray, max_dim: int = 2) -> Dict[str, Any
             finite = intervals[np.isfinite(intervals[:, 1])]
             if len(finite) > 0:
                 lifetimes = finite[:, 1] - finite[:, 0]
-                threshold = np.median(lifetimes) if len(lifetimes) > 0 else 0
-                significant = int(np.sum(lifetimes > threshold))
+
+                # Adaptive threshold: 5% of density range (filters noise)
+                # If density_range is small (uniform), threshold filters more
+                persistence_threshold = 0.05 * density_range
+                significant = int(np.sum(lifetimes > persistence_threshold))
+
+                # Also count "strong" features (>10% of range)
+                strong_threshold = 0.10 * density_range
+                strong_features = int(np.sum(lifetimes > strong_threshold))
 
                 result['betti'][f'beta_{dim}'] = significant
                 result['persistence_stats'][f'dim_{dim}'] = {
                     'total_features': len(intervals),
                     'significant_features': significant,
+                    'strong_features': strong_features,
+                    'persistence_threshold': float(persistence_threshold),
                     'max_lifetime': float(np.max(lifetimes)),
                     'mean_lifetime': float(np.mean(lifetimes)),
+                    'median_lifetime': float(np.median(lifetimes)),
                     'std_lifetime': float(np.std(lifetimes))
                 }
             else:
@@ -927,24 +941,72 @@ def run_cubical_tda(sequence: np.ndarray,
         import os
         try:
             import matplotlib.pyplot as plt
+            from scipy import ndimage
 
             output_dir = "results/level2/tda_analysis"
             os.makedirs(output_dir, exist_ok=True)
 
             var_str = variant if variant else "X"
             iter_str = iteration if iteration else 0
+            density_range = image.max() - image.min()
+
+            # === IMAGE 1: Enhanced contrast (histogram equalization + smoothing) ===
+            # This reveals large-scale information currents above noise
+            filename_enhanced = f"hilbert_{var_str}_iter{iter_str}_bs{hilbert_block_size}_enhanced.png"
+            filepath_enhanced = os.path.join(output_dir, filename_enhanced)
+
+            # Gaussian smoothing to filter high-frequency noise (sigma=2 pixels)
+            image_smooth = ndimage.gaussian_filter(image, sigma=2)
+
+            # Histogram equalization: stretch to full [0,1] range
+            img_min, img_max = image_smooth.min(), image_smooth.max()
+            if img_max > img_min:
+                image_eq = (image_smooth - img_min) / (img_max - img_min)
+            else:
+                image_eq = image_smooth
+
+            # Deviation from mean (shows positive/negative currents)
+            mean_density = image_smooth.mean()
+            image_deviation = image_smooth - mean_density
+
+            # Create figure with 2 subplots
+            fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+
+            # Left: Equalized density (full contrast)
+            im1 = axes[0].imshow(image_eq, cmap='viridis', origin='lower')
+            axes[0].set_title(f'Equalized Density\n(range stretched to [0,1])')
+            plt.colorbar(im1, ax=axes[0], label='Normalized density')
+
+            # Right: Deviation from mean (divergent colormap)
+            max_dev = max(abs(image_deviation.min()), abs(image_deviation.max()))
+            im2 = axes[1].imshow(image_deviation, cmap='RdBu_r', origin='lower',
+                                  vmin=-max_dev, vmax=max_dev)
+            axes[1].set_title(f'Deviation from Mean ({mean_density:.3f})\n(blue=less 1s, red=more 1s)')
+            plt.colorbar(im2, ax=axes[1], label='Deviation')
+
+            fig.suptitle(f'Information Currents - {var_str}@{iter_str}\n'
+                        f'(bs={hilbert_block_size}, raw range={density_range:.4f}, σ=2 smoothing)',
+                        fontsize=12)
+            plt.tight_layout()
+            plt.savefig(filepath_enhanced, dpi=150, bbox_inches='tight')
+            plt.close()
+
+            result['hilbert_image_enhanced_path'] = filepath_enhanced
+            log(f"      📸 Saved enhanced Hilbert: {filepath_enhanced}")
+
+            # === IMAGE 2: Original (raw density, fixed [0,1] range) ===
             filename = f"hilbert_{var_str}_iter{iter_str}_bs{hilbert_block_size}.png"
             filepath = os.path.join(output_dir, filename)
 
             plt.figure(figsize=(10, 10))
-            plt.imshow(image, cmap='viridis', origin='lower')
+            plt.imshow(image, cmap='viridis', origin='lower', vmin=0, vmax=1)
             plt.colorbar(label='Density (proportion of 1s)')
-            plt.title(f'Hilbert Curve - {var_str}@{iter_str} (block_size={hilbert_block_size})')
+            plt.title(f'Hilbert Curve - {var_str}@{iter_str} (bs={hilbert_block_size}, range={density_range:.3f})')
             plt.savefig(filepath, dpi=150, bbox_inches='tight')
             plt.close()
 
             result['hilbert_image_path'] = filepath
-            log(f"      📸 Saved Hilbert image: {filepath}")
+            log(f"      📸 Saved raw Hilbert: {filepath}")
         except Exception as e:
             log(f"      ⚠️ Could not save Hilbert image: {e}")
 
@@ -965,8 +1027,15 @@ def run_cubical_tda(sequence: np.ndarray,
     result['elapsed_s'] = elapsed
 
     log(f"\n      ✓ Completed in {elapsed:.2f}s")
-    log(f"      β₀ (connected regions): {betti.get('beta_0', 0)}")
-    log(f"      β₁ (holes/loops): {betti.get('beta_1', 0)}")
+    log(f"      β₀ (connected regions): {betti.get('beta_0', 0):,}")
+    log(f"      β₁ (holes/loops): {betti.get('beta_1', 0):,}")
+
+    # Show persistence filter info
+    if 'persistence_stats' in result and 'dim_1' in result['persistence_stats']:
+        stats = result['persistence_stats']['dim_1']
+        if 'strong_features' in stats:
+            log(f"      β₁ strong (>10% range): {stats['strong_features']:,}")
+            log(f"      Persistence threshold: {stats.get('persistence_threshold', 0):.4f}")
 
     if betti.get('beta_0', 0) == 1:
         log(f"\n      ✓ Single connected component - sequence is topologically connected")
