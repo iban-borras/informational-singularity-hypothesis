@@ -1492,12 +1492,25 @@ def generate_te_heatmap(results: Dict[str, Any], output_dir: Path) -> Optional[P
         ax.set_title(f"Transfer Entropy Matrix - Variant {results.get('variant', '?')}\n"
                      f"(Iteration {results.get('iteration', '?')})", fontsize=14)
 
-        # Add values
+        # Add values with adaptive formatting and contrast text
+        te_max = te_matrix.max() if te_matrix.max() > 0 else 1.0
         for i in range(len(scales)):
             for j in range(len(scales)):
                 if i != j:
-                    text = ax.text(j, i, f'{te_matrix[i, j]:.3f}',
-                                  ha='center', va='center', fontsize=9)
+                    val = te_matrix[i, j]
+                    # Adaptive format: scientific for small values
+                    if val == 0:
+                        label = '0'
+                    elif val < 0.001:
+                        exp = int(f'{val:.1e}'.split('e')[1])
+                        coeff = val / (10 ** exp)
+                        label = f'${coeff:.1f}\\times10^{{{exp}}}$'
+                    else:
+                        label = f'{val:.4f}'
+                    # White text on dark cells, black on light
+                    color = 'white' if val > 0.5 * te_max else 'black'
+                    ax.text(j, i, label, ha='center', va='center',
+                            fontsize=8, color=color)
 
         plt.colorbar(im, label='Transfer Entropy (bits)')
 
@@ -1524,6 +1537,125 @@ def generate_te_heatmap(results: Dict[str, Any], output_dir: Path) -> Optional[P
 
     except Exception as e:
         print(f"   ⚠️ Error generating heatmap: {e}", flush=True)
+        return None
+
+
+def generate_te_ratio_heatmap(results: Dict[str, Any], output_dir: Path) -> Optional[Path]:
+    """Generate heatmap of TE ratio (observed / shuffle) per cell.
+
+    Shows statistical significance: ratio > 1 means TE above chance.
+    Uses log scale with diverging colormap centered at ratio = 1.
+    """
+    import sys
+
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import TwoSlopeNorm
+    except ImportError:
+        return None
+
+    try:
+        te_matrix = np.array(results.get('te_analysis', {}).get('te_matrix', []))
+        sh_matrix = np.array(results.get('shuffle_control', {}).get('shuffle_te_matrix', []))
+        scales = results.get('te_analysis', {}).get('scales', [])
+
+        if te_matrix.size == 0 or sh_matrix.size == 0:
+            return None
+
+        # Compute ratio matrix (avoid division by zero)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            ratio_matrix = np.where(sh_matrix > 0, te_matrix / sh_matrix, 0.0)
+        # Diagonal = 0 (self-transfer, not meaningful)
+        np.fill_diagonal(ratio_matrix, np.nan)
+
+        # Log10 for color scale (mask zeros and NaN)
+        log_ratio = np.where(ratio_matrix > 0, np.log10(ratio_matrix), np.nan)
+
+        # Determine symmetric color range around 0 (= ratio 1)
+        valid = log_ratio[np.isfinite(log_ratio)]
+        if len(valid) == 0:
+            return None
+        abs_max = max(abs(valid.min()), abs(valid.max()), 0.5)
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        norm = TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max)
+        im = ax.imshow(log_ratio, cmap='RdBu_r', norm=norm, aspect='auto')
+
+        # Labels
+        ax.set_xticks(range(len(scales)))
+        ax.set_yticks(range(len(scales)))
+        ax.set_xticklabels([f'→{s}' for s in scales])
+        ax.set_yticklabels([f'{s}→' for s in scales])
+        ax.set_xlabel('Target Scale', fontsize=12)
+        ax.set_ylabel('Source Scale', fontsize=12)
+
+        variant = results.get('variant', '?')
+        iteration = results.get('iteration', '?')
+        global_ratio = results.get('shuffle_control', {}).get(
+            'te_ratio_observed_vs_shuffle', 0)
+        ax.set_title(f"TE Ratio (Observed / Shuffle) — Variant {variant}\n"
+                     f"Iteration {iteration}  |  Global ratio: {global_ratio:.2f}×",
+                     fontsize=14)
+
+        # Cell values
+        for i in range(len(scales)):
+            for j in range(len(scales)):
+                if i == j:
+                    continue
+                val = ratio_matrix[i, j]
+                lv = log_ratio[i, j]
+                if not np.isfinite(val) or val == 0:
+                    continue
+                # Format: ×N.N for readable values, ×NNN for large
+                if val >= 100:
+                    label = f'×{val:.0f}'
+                elif val >= 10:
+                    label = f'×{val:.1f}'
+                else:
+                    label = f'×{val:.2f}'
+                # Contrast: white on extremes, black near center
+                color = 'white' if abs(lv) > 0.5 * abs_max else 'black'
+                ax.text(j, i, label, ha='center', va='center',
+                        fontsize=8, fontweight='bold', color=color)
+
+        # Colorbar with ratio labels
+        cbar = plt.colorbar(im, label='$\\log_{10}$(TE ratio)')
+        # Add reference ticks at meaningful ratios
+        ref_ratios = [0.1, 0.5, 1, 2, 5, 10, 50, 100, 500]
+        ref_logs = [np.log10(r) for r in ref_ratios]
+        ref_logs_filtered = [(l, r) for l, r in zip(ref_logs, ref_ratios)
+                             if -abs_max <= l <= abs_max]
+        if ref_logs_filtered:
+            cbar.set_ticks([l for l, r in ref_logs_filtered])
+            cbar.set_ticklabels([f'×{r:g}' for l, r in ref_logs_filtered])
+
+        # Annotation
+        mean_ratio = ratio_matrix[np.isfinite(ratio_matrix) & (ratio_matrix > 0)].mean()
+        ax.text(0.02, -0.10,
+                f"Mean cell ratio: ×{mean_ratio:.1f}  |  "
+                f"Red = TE > shuffle (significant)  |  Blue = TE < shuffle",
+                transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.7))
+
+        plt.tight_layout()
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        config = results.get('config', {})
+        method_suffix = "_density" if config.get('method') == 'density' else ""
+        plot_path = output_dir / f"te_ratio_heatmap_{variant}_iter{iteration}{method_suffix}.png"
+        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        sys.stdout.flush()
+        return plot_path
+
+    except Exception as e:
+        print(f"   ⚠️ Error generating ratio heatmap: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return None
 
 

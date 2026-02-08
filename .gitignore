@@ -74,22 +74,4 @@ htmlcov/
 .coverage
 *.coverage
 
-Documentation/ADAPTIVE_SAMPLING_PROPOSAL.md
-Documentation/peer_review_checklist.md
-Documentation/peer_review_report.md
-Documentation/scientific_gap_analysis.md
-Documentation/technical_audit_analysis.md
-Documentation/scientific_peer_review_audit.md
-Documentation/scientific_peer_review_critique.md
-Documentation/trend_analysis_interpretation.md
-Documentation/HSI_Results_Compilation_v1.md
-Documentation/HSI_Results_Compilation_v2.md
-recalculate_all_deep_analysis.ps1
-recalculate_frozen_start_fix.ps1
-recalculate_te_with_shuffle.ps1
-run_experiments.ps1
-run_te_all_variants.py
-Documentation/adversarial_review_phase3.md
-Documentation/feedback_for_antigra_phase3.md
-Documentation/paper_update_recommendations.md
-Documentation/peer_review_report_phase2.md
+Documentation/archive/

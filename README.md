@@ -24,8 +24,10 @@ hsi_agents_project/
 ├── level0_generate.py                # Level 0: Generate Φ for ALL variants (A-M)
 ├── level0_refresh_plots.py           # Level 0: Regenerate plots from cache
 ├── level0_estimate_storage.py        # Level 0: Storage estimation tool
+├── level0_spectrum_enhanced.py       # Level 0: Enhanced spectral analysis
 ├── level1_analyze_patterns.py        # Level 1: Pattern detection and rule inference
 ├── level1_emergence_index.py         # Level 1: Emergence Index (Level 2 potential)
+├── level1_phi_trend.py               # Level 1: φ trend across iterations
 ├── level1_sci_icc.py                 # Level 1: SCI & ICC metrics calculation
 ├── level1_trend_analysis.py          # Level 1: Trend analysis + extrapolation
 ├── level1_visualize.py               # Level 1: Generate publication figures
@@ -50,24 +52,22 @@ hsi_agents_project/
 ├── ════════════════════════════════════════════════════════════
 │   APPENDIX: DEEP-DIVE INVESTIGATION SCRIPTS
 ├── ════════════════════════════════════════════════════════════
-├── apendix_commutativity_analysis.py # Commutativity: B vs E vs I divergence
-├── apendix_deep_divergence_analysis_B_E.py # Why E follows B for 91M bytes
-├── streaming_subsample.py            # Multi-scale Nyquist subsampling (v2.0)
+├── appendix_commutativity_analysis.py # Commutativity: B vs E vs I divergence
+├── appendix_deep_divergence_analysis_B_E.py # Why E follows B for 91M bytes
 │
 ├── Setup-virtual-envelop.ps1         # Setup/activation script (Windows)
 ├── config.json                       # Experiment configuration
 ├── requirements.txt                  # Python dependencies
 │
 ├── 📚 Documentation/
-│   ├── level1_analysis_guide.md      # Complete Level 1 technical guide
-│   ├── level1_figures_plan.md        # Figure generation plan
-│   ├── order_metrics_explained.md    # Scientific explanation of metrics
-│   ├── variants_spec.md              # Variant specifications
+│   ├── HSI_Experimental_Results_Summary.md  # Executive synthesis of all results
+│   ├── Results_Data_Guide.md         # Data navigation guide
+│   ├── variants_spec.md              # Variant specifications (all 12)
+│   ├── VARIANT_F_MECHANISM.md        # Feedback mechanism explanation
 │   ├── phi_emergence_mechanism.md    # φ emergence analysis (E vs B vs I)
-│   ├── geometric_analysis_plan.md    # Geometric analysis plan
-│   ├── hidden_phi_discovery_roadmap.md # Hidden φ research roadmap
-│   ├── GPU_ACCELERATION_PROPOSAL.md  # Future GPU integration
-│   └── HSI_Variants_Analysis_For_Review.md # Analysis for peer review
+│   ├── order_metrics_explained.md    # Scientific explanation of metrics
+│   ├── level1_analysis_guide.md      # Complete Level 1 technical guide
+│   └── peer_review_report.md         # Independent code review
 │
 ├── level0/                           # Level 0 Generator modules
 │   ├── generator.py                  # Φ sequence simulation
@@ -216,12 +216,12 @@ These scripts investigate specific open questions arising from the main analysis
 
 | Script | Purpose | Run |
 |--------|---------|-----|
-| `apendix_commutativity_analysis.py` | Analyze B vs E vs I commutativity: byte-level divergence points, post-divergence LZ ratios | `python apendix_commutativity_analysis.py` |
-| `apendix_deep_divergence_analysis_B_E.py` | **Why does E follow B for 91M bytes while I diverges immediately?** 5 analyses: asymmetry, divergence evolution, pattern density, structural snapshots, LZ around divergence | `python apendix_deep_divergence_analysis_B_E.py` |
+| `appendix_commutativity_analysis.py` | Analyze B vs E vs I commutativity: byte-level divergence points, post-divergence LZ ratios | `python appendix_commutativity_analysis.py` |
+| `appendix_deep_divergence_analysis_B_E.py` | **Why does E follow B for 91M bytes while I diverges immediately?** 5 analyses: asymmetry, divergence evolution, pattern density, structural snapshots, LZ around divergence | `python appendix_deep_divergence_analysis_B_E.py` |
 
 ### Hidden φ Discovery Tools
 
-These tools implement the research roadmap for discovering hidden φ in variant structures (see `Documentation/hidden_phi_discovery_roadmap.md`).
+These tools implement the research roadmap for discovering hidden φ in variant structures.
 
 #### Phase 1: Scale & Structure Analysis
 
@@ -530,7 +530,7 @@ Snapshots and outputs are segregated by variant and ABS:
 
 ## Surviving Variants
 
-**Status:** 7 active variants + 1 control (A and C eliminated for incompatibility with ISH principles)
+**Status:** 7 HSI variants + 5 controls (12 total). Variant C was eliminated for incompatibility with ISH principles.
 
 ### Core Variants (Tier 1)
 
@@ -553,12 +553,6 @@ Snapshots and outputs are segregated by variant and ABS:
 - **Properties:** Two separate phases with accumulation between them
 - **Scientific Value:** Tests whether phase order affects emergent structure
 - **Why it survives:** Explores sequence-dependent collapse dynamics with inter-phase accumulation
-
-**Variant I — Inverse of E**
-- **Algorithm:** Phase 1: 10→0 (iterate until stable), Phase 2: 01→0 (iterate until stable)
-- **Properties:** Inverse phase order of E (collapse before emergence)
-- **Scientific Value:** Tests whether the effect of phase order is symmetric or asymmetric
-- **Why it survives:** Complements E by testing the opposite ordering
 
 **Variant F — Hybrid Stabilization**
 - **Algorithm:** Stabilize inside→out, then single global pass
@@ -653,9 +647,9 @@ The test of multiple constants honestly reports which constant is closest. Null 
 
 ### 📊 Experimental Results
 
-For detailed experimental validation comparing Control variant (A) vs ISH variants (B-I), including growth projections and φ-alignment analysis, see:
+For detailed experimental validation comparing all 12 variants, including growth projections and φ-alignment analysis, see:
 
-→ [`Documentation/hsi_growth_projections_analysis.md`](Documentation/hsi_growth_projections_analysis.md)
+→ [`Documentation/HSI_Experimental_Results_Summary.md`](Documentation/HSI_Experimental_Results_Summary.md)
 
 ### ❌ Eliminated Variants
 
