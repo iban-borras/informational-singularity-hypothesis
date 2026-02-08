@@ -6,6 +6,7 @@
 # Results folder - EXCLUDE (contains GB of generated data)
 # -----------------------------------------------------------------------------
 results/
+!results/README.md
 
 # -----------------------------------------------------------------------------
 # Python cache
