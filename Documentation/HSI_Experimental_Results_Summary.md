@@ -4,7 +4,7 @@
 
 **Date:** 2026-02-08
 **Authors:** Iban Borràs Serret, with AI collaboration (Claude Opus 4.6, GPT 5.2, Gemini 3 Pro)
-**Repository:** [github.com/ibanbermudez/HSI](https://github.com/ibanbermudez/HSI)
+**Repository:** [github.com/iban-borras/informational-singularity-hypothesis](https://github.com/iban-borras/informational-singularity-hypothesis)
 **Version:** 1.0 — Complete results (all 12 variants, all 5 metrics)
 
 ---

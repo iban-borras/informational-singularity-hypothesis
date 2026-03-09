@@ -2241,7 +2241,8 @@ def main():
         ("-m", "hsi_agents_project.level0.generator", "Variant E (Ordered Passes)", "variant_E_results.json", "E"),
         ("-m", "hsi_agents_project.level0.generator", "Variant F (Hybrid)", "variant_F_results.json", "F"),
         ("-m", "hsi_agents_project.level0.generator", "Variant G (Raw Stratified)", "variant_G_results.json", "G"),
-        ("-m", "hsi_agents_project.level0.generator", "Variant H (Continuous Feedback)", "variant_H_results.json", "H")
+        ("-m", "hsi_agents_project.level0.generator", "Variant H (Continuous Feedback)", "variant_H_results.json", "H"),
+        ("-m", "hsi_agents_project.level0.generator", "Variant N (Ontological Collapse)", "variant_N_results.json", "N")
     ]
 
     # Filter variants based on CLI args
@@ -2252,7 +2253,7 @@ def main():
         variants = [v for v in all_variants if v[4] == variant_code]
         if not variants:
             print(f"❌ ERROR: Unknown variant '{variant_code}'")
-            print(f"   Available variants: A, B, D, E, F, G, H, I, J, K, L, M")
+            print(f"   Available variants: A, B, D, E, F, G, H, I, J, K, L, M, N")
             print(f"   Control variants: A=Random, J=Pi, K=Rule30, L=Logistic, M=Fibonacci")
             return
         print(f"🎯 Running only Variant {variant_code}")

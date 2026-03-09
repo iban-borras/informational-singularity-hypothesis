@@ -442,6 +442,21 @@ def simulate_phi(
             return sf(inner_clean)
         return re.sub(r'\([01]+\)', _collapse_match, state, count=1)
 
+    def _collapse_n_atomic(state: str, suffix_mode: bool = False) -> str:
+        """Collapse innermost ATOMIC frames for Variant N.
+        Default (prefix): 1(content) — |Ø₀| = 10, regex 1\\(([01]+)\\)
+        suffix_mode:      (content)1 — |Ø₀| = 01, regex \\(([01]+)\\)1
+        """
+        def _collapse_match(match: re.Match) -> str:
+            inner = match.group(1)
+            inner_simplified = _simplify_base(inner)
+            return _simplify_base(inner_simplified + "1") if suffix_mode else _simplify_base("1" + inner_simplified)
+        pattern = r'\(([01]+)\)1' if suffix_mode else r'1\(([01]+)\)'
+        result = re.sub(pattern, _collapse_match, state)
+        result = re.sub(r'0{2,}', '0', result)
+        result = re.sub(r'1{2,}', '1', result)
+        return result
+
     def _simplify_variant_d(seq: str) -> str:
         """Minimal asymmetry: 10→0, 01→0; then compress runs.
 
@@ -528,6 +543,8 @@ def simulate_phi(
     # Procés iteratiu principal (basal‑pure)
     # Per-iteration timing toggle
     ENABLE_TIMING = os.environ.get("HSI_ENABLE_TIMING", "1") == "1"
+    # Variant N: suffix_mode inverts the atomic frame to (Acc)1 instead of 1(Acc)
+    n_suffix_mode = os.environ.get("HSI_N_SUFFIX", "0") == "1"
 
     # Load config for RAM/disk limits ONCE before loop
     max_ram_gb = config.get("level0_generation", {}).get("max_ram_gb", DEFAULT_MAX_RAM_GB)
@@ -598,9 +615,12 @@ def simulate_phi(
 
             # Build decay frame directly on disk (no RAM needed)
             # Use compression if auto-compress is active
+            # Variant N: prefix_mode places token BEFORE parentheses: 1(Acc)
+            # If HSI_N_SUFFIX=1, use standard suffix mode: (Acc)1
             decay_frame_path = accumulation_manager.build_decay_frame(
                 absolute_token,
-                compress_output=compress_temp_files
+                compress_output=compress_temp_files,
+                prefix_mode=(variant == "N" and not n_suffix_mode)
             )
             decay_frame_size = decay_frame_path.stat().st_size
 
@@ -624,6 +644,7 @@ def simulate_phi(
                     "G": _simplify_base,
                     "H": _simplify_base,
                     "I": _simplify_variant_i,  # Inverse of E: 10 first, then 01
+                    "N": _simplify_base,  # Ontological Collapse: same base rules
                 }
                 hybrid_simplify_fn = variant_simplify_fns.get(variant, _simplify_base)
                 hybrid_engine = HybridCollapseEngine(
@@ -729,7 +750,10 @@ def simulate_phi(
                     decay_frame_path.unlink()
                 state = decay_frame
         else:
-            decay_frame = f"({accumulation}){absolute_token}"
+            if variant == "N":
+                decay_frame = f"{absolute_token}({accumulation})"
+            else:
+                decay_frame = f"({accumulation}){absolute_token}"
             state = decay_frame
 
         # Check if safety stop triggered
@@ -964,6 +988,32 @@ def simulate_phi(
                 if len(state) > 1:
                     state = _collapse_global_ignore_parentheses(state)
 
+        elif variant == "N":
+            # N — Ontological Collapse: atomic frames
+            # Default: 1(Acc) prefix — HSI_N_SUFFIX=1: (Acc)1 suffix
+            # Collapse uses _collapse_n_atomic with suffix_mode toggle
+            if used_hybrid:
+                if len(state) > 1:
+                    prev_n = None
+                    while state != prev_n:
+                        prev_n = state
+                        state = _collapse_n_atomic(state, suffix_mode=n_suffix_mode)
+                        if len(state) == 1:
+                            break
+            else:
+                while state != previous:
+                    collapse_pass += 1
+                    previous = state
+                    if accumulation_manager:
+                        accumulation_manager.append(state)
+                    else:
+                        accumulation += state
+                    next_state = _collapse_n_atomic(state, suffix_mode=n_suffix_mode)
+                    if len(next_state) == 1:
+                        state = next_state
+                        break
+                    state = next_state
+
         else:
             # Fallback to baseline B
             if used_hybrid:
@@ -1100,6 +1150,14 @@ def simulate_phi(
             # round seconds to 2 decimals for readability in reports
             entry["time_sec"] = round(time.perf_counter() - iter_t0, 2)
         metadata.setdefault("per_iteration", []).append(entry)
+
+    # Append the final collapsed state to the accumulation.
+    # Without this, the last iteration's result is lost because
+    # current_state is only prepended at the START of each iteration.
+    if accumulation_manager:
+        accumulation_manager.append(current_state)
+    else:
+        accumulation += current_state
 
     # Explicitly mark end of iteration loop
     print(f"\n[loop] All {max_iterations} iterations complete. Starting post-processing...", flush=True)

@@ -241,16 +241,19 @@ class AccumulationManager:
             print(f"   [AccumulationManager] Cleaned up temporary file: {self.file_path}")
     
     def build_decay_frame(self, absolute_token: str, output_path: Optional[Path] = None,
-                          compress_output: Optional[bool] = None) -> Path:
+                          compress_output: Optional[bool] = None,
+                          prefix_mode: bool = False) -> Path:
         """
         Build decay frame on disk without loading to RAM.
 
-        Creates file with content: ({accumulation}){absolute_token}
+        Default:      ({accumulation}){absolute_token}   — variants B, D, E, F, G, H, I
+        prefix_mode:  {absolute_token}({accumulation})   — variant N (Ontological Collapse)
 
         Args:
-            absolute_token: Token to append (e.g., "1", "01", "10")
+            absolute_token: Token to append/prepend (e.g., "1", "01", "10")
             output_path: Optional custom output path
             compress_output: Whether to compress output (default: same as self.compress)
+            prefix_mode: If True, token goes BEFORE parentheses (Variant N)
 
         Returns:
             Path to the decay frame file
@@ -274,8 +277,13 @@ class AccumulationManager:
             out_open = lambda: open(output_path, 'w', encoding='utf-8')
 
         with out_open() as out_f:
-            # Write opening parenthesis
-            out_f.write('(')
+            if prefix_mode:
+                # Variant N: token(accumulation)
+                out_f.write(absolute_token)
+                out_f.write('(')
+            else:
+                # Standard: (accumulation)token
+                out_f.write('(')
 
             # Stream accumulation content
             if self.file_path.exists():
@@ -286,9 +294,11 @@ class AccumulationManager:
                             break
                         out_f.write(chunk)
 
-            # Write closing parenthesis and token
-            out_f.write(')')
-            out_f.write(absolute_token)
+            if prefix_mode:
+                out_f.write(')')
+            else:
+                out_f.write(')')
+                out_f.write(absolute_token)
 
         return output_path
 
