@@ -1,8 +1,8 @@
-# HSI Level 0 — Variant Specification Guide
+# ISH Level 0 — Variant Specification Guide
 
 ## Overview
 
-The HSI computational model tests the core mechanism — **binary annihilation with nesting** — through 7 experimental variants and 5 control baselines. All variants operate on the same framework: an ordered cascade where each Absolute (`1`) encapsulates all prior states in stratified parentheses, and collapse proceeds inside→out.
+The ISH computational model tests the core mechanism — **binary annihilation with nesting** — through 7 experimental variants and 5 control baselines. All variants operate on the same framework: an ordered cascade where each Absolute (`1`) encapsulates all prior states in stratified parentheses, and collapse proceeds inside→out.
 
 **Core principle:**
 > "Order is the only way Nothingness can contradict itself. Reality emerges from primordial order through stratified containment of the Absolute."
