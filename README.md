@@ -15,6 +15,41 @@ The ISH proposes that all reality emerges from a primordial tension between "Not
 
 > **📖 Important**: For detailed technical documentation, see the `Documentation/` folder which contains analysis guides, variant specifications, and order metrics explanations.
 
+## HSI v2 Status (Apr 2026)
+
+HSI v2 is the current disciplined extension of the original ISH/HSI experimental stack. Its first goal is narrower and stricter than the v1 exploratory program:
+
+- demonstrate or refute a non-trivial projective hierarchy
+- avoid premature geometry
+- compare HSI variants against strong nulls and structured contrast controls
+- preserve full reproducibility through manifests, metadata, phase logs, and explicit report layers
+
+The public HSI v2 scripts currently available are:
+
+| Script | Role |
+|--------|------|
+| `hsi_v2_preflight_factor_complexity.py` | Preflight factor-complexity gate against strong nulls |
+| `hsi_v2_preflight_report.py` | Comparative preflight summary for HSI variants and controls |
+| `hsi_v2_phase1_run.py` | Phase 1 tower construction (`P_m`, projections, fibers, moments), including one-at-a-time strong null surrogates |
+| `hsi_v2_phase1_report.py` | Comparative tower-width and richness summary |
+| `hsi_v2_phase1_coherence_report.py` | Derived tail-coherence readout |
+| `hsi_v2_phase1_transport_report.py` | Derived transport-persistence readout |
+| `hsi_v2_phase1_gate_map.py` | Compact Porta 1 table plus a 2D gate-plane visual (`retention@last` vs `active_mean_tail`) with `SVG` and optional `PNG` output |
+
+Current empirical class split from the first real HSI v2 Phase 1 batch:
+
+- `B/E/I` -> coherent
+- `F` -> rigid
+- `M/N` -> crystalline
+- `A/J/L` -> collapsed
+- `K` -> trivial
+
+To recover the current HSI v2 state quickly, start here:
+
+- `Documentation/HSI_v2_Report_and_Data_Guide.md`
+- `Documentation/HSI_v2_Phase1_Live_Findings.md`
+- `../docs/HSI_v2_Decision_Log.md`
+
 ## Project Structure
 
 ```
@@ -34,6 +69,17 @@ hsi_agents_project/
 ├── level1_trend_analysis.py          # Level 1: Trend analysis + extrapolation
 ├── level1_visualize.py               # Level 1: Generate publication figures
 ├── level1_view_results.py            # Level 1: View/analyze JSON results
+│
+├── ════════════════════════════════════════════════════════════
+│   HSI v2: PROJECTIVE-HIERARCHY GATE
+├── ════════════════════════════════════════════════════════════
+├── hsi_v2_preflight_factor_complexity.py  # HSI v2 preflight: factor complexity + nulls
+├── hsi_v2_preflight_report.py       # HSI v2 preflight comparative summary
+├── hsi_v2_phase1_run.py             # HSI v2 Phase 1: build P_m, projections, fibers, moments (+ optional strong null surrogates)
+├── hsi_v2_phase1_report.py          # HSI v2 Phase 1 tower-width and richness summary
+├── hsi_v2_phase1_coherence_report.py # HSI v2 derived tail-coherence summary
+├── hsi_v2_phase1_transport_report.py # HSI v2 derived transport-persistence summary
+├── hsi_v2_phase1_gate_map.py        # HSI v2 Porta 1 compact table + 2D gate-plane visual
 │
 ├── ════════════════════════════════════════════════════════════
 │   LEVEL 2: ADVANCED COMPLEXITY ANALYSIS
@@ -63,6 +109,8 @@ hsi_agents_project/
 │
 ├── 📚 Documentation/
 │   ├── HSI_Experimental_Results_Summary.md  # Executive synthesis of all results
+│   ├── HSI_v2_Report_and_Data_Guide.md # HSI v2 scripts, outputs, and report recovery
+│   ├── HSI_v2_Phase1_Live_Findings.md  # Current HSI v2 scientific reading
 │   ├── Results_Data_Guide.md         # Data navigation guide
 │   ├── variants_spec.md              # Variant specifications (all 12)
 │   ├── VARIANT_F_MECHANISM.md        # Feedback mechanism explanation
@@ -97,7 +145,12 @@ hsi_agents_project/
 │   ├── streaming_phi_loader.py       # Streaming data loader
 │   ├── bitarray_encoder.py           # Binary encoding utilities
 │   └── progress.py                   # Progress indicators
+├── v2/                               # HSI v2 internal namespace
+│   ├── common/                       # Shared IO, naming, CLI, and null helpers
+│   ├── preflight/                    # Factor-complexity gate internals
+│   └── phase1/                       # Phase 1 tower/report/coherence/transport internals
 └── results/                          # Results (excluded from git)
+    └── hsi_v2/                       # HSI v2 outputs: preflight, towers, and reports
 ```
 
 ## Installation and Dependencies
@@ -185,6 +238,49 @@ The system uses **Numba JIT compilation** for CPU-intensive operations like Rule
 > **Note**: GPU acceleration was evaluated but is not efficient for Rule 30 due to its sequential time dependency (each step depends on the previous one).
 
 ## System Usage
+
+### HSI v2 Experimental Gate
+
+HSI v2 reuses Level 0 structural snapshots as input, but writes all new artifacts into `results/hsi_v2/` under a separate namespace. The current gate is split into:
+
+- preflight: factor complexity and branching against strong nulls
+- Phase 1: `P_m`, adjacent-scale projections, fibers, moments, and derived readouts
+
+| Script | Purpose | Typical usage |
+|--------|---------|---------------|
+| `hsi_v2_preflight_factor_complexity.py` | Run the preflight gate on one variant/iteration | `python hsi_v2_preflight_factor_complexity.py --variant B --iteration 20 --segment-bits 1000000 --num-segments 3 --m-min 8 --m-max 32` |
+| `hsi_v2_preflight_report.py` | Summarize a coherent preflight batch | `python hsi_v2_preflight_report.py --variants B,E,I,F,A,J,K,L,M` |
+| `hsi_v2_phase1_run.py` | Build one Phase 1 tower run or one strong-null surrogate run | `python hsi_v2_phase1_run.py --variant B --iteration 20 --segment-bits 1000000 --num-segments 3` |
+| `hsi_v2_phase1_report.py` | Compare tower breadth and richness across runs | `python hsi_v2_phase1_report.py` |
+| `hsi_v2_phase1_coherence_report.py` | Compare tail coherence across runs | `python hsi_v2_phase1_coherence_report.py` |
+| `hsi_v2_phase1_transport_report.py` | Compare transport persistence across runs | `python hsi_v2_phase1_transport_report.py` |
+| `hsi_v2_phase1_gate_map.py` | Build the compact Porta 1 gate table plus `SVG` plane and `PNG` when matplotlib is available | `python hsi_v2_phase1_gate_map.py` |
+
+Current default HSI v2 Phase 1 protocol:
+
+- observable sampling: prefix, consecutive segments
+- segment protocol: `3 x 1,000,000 bits`
+- scale ladder: `8,12,16,20,24,28,32`
+- projection policies: `prefix` main, `suffix` control
+- `P_m` thresholds:
+  - `min_count_floor = 16`
+  - `min_count_rate = 1e-6`
+  - `min_segment_support = 2`
+  - `cv_max = 1.5`
+
+Current HSI v2 output layout:
+
+- `results/hsi_v2/preflight/`
+- `results/hsi_v2/preflight/reports/`
+- `results/hsi_v2/phase1/phase1-tower__*/`
+- `results/hsi_v2/phase1/nulls/phase1-tower__*/`
+- `results/hsi_v2/phase1/reports/`
+
+For data navigation and interpretation:
+
+- `Documentation/HSI_v2_Report_and_Data_Guide.md`
+- `Documentation/HSI_v2_Phase1_Live_Findings.md`
+- `Documentation/Results_Data_Guide.md`
 
 ### Main Scripts
 
@@ -1070,6 +1166,18 @@ results/
 │   │
 │   └── divergence_analysis/                  # Deep divergence investigation
 │       └── deep_divergence_B_E_I.json        # 5-analysis divergence results
+│
+├── hsi_v2/                                   # ═══ HSI v2: Projective Hierarchy Gate ═══
+│   │
+│   ├── preflight/                            # Factor-complexity gate runs
+│   │   ├── preflight-fc__var-B__.../         # One preflight run + manifest
+│   │   └── reports/                          # Comparative preflight summaries
+│   │
+│   └── phase1/                               # Phase 1 tower runs and derived reports
+│       ├── phase1-tower__var-B__.../         # One tower run with fibers/moments/manifest
+│       ├── nulls/                            # Strong-null Phase 1 tower runs
+│       │   └── phase1-tower__var-B__.../     # One surrogate tower run + manifest
+│       └── reports/                          # Tower, coherence, and transport summaries
 │
 ├── cache/                                    # ═══ SHARED: Caches ═══
 │   └── level1_cache_phi_iter*.pkl
