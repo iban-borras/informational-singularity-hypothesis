@@ -4,9 +4,9 @@
 
 **Document type:** living findings log  
 **Language:** English  
-**Scope:** HSI v2 Phase 2 temporal transport prototypes, strict null-pressure readout, strict `N2-01`, strict `N2-02`, and post-D-0037 / D-0039 interpretation boundaries  
-**Last updated:** 2026-04-21  
-**Current status:** strict `N2-02` completed as a valid negative result; strict `null_pressure` has now been revalidated under D-0037 and D-0039 and remains the first paper-safe observational opening of Gate 2
+**Scope:** HSI v2 Phase 2 temporal transport prototypes, strict null-pressure readout, strict `N2-01`, strict `N2-02`, derived survival readouts, and post-D-0037 / D-0039 / D-0047 interpretation boundaries  
+**Last updated:** 2026-04-22  
+**Current status:** strict `null_pressure` remains the first paper-safe observational opening of Gate 2; the parent-survival line has now been revalidated under an independent shell-lag probe plus lag-aware band and should be read as delayed shell realignment with residual local mismatch, not as a stable death shell
 
 This document records the live scientific reading of the current HSI v2 Phase 2 outputs stored in the repository.
 
@@ -207,6 +207,56 @@ So the current picture is two-layered:
 - `null_pressure` is the first paper-safe Gate 2 opening
 - no transport-defect object has yet superseded it as the stronger formal object
 
+### 8. The first same-window parent-survival band was diagnostically useful, but scientifically too strong
+
+The hostile audit on the fine-band parent-survival readout landed on a real point.
+
+The same-window band:
+
+- did identify a sharp late-band asymmetry under anchor `E`
+- but it could not distinguish absolute parent death from delayed reappearance outside the aligned window
+
+So the old shorthand reading:
+
+- "`23`-pattern dead shell"
+
+must now be downgraded.
+
+What survives from that first band is only the diagnostic clue:
+
+- there is a short late-band region where `E` and `B` fall badly out of synchrony under the anchored support contract
+
+What does **not** survive is the literal extinction reading.
+
+### 9. The canonical parent-shell revalidation replaces the death-shell claim by delayed shell realignment with residual local mismatch
+
+The new canonical pipeline is:
+
+1. independent shell-lag probe on the anchor-defined low-scale shell
+2. lag-aware parent-survival band using the externally estimated lag
+
+Canonical result for anchor `E`, candidate `B`, scales `40 -> 48`, selector `bridge-linked`, `top = 64`, and the full `714M -> 723M` half-megabit band:
+
+- anchor core size = `20`
+- anchor shell size = `44`
+- first full candidate shell offset = `729M`
+- recommended lag = `+15M` bits
+
+After applying that external lag, the lag-aware band reads:
+
+- `B`: exact range `8 -> 43`, dead range `0 -> 23`, dark range `0`, partial range `0`
+- `E`: exact range `20 -> 43`, dead range `0`, dark range `0`, partial range `0`
+
+Interpretation:
+
+- the earlier "stable death shell" wording is no longer scientifically acceptable
+- the dominant phenomenon is delayed shell realignment
+- but the lag is **not** a perfectly rigid translation, because the lag-aware band still shows local residual mismatch
+- so the honest summary is:
+  - `E -> B` exhibits delayed shell realignment with residual local mismatch
+
+This is scientifically better than the earlier, cleaner story because it keeps the temporal objection open where the data demand it.
+
 ---
 
 ## Current Repo-Facing Scientific Position
@@ -220,11 +270,14 @@ What HSI v2 currently supports in Phase 2:
 - `markov1` is strongly rejected by the strict transport-defect family
 - `matched-lz` remains the strongest and most informative null
 - the counterfactual move to a frozen observed law was the correct methodological escalation
+- the parent-survival line now supports delayed shell realignment plus local residual mismatch in `E -> B`
 
 What HSI v2 does **not** yet support in Phase 2:
 
 - a paper-final Gate 2 claim based on `N2-01`
 - a paper-final Gate 2 claim based on `N2-02`
+- a paper-final claim of a stable `E -> B` death shell
+- the claim that `E -> B` is explained by a single rigid lag with no residual local distortion
 - the claim that the frozen observed law `K_B` materially separates `matched-lz`
 - a final transport law
 - a completed defect theory
@@ -254,6 +307,10 @@ What HSI v2 does **not** yet support in Phase 2:
 
 - `results/hsi_v2/phase2/transport_defect_counterfactual/phase2-transport-defect-counterfactual__stage-all__anchor-B__m-40-48__sel-bridge-linked__top-64__off-714M-plus-4__var-B-E__20260421T012228/`
 
+### Canonical parent-shell revalidation
+
+- `results/hsi_v2/phase2/parent_survival_revalidation/phase2-parent-survival-revalidation__anchor-E__cand-B__m-40-48__sel-bridge-linked__top-64__off-714M-plus-19__20260422T202310/`
+
 ---
 
 ## Reading Order For Recovery
@@ -277,6 +334,13 @@ If you want to know what still counts as the best Gate 2 candidate, read:
 2. D-0037 in `../docs/HSI_v2_Decision_Log.md`
 3. this live-findings document
 
+If you want the current survival-line reading specifically, read:
+
+1. the canonical parent-shell revalidation report under `results/hsi_v2/phase2/parent_survival_revalidation/...`
+2. the nested shell-lag probe summary
+3. the nested lag-aware band summary
+4. D-0047 in `../docs/HSI_v2_Decision_Log.md`
+
 ---
 
 ## Bottom Line
@@ -289,10 +353,18 @@ The full strict `N2-02` batch confirms that:
 - `markov1` fails strongly
 - `matched-lz` still remains too close
 
+The canonical parent-survival revalidation now adds:
+
+- the old same-window "death shell" wording was too strong
+- the anchor-defined shell reappears in `B` after an external lag of about `+15M` bits
+- after lag correction, the main phenomenon is delayed realignment, not literal extinction
+- but the realignment is not perfectly rigid and still leaves local residual mismatch
+
 So the next serious move is not to overstate a transport-defect victory.
 
 It is to:
 
 - revalidate the older strict `null_pressure` opening under D-0037
 - preserve `N2-02` as a valuable negative result
+- preserve the survival line as a calibrated asymmetry diagnostic, not as a solved shell law
 - and design the next law-level object only after that boundary is clean

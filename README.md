@@ -37,6 +37,7 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase1_gate_map.py` | Compact Porta 1 table plus a 2D gate-plane visual (`retention@last` vs `active_mean_tail`) with `SVG` and optional `PNG` output |
 | `hsi_v2_phase2_null_pressure_window_sweep.py` | Strict observed-anchored return-profile opening against strong nulls over a deep window band |
 | `hsi_v2_phase2_transport_defect_strict.py` | Strict-band transport-defect pilot on observed-anchored support |
+| `hsi_v2_phase2_parent_survival_revalidation.py` | Canonical two-stage revalidation of parent-shell survival: independent lag probe plus lag-aware band readout |
 
 Current empirical class split from the first real HSI v2 Phase 1 batch:
 
@@ -265,6 +266,7 @@ HSI v2 reuses Level 0 structural snapshots as input, but writes all new artifact
 | `hsi_v2_phase1_coherence_report.py` | Compare tail coherence across runs | `python hsi_v2_phase1_coherence_report.py` |
 | `hsi_v2_phase1_transport_report.py` | Compare transport persistence across runs | `python hsi_v2_phase1_transport_report.py` |
 | `hsi_v2_phase1_gate_map.py` | Build the compact Porta 1 gate table plus `SVG` plane and `PNG` when matplotlib is available | `python hsi_v2_phase1_gate_map.py` |
+| `hsi_v2_phase2_parent_survival_revalidation.py` | Run the canonical Phase 2 shell-lag revalidation pipeline in one shot | `python hsi_v2_phase2_parent_survival_revalidation.py --variants E,B --anchor-variant E --iteration 20 --segment-bits 1000000 --num-segments 3 --scales 8,12,16,20,24,28,32,40,48 --phase1-policies prefix,suffix --low-scale 40 --high-scale 48 --top-patterns 64 --pattern-selection bridge-linked` |
 
 Current default HSI v2 Phase 1 protocol:
 
