@@ -9,13 +9,14 @@ It complements, rather than replaces:
 - `README.md` for repo-wide orientation
 - `Documentation/Results_Data_Guide.md` for the legacy v1 result stack
 - `Documentation/HSI_v2_Phase1_Live_Findings.md` for the current scientific interpretation
+- `Documentation/HSI_v2_Phase2_Live_Findings.md` for the current post-gate temporal readout
 - `../docs/HSI_v2_Decision_Log.md` for methodological defaults and decision history
 
 ---
 
 ## Current HSI v2 Scope
 
-HSI v2 currently covers two disciplined stages:
+HSI v2 currently covers three disciplined layers:
 
 1. **Preflight**
    Factor complexity, branching, and early projective-hierarchy discrimination against strong nulls.
@@ -23,9 +24,20 @@ HSI v2 currently covers two disciplined stages:
 2. **Phase 1**
    Local pattern spaces `P_m`, adjacent-scale projections, fibers, moments, and derived readouts of coherence and transport.
 
+3. **Phase 2**
+   Post-gate temporal transport prototypes. The current strict objects are:
+   - observed-anchored `null_pressure`
+   - strict-band transport-defect pilots
+
 The current goal is intentionally narrow:
 
 > demonstrate or refute a non-trivial projective hierarchy before attempting defects, graphs, spectrum, or geometry.
+
+Phase 2 should therefore be read with care:
+
+- it is downstream of the Phase 1 gate
+- it is still selective and disciplined
+- not every exploratory Phase 2 pilot is yet canonical
 
 ---
 
@@ -47,6 +59,15 @@ The current goal is intentionally narrow:
 | `hsi_v2_phase1_coherence_report.py` | `results/hsi_v2/phase1/reports/phase1-coherence__*/` | Summarizes tail coherence over the last edges of the tower |
 | `hsi_v2_phase1_transport_report.py` | `results/hsi_v2/phase1/reports/phase1-transport__*/` | Summarizes transport persistence across consecutive edges |
 | `hsi_v2_phase1_gate_map.py` | `results/hsi_v2/phase1/reports/phase1-gate-map__*/` | Builds a compact Porta 1 table plus a 2D gate-plane visual (`retention@last` vs `active_mean_tail`) as `SVG` and optional `PNG` |
+
+### Phase 2 layer
+
+| Script | Output family | Role |
+|--------|---------------|------|
+| `hsi_v2_phase2_null_pressure_window_sweep.py` | `results/hsi_v2/phase2/window_sweep*/phase2-return-lag-null-pressure__*/` | Runs the strict observed-anchored return-profile opening against nulls over a deep window band |
+| `hsi_v2_phase2_transport_defect_strict.py` | `results/hsi_v2/phase2/transport_defect_strict*/phase2-transport-defect-strict__*/` | Runs the strict-band transport-defect pilot on observed-anchored support |
+
+Other Phase 2 public scripts exist in the repo, but the current scientific reading should prioritize the strict objects above unless the decision log says otherwise.
 
 ---
 
@@ -110,6 +131,17 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
 - `phase1-gate-map__...`
   Compact Porta 1 table plus `CSV`, `JSON`, `Markdown`, and visual summary artifacts (`SVG`, plus `PNG` when matplotlib is available).
 
+### Phase 2
+
+`results/hsi_v2/phase2/`
+
+- `window_sweep*/phase2-return-lag-null-pressure__.../`
+  Strict return-profile comparison runs, with dataset, summary, report, and manifest.
+- `transport_defect_strict*/phase2-transport-defect-strict__.../`
+  Strict-band transport-defect runs, again with dataset, summary, report, and manifest.
+- exploratory families such as `phase2-return-lag__...`, `phase2-sparse-graph__...`, `phase2-square-cocycle__...`, and `phase2-defect-pilot__...`
+  Useful for search-space recovery, but not all of them are current canonical evidence.
+
 ---
 
 ## How to Reconstruct a Result
@@ -119,9 +151,10 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
 Read:
 
 1. `Documentation/HSI_v2_Phase1_Live_Findings.md`
-2. the latest `phase1-report__...md`
-3. the latest `phase1-coherence__...md`
-4. the latest `phase1-transport__...md`
+2. `Documentation/HSI_v2_Phase2_Live_Findings.md`
+3. the latest `phase1-report__...md`
+4. the latest `phase1-coherence__...md`
+5. the latest `phase1-transport__...md`
 
 ### If you want to audit one run end to end
 
@@ -140,6 +173,7 @@ Check:
 
 - `../docs/HSI_v2_Decision_Log.md` for accepted defaults and methodological decisions
 - `Documentation/HSI_v2_Phase1_Live_Findings.md` for current interpretation
+- `Documentation/HSI_v2_Phase2_Live_Findings.md` for the current strict Gate 2 readout
 
 ---
 
@@ -210,19 +244,22 @@ For experimental recovery:
 1. `README.md`
 2. `Documentation/HSI_v2_Report_and_Data_Guide.md`
 3. `Documentation/HSI_v2_Phase1_Live_Findings.md`
-4. `../docs/HSI_v2_Decision_Log.md`
+4. `Documentation/HSI_v2_Phase2_Live_Findings.md`
+5. `../docs/HSI_v2_Decision_Log.md`
 
 For paper writing:
 
 1. `Documentation/HSI_v2_Phase1_Live_Findings.md`
-2. latest `phase1-report__...md`
-3. latest `phase1-coherence__...md`
-4. latest `phase1-transport__...md`
-5. `../docs/HSI_v2_Decision_Log.md`
+2. `Documentation/HSI_v2_Phase2_Live_Findings.md`
+3. latest `phase1-report__...md`
+4. latest `phase1-coherence__...md`
+5. latest `phase1-transport__...md`
+6. `../docs/HSI_v2_Decision_Log.md`
 
 For external review:
 
 1. `manifest.json` of the target run
 2. report markdown and matching JSON
 3. `Documentation/HSI_v2_Phase1_Live_Findings.md`
-4. `../docs/HSI_v2_Decision_Log.md`
+4. `Documentation/HSI_v2_Phase2_Live_Findings.md`
+5. `../docs/HSI_v2_Decision_Log.md`

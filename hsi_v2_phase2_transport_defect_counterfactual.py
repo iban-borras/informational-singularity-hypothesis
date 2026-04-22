@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-HSI v2 Phase 2 Strict-Band Transport-Defect Launcher
+HSI v2 Phase 2 Counterfactual Transport-Defect Launcher
 
-Strict orchestration path for the first formal N2-01 pilot:
-- discovers Phase 1 runs recursively inside the high-scale repository
-- freezes one or more deep-window offsets
-- anchors low/high pattern selection to the observed variant run
-- reuses the existing return-lag and transport-defect core without new math
+Strict orchestration path for the proposed N2-02 pilot:
+- freezes the observed anchor run and its low/high pattern supports
+- freezes the observed transport kernel of the anchor run
+- evaluates candidate observed/null runs against that fixed law
 """
 
 from __future__ import annotations
@@ -14,35 +13,48 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from hsi_v2_phase2_transport_defect_strict import (
+    artifact_source_info,
+    build_null_specs,
+    build_return_lag_row_for_spec,
+    case_note,
+    clone_run_with_offset,
+    count_unique_run_dirs,
+    fmt,
+    infer_segment_protocol,
+    max_of,
+    mean_of,
+    min_of,
+    parse_int_list,
+    phase_print,
+    select_observed_runs,
+    source_kind_sort_key,
+    truncate_label,
+    window_note,
+)
 from v2.common.cli import parse_variants, resolve_dir
 from v2.common.naming import compact_int
-from v2.phase1.report import filter_runs, infer_family_from_latest_run, select_latest_per_variant
 from v2.phase1.tower import parse_scales
 from v2.phase2.null_pressure import (
     discover_phase1_runs_recursive,
-    is_observed_run,
     parse_null_models,
     parse_seed_list,
     select_null_pressure_runs,
-    supports_pattern_scale,
 )
-from v2.phase2.return_lag import (
-    build_return_lag_rows,
-    prepare_frozen_source_cache,
-    prepare_pattern_selection,
+from v2.phase2.return_lag import prepare_frozen_source_cache, prepare_pattern_selection
+from v2.phase2.transport_defect_counterfactual import (
+    compute_counterfactual_transport_defect_result,
 )
-from v2.phase2.transport_defect import compute_transport_defect_result
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the HSI v2 strict-band Phase 2 N2-01 transport-defect pilot."
+        description="Run the HSI v2 strict N2-02 counterfactual transport-defect pilot."
     )
     parser.add_argument(
         "--phase1-dir",
@@ -52,16 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="results/hsi_v2/phase2/transport_defect_strict",
+        default="results/hsi_v2/phase2/transport_defect_counterfactual",
     )
     parser.add_argument(
         "--stage",
         type=str,
         default="observed",
         choices=("observed", "nulls", "all"),
-        help="observed = B/E strict-band envelope; nulls = strong-null envelope only; all = both.",
+        help="observed = anchored observed envelope; nulls = anchored strong-null envelope; all = both.",
     )
     parser.add_argument("--variants", type=str, default="B,E")
+    parser.add_argument("--anchor-variant", type=str, default="B")
     parser.add_argument("--iteration", type=int, default=None)
     parser.add_argument("--segment-bits", type=int, default=None)
     parser.add_argument("--num-segments", type=int, default=None)
@@ -98,6 +111,11 @@ def main() -> int:
     variants = parse_variants(args.variants)
     if not variants:
         parser.error("At least one variant is required.")
+    anchor_variants = parse_variants(args.anchor_variant)
+    if len(anchor_variants) != 1:
+        parser.error("--anchor-variant must contain exactly one variant.")
+    anchor_variant = anchor_variants[0]
+
     if args.low_scale <= 0 or args.high_scale <= 0 or args.low_scale >= args.high_scale:
         parser.error("--low-scale and --high-scale must satisfy 1 <= low < high.")
     if args.high_scale > 64:
@@ -139,10 +157,16 @@ def main() -> int:
     phase1_scales = parse_scales(args.scales) if args.scales.strip() else None
     phase1_policies = [item.strip() for item in args.phase1_policies.split(",") if item.strip()] or None
 
+    observed_variants = [anchor_variant]
+    if args.stage in {"observed", "all"}:
+        for variant in variants:
+            if variant not in observed_variants:
+                observed_variants.append(variant)
+
     phase_print(
-        "Preparing strict-band N2-01 transport-defect pilot",
+        "Preparing counterfactual N2-02 transport-defect pilot",
         (
-            f"stage={args.stage} | variants={','.join(variants)} | "
+            f"stage={args.stage} | anchor={anchor_variant} | variants={','.join(observed_variants)} | "
             f"m={args.low_scale}->{args.high_scale} | sel={args.pattern_selection} | "
             f"offsets={','.join(str(value) for value in offsets)}"
         ),
@@ -155,7 +179,7 @@ def main() -> int:
 
     observed_runs, family_inferred = select_observed_runs(
         runs,
-        variants=variants,
+        variants=observed_variants,
         iteration=args.iteration,
         segment_bits=args.segment_bits,
         num_segments=args.num_segments,
@@ -170,39 +194,44 @@ def main() -> int:
         str(run["dataset"]["config"]["variant"]).upper(): run
         for run in observed_runs
     }
+    anchor_run = observed_by_variant.get(anchor_variant)
+    if anchor_run is None:
+        parser.error(f"Missing observed anchor run for variant {anchor_variant}.")
 
     evaluation_specs = []
     if args.stage in {"observed", "all"}:
         evaluation_specs.extend(
-            build_observed_specs(observed_runs)
+            build_observed_specs_counterfactual(
+                observed_by_variant,
+                anchor_run=anchor_run,
+                variants=observed_variants,
+            )
         )
 
     if args.stage in {"nulls", "all"}:
-        for variant in variants:
-            try:
-                selected = select_null_pressure_runs(
-                    runs,
-                    observed_variant=variant,
-                    null_models=null_models,
-                    matched_lz_seeds=matched_lz_seeds,
-                    iteration=args.iteration,
-                    segment_bits=args.segment_bits,
-                    num_segments=args.num_segments,
-                    segment_offset_bits=args.segment_offset_bits,
-                    scales=phase1_scales,
-                    policies=phase1_policies,
-                    pattern_scale=args.high_scale,
-                    no_family_inference=args.no_family_inference,
-                )
-            except ValueError as exc:
-                parser.error(f"{variant}: {exc}")
-            anchor_run = observed_by_variant[variant]
-            evaluation_specs.extend(
-                build_null_specs(
-                    selected["null_specs"],
-                    anchor_run=anchor_run,
-                )
+        try:
+            selected = select_null_pressure_runs(
+                runs,
+                observed_variant=anchor_variant,
+                null_models=null_models,
+                matched_lz_seeds=matched_lz_seeds,
+                iteration=args.iteration,
+                segment_bits=args.segment_bits,
+                num_segments=args.num_segments,
+                segment_offset_bits=args.segment_offset_bits,
+                scales=phase1_scales,
+                policies=phase1_policies,
+                pattern_scale=args.high_scale,
+                no_family_inference=args.no_family_inference,
             )
+        except ValueError as exc:
+            parser.error(f"{anchor_variant}: {exc}")
+        evaluation_specs.extend(
+            build_null_specs(
+                selected["null_specs"],
+                anchor_run=anchor_run,
+            )
+        )
 
     if not evaluation_specs:
         parser.error("No evaluation specs remain after selection.")
@@ -212,7 +241,7 @@ def main() -> int:
     frozen_total_bits = max(offsets) + window_span_bits
 
     phase_print(
-        "Running strict-band transport defect",
+        "Running counterfactual transport defect",
         f"cases={len(evaluation_specs)} | windows={len(offsets)} | span={window_span_bits}",
         quiet=args.quiet,
     )
@@ -230,6 +259,20 @@ def main() -> int:
 
     rows = []
     artifacts = []
+    low_selection = prepare_pattern_selection(
+        anchor_run,
+        pattern_scale=args.low_scale,
+        top_patterns=args.top_patterns,
+        pattern_selection=args.pattern_selection,
+    )
+    high_selection = prepare_pattern_selection(
+        anchor_run,
+        pattern_scale=args.high_scale,
+        top_patterns=args.top_patterns,
+        pattern_selection=args.pattern_selection,
+    )
+    anchor_run_dir = Path(anchor_run["_run_dir"]).resolve()
+
     for case_index, spec in enumerate(evaluation_specs, start=1):
         case_note(
             (
@@ -237,18 +280,6 @@ def main() -> int:
                 f"source={spec['source_label']} | anchor={spec['anchor_variant']}"
             ),
             quiet=args.quiet,
-        )
-        low_selection = prepare_pattern_selection(
-            spec["anchor_run"],
-            pattern_scale=args.low_scale,
-            top_patterns=args.top_patterns,
-            pattern_selection=args.pattern_selection,
-        )
-        high_selection = prepare_pattern_selection(
-            spec["anchor_run"],
-            pattern_scale=args.high_scale,
-            top_patterns=args.top_patterns,
-            pattern_selection=args.pattern_selection,
         )
 
         for offset_index, offset_bits in enumerate(offsets, start=1):
@@ -285,7 +316,11 @@ def main() -> int:
                 preloaded_sources=preloaded_sources,
                 show_progress=not args.quiet,
             )
-            result = compute_transport_defect_result(low_row, high_row)
+            result = compute_counterfactual_transport_defect_result(
+                low_row,
+                high_row,
+                anchor_run_dir=anchor_run_dir,
+            )
             rows.append(
                 build_output_row(
                     result=result,
@@ -321,7 +356,8 @@ def main() -> int:
 
     selection = build_selection(
         args=args,
-        variants=variants,
+        anchor_variant=anchor_variant,
+        variants=observed_variants,
         offsets=offsets,
         segment_bits=segment_bits,
         num_segments=num_segments,
@@ -344,18 +380,18 @@ def main() -> int:
     generated_at = datetime.now().isoformat(timespec="seconds")
 
     dataset_payload = {
-        "stage": "phase2_transport_defect_strict",
+        "stage": "phase2_transport_defect_counterfactual",
         "generated_at": generated_at,
         "selection": selection,
         "rows": rows,
         "grouped_summary": grouped_summary,
         "artifacts": artifacts,
         "notes": [
-            "Pattern selection is frozen from the observed anchor run for each evaluated variant.",
-            "Return-lag rows are rebuilt at the requested deep offsets before the transport defect is computed.",
+            "Pattern selection is frozen from the observed anchor run.",
+            "The transport kernel is also frozen from the observed anchor run.",
+            "Return-lag rows are rebuilt at the requested deep offsets before the counterfactual defect is computed.",
             "Source realizations are frozen once across the full offset sweep before any return-lag rebuild.",
-            "The transport kernel always comes from the evaluated run itself; only the selected pattern list is anchored exogenously.",
-            "This launcher is an orchestration path only; it reuses the existing return-lag and transport-defect math.",
+            "Support coverage is reported separately so uncovered observed child mass is not hidden by profile renormalization.",
         ],
     }
     summary_payload = {
@@ -371,6 +407,8 @@ def main() -> int:
                 "null_seed": row["null_seed"],
                 "segment_offset_bits": row["segment_offset_bits"],
                 "terminal_fraction": row["terminal_fraction"],
+                "support_coverage_mean": row["support_coverage_mean"],
+                "zero_coverage_fraction": row["zero_coverage_fraction"],
                 "defect_js_mean": row["defect_js_mean"],
                 "defect_wj_mean": row["defect_wj_mean"],
                 "defect_flow_mean": row["defect_flow_mean"],
@@ -387,7 +425,7 @@ def main() -> int:
     manifest_payload = {
         "run_slug": run_slug,
         "generated_at": generated_at,
-        "script": "hsi_v2_phase2_transport_defect_strict.py",
+        "script": "hsi_v2_phase2_transport_defect_counterfactual.py",
         "cwd": str(Path.cwd()),
         "outputs": {
             "dataset": str(dataset_path),
@@ -399,6 +437,7 @@ def main() -> int:
             "phase1_dir": str(phase1_dir),
             "observed_phase1_runs": [run["_run_dir"] for run in observed_runs],
             "evaluated_phase1_runs": [artifact["run_dir"] for artifact in artifacts],
+            "anchor_run_dir": str(anchor_run_dir),
             "frozen_source_run_dirs": sorted(preloaded_sources.keys()),
             "frozen_total_bits": frozen_total_bits,
         },
@@ -428,75 +467,23 @@ def main() -> int:
     return 0
 
 
-def select_observed_runs(
-    runs: list[dict],
+def build_observed_specs_counterfactual(
+    observed_by_variant: dict[str, dict],
     *,
+    anchor_run: dict,
     variants: list[str],
-    iteration: int | None,
-    segment_bits: int | None,
-    num_segments: int | None,
-    segment_offset_bits: int | None,
-    scales: list[int] | None,
-    policies: list[str] | None,
-    low_scale: int,
-    high_scale: int,
-    no_family_inference: bool,
-) -> tuple[list[dict], bool]:
-    observed_runs = [run for run in runs if is_observed_run(run)]
-    family = None
-    explicit_filters = any(
-        value is not None
-        for value in (iteration, segment_bits, num_segments, segment_offset_bits)
-    ) or scales is not None or policies is not None
-    if not no_family_inference and not explicit_filters:
-        family_candidates = filter_runs(observed_runs, variants=variants)
-        family_candidates = [
-            run
-            for run in family_candidates
-            if supports_pattern_scale(run, pattern_scale=low_scale)
-            and supports_pattern_scale(run, pattern_scale=high_scale)
-        ]
-        family = infer_family_from_latest_run(family_candidates)
-
-    matching = filter_runs(
-        observed_runs,
-        variants=variants,
-        iteration=iteration,
-        segment_bits=segment_bits,
-        num_segments=num_segments,
-        segment_offset_bits=segment_offset_bits,
-        scales=scales,
-        policies=policies,
-        family=family,
-    )
-    matching = [
-        run
-        for run in matching
-        if supports_pattern_scale(run, pattern_scale=low_scale)
-        and supports_pattern_scale(run, pattern_scale=high_scale)
-    ]
-    selected = select_latest_per_variant(matching, variant_order=variants)
-    selected_variants = {str(run["dataset"]["config"]["variant"]).upper() for run in selected}
-    missing = [variant for variant in variants if variant not in selected_variants]
-    if missing:
-        raise ValueError(
-            "Missing observed strict-band Phase 1 runs for variants: "
-            + ", ".join(missing)
-        )
-    return selected, family is not None
-
-
-def build_observed_specs(observed_runs: list[dict]) -> list[dict]:
+) -> list[dict]:
+    anchor_variant = str(anchor_run["dataset"]["config"]["variant"]).upper()
     specs = []
-    for run in observed_runs:
-        variant = str(run["dataset"]["config"]["variant"]).upper()
+    for variant in variants:
+        run = observed_by_variant[variant]
         specs.append(
             {
                 "variant": variant,
                 "run": run,
-                "anchor_run": run,
-                "anchor_variant": variant,
-                "anchor_kind": "self-observed",
+                "anchor_run": anchor_run,
+                "anchor_variant": anchor_variant,
+                "anchor_kind": "observed-anchor" if variant == anchor_variant else "observed-fixed",
                 "source_kind": "observed",
                 "source_label": "observed",
                 "null_model": None,
@@ -504,58 +491,6 @@ def build_observed_specs(observed_runs: list[dict]) -> list[dict]:
             }
         )
     return specs
-
-
-def build_null_specs(null_specs: list[dict], *, anchor_run: dict) -> list[dict]:
-    variant = str(anchor_run["dataset"]["config"]["variant"]).upper()
-    specs = []
-    for item in null_specs:
-        specs.append(
-            {
-                "variant": variant,
-                "run": item["run"],
-                "anchor_run": anchor_run,
-                "anchor_variant": variant,
-                "anchor_kind": "observed-fixed",
-                "source_kind": "null_surrogate",
-                "source_label": item["null_label"],
-                "null_model": item["null_model"],
-                "null_seed": item.get("null_seed"),
-            }
-        )
-    return specs
-
-
-def build_return_lag_row_for_spec(
-    run: dict,
-    *,
-    selection_info: dict,
-    variant: str,
-    pattern_scale: int,
-    top_patterns: int,
-    pattern_selection: str,
-    long_lag_threshold: int,
-    anchor_kind: str,
-    preloaded_sources: dict[str, dict] | None,
-    show_progress: bool,
-) -> dict:
-    override = {
-        variant: {
-            **selection_info,
-            "anchor_kind": anchor_kind,
-        }
-    }
-    rows = build_return_lag_rows(
-        [run],
-        pattern_scale=pattern_scale,
-        top_patterns=top_patterns,
-        pattern_selection=pattern_selection,
-        long_lag_threshold=long_lag_threshold,
-        selection_overrides=override,
-        preloaded_sources=preloaded_sources,
-        show_progress=show_progress,
-    )
-    return rows[0]
 
 
 def build_output_row(
@@ -588,30 +523,32 @@ def build_output_row(
         "connected_pattern_count": result["connected_pattern_count"],
         "terminal_pattern_count": result["terminal_pattern_count"],
         "terminal_fraction": result["terminal_fraction"],
+        "support_coverage_mean": result["support_coverage_mean"],
+        "zero_coverage_fraction": result["zero_coverage_fraction"],
         "defect_js_mean": result["defect_js_mean"],
         "defect_wj_mean": result["defect_wj_mean"],
         "defect_flow_mean": result["defect_flow_mean"],
         "defect_top_mass": result["defect_top_mass"],
         "defect_mean_gap": result["defect_mean_gap"],
         "segment_defect_stability": result["segment_defect_stability"],
-        "phase1_policies": result["phase1_policies"],
-        "transport_result": result,
-        "low_row_path": low_row["dataset_path"],
-        "high_row_path": high_row["dataset_path"],
-        "low_selection_source_variant": low_row.get("selection_source_variant"),
-        "high_selection_source_variant": high_row.get("selection_source_variant"),
-        "low_selection_anchor_kind": low_row.get("selection_anchor_kind"),
-        "high_selection_anchor_kind": high_row.get("selection_anchor_kind"),
+        "selection_source_variant": low_row["selection_source_variant"],
+        "selection_source_run_dir": low_row["selection_source_run_dir"],
+        "selection_anchor_kind": low_row["selection_anchor_kind"],
+        "source_struct_path": low_row["source_struct_path"],
         "source_freeze_mode": low_row.get("source_freeze_mode"),
         "frozen_total_bits": low_row.get("frozen_total_bits"),
         "low_source_freeze_mode": low_row.get("source_freeze_mode"),
         "high_source_freeze_mode": high_row.get("source_freeze_mode"),
+        "low_row": low_row,
+        "high_row": high_row,
+        "counterfactual_result": result,
     }
 
 
 def build_selection(
     *,
     args,
+    anchor_variant: str,
     variants: list[str],
     offsets: list[int],
     segment_bits: int,
@@ -623,6 +560,7 @@ def build_selection(
 ) -> dict:
     return {
         "stage": args.stage,
+        "anchor_variant": anchor_variant,
         "variants": variants,
         "iteration": args.iteration,
         "segment_bits": segment_bits,
@@ -649,7 +587,8 @@ def build_run_slug(selection: dict, timestamp: str) -> str:
     else:
         offset_part = f"off-{compact_int(min(offsets))}-plus-{len(offsets)}"
     return (
-        f"phase2-transport-defect-strict__stage-{selection['stage']}"
+        f"phase2-transport-defect-counterfactual__stage-{selection['stage']}"
+        f"__anchor-{selection['anchor_variant']}"
         f"__m-{selection['low_scale']}-{selection['high_scale']}"
         f"__sel-{selection['pattern_selection']}__top-{selection['top_patterns']}"
         f"__{offset_part}__var-{variants}__{timestamp}"
@@ -681,6 +620,10 @@ def summarize_rows(rows: list[dict]) -> list[dict]:
                 "offsets": [row["segment_offset_bits"] for row in group],
                 "terminal_fraction_avg": mean_of(group, "terminal_fraction"),
                 "terminal_fraction_max": max_of(group, "terminal_fraction"),
+                "support_coverage_mean_avg": mean_of(group, "support_coverage_mean"),
+                "support_coverage_mean_min": min_of(group, "support_coverage_mean"),
+                "support_coverage_mean_max": max_of(group, "support_coverage_mean"),
+                "zero_coverage_fraction_avg": mean_of(group, "zero_coverage_fraction"),
                 "defect_js_mean_avg": mean_of(group, "defect_js_mean"),
                 "defect_js_mean_min": min_of(group, "defect_js_mean"),
                 "defect_js_mean_max": max_of(group, "defect_js_mean"),
@@ -711,9 +654,9 @@ def render_console_summary(rows: list[dict]) -> str:
     variant_width = 16
     source_width = 28
     lines = [
-        "Phase 2 strict-band transport-defect pilot",
-        "-" * 154,
-        f"{'variant':<{variant_width}} {'source':<{source_width}} {'offset':>12}{'term':>8}{'d_JS':>10}{'d_wJ':>10}{'d_flow':>10}{'d_top':>10}{'d_mean':>10}{'seg_stab':>10}{'conn':>8}",
+        "Phase 2 counterfactual transport-defect pilot",
+        "-" * 162,
+        f"{'variant':<{variant_width}} {'source':<{source_width}} {'offset':>12}{'term':>8}{'cov':>8}{'d_JS':>10}{'d_wJ':>10}{'d_flow':>10}{'d_top':>10}{'d_mean':>10}{'seg_stab':>10}{'conn':>8}",
     ]
     for row in sorted(
         rows,
@@ -729,6 +672,7 @@ def render_console_summary(rows: list[dict]) -> str:
             f"{truncate_label(row['source_label'], source_width):<{source_width}} "
             f"{row['segment_offset_bits']:>12}"
             f"{row['terminal_fraction']:>8.4f}"
+            f"{row['support_coverage_mean']:>8.4f}"
             f"{row['defect_js_mean']:>10.4f}"
             f"{row['defect_wj_mean']:>10.4f}"
             f"{row['defect_flow_mean']:>10.4f}"
@@ -747,11 +691,12 @@ def render_markdown_report(
     artifacts: list[dict],
 ) -> str:
     lines = [
-        "# Phase 2 Strict-Band Transport-Defect Pilot",
+        "# Phase 2 Counterfactual Transport-Defect Pilot",
         "",
         "## Selection",
         "",
         f"- Stage: {selection['stage']}",
+        f"- Anchor variant: {selection['anchor_variant']}",
         f"- Variants: {', '.join(selection['variants'])}",
         f"- Segment protocol: {selection['num_segments']} x {selection['segment_bits']}",
         f"- Offsets: {', '.join(str(value) for value in selection['offsets'])}",
@@ -785,14 +730,15 @@ def render_markdown_report(
             "",
             "## Grouped Summary",
             "",
-            "| Variant | Source | Offsets | Term avg | Term max | d_JS avg | d_JS min | d_JS max | d_flow avg | d_flow min | d_flow max | d_mean avg | Worst flow offset |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Variant | Source | Offsets | Term avg | Cov avg | Cov min | Cov max | d_JS avg | d_JS min | d_JS max | d_flow avg | d_flow min | d_flow max | d_mean avg | Worst flow offset |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for item in grouped_summary:
         lines.append(
             f"| {item['variant']} | {item['source_label']} | {item['offset_count']} | "
-            f"{fmt(item['terminal_fraction_avg'])} | {fmt(item['terminal_fraction_max'])} | "
+            f"{fmt(item['terminal_fraction_avg'])} | "
+            f"{fmt(item['support_coverage_mean_avg'])} | {fmt(item['support_coverage_mean_min'])} | {fmt(item['support_coverage_mean_max'])} | "
             f"{fmt(item['defect_js_mean_avg'])} | {fmt(item['defect_js_mean_min'])} | {fmt(item['defect_js_mean_max'])} | "
             f"{fmt(item['defect_flow_mean_avg'])} | {fmt(item['defect_flow_mean_min'])} | {fmt(item['defect_flow_mean_max'])} | "
             f"{fmt(item['defect_mean_gap_avg'])} | {item['worst_offset_by_flow']} |"
@@ -803,8 +749,8 @@ def render_markdown_report(
             "",
             "## Offset Readout",
             "",
-            "| Variant | Source | Offset | Term | d_JS | d_wJ | d_flow | d_top | d_mean | seg_stab | Connected |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Variant | Source | Offset | Term | Cov | Zero-cov | d_JS | d_wJ | d_flow | d_top | d_mean | seg_stab | Connected |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for row in sorted(
@@ -818,8 +764,9 @@ def render_markdown_report(
     ):
         lines.append(
             f"| {row['variant']} | {row['source_label']} | {row['segment_offset_bits']} | "
-            f"{fmt(row['terminal_fraction'])} | {fmt(row['defect_js_mean'])} | {fmt(row['defect_wj_mean'])} | "
-            f"{fmt(row['defect_flow_mean'])} | {fmt(row['defect_top_mass'])} | {fmt(row['defect_mean_gap'])} | "
+            f"{fmt(row['terminal_fraction'])} | {fmt(row['support_coverage_mean'])} | {fmt(row['zero_coverage_fraction'])} | "
+            f"{fmt(row['defect_js_mean'])} | {fmt(row['defect_wj_mean'])} | {fmt(row['defect_flow_mean'])} | "
+            f"{fmt(row['defect_top_mass'])} | {fmt(row['defect_mean_gap'])} | "
             f"{fmt(row['segment_defect_stability'])} | {row['connected_pattern_count']} |"
         )
 
@@ -828,132 +775,14 @@ def render_markdown_report(
             "",
             "## Notes",
             "",
-            "- The selected low/high pattern lists are frozen from the observed anchor run for each evaluated variant.",
-            "- The return-lag rows are rebuilt on the requested deep offsets before the transport defect is computed.",
+            "- The selected low/high pattern lists are frozen from the observed anchor run.",
+            "- The transport kernel is also frozen from the observed anchor run instead of being rebuilt from the evaluated run.",
             "- Source realizations are frozen once across the full offset sweep, so null surrogates are not regenerated window by window.",
-            "- The transport kernel still belongs to the evaluated run itself; this launcher only removes selection drift across observed/null contrasts.",
+            "- The transported profile is renormalized over covered child mass only; the missing observed child mass is reported separately through support coverage.",
+            "- This launcher keeps the strict deep-band orchestration contract while changing only the transport law being tested.",
         ]
     )
     return "\n".join(lines)
-
-
-def clone_run_with_offset(run: dict, segment_offset_bits: int) -> dict:
-    cloned = dict(run)
-    dataset = deepcopy(run["dataset"])
-    config = dataset["config"]
-    segment_bits = int(config["segment_bits"])
-    num_segments = int(config["num_segments"])
-    config["segment_offset_bits"] = segment_offset_bits
-    config["loaded_observable_bits"] = segment_offset_bits + (segment_bits * num_segments)
-    cloned["dataset"] = dataset
-    return cloned
-
-
-def count_unique_run_dirs(evaluation_specs: list[dict]) -> int:
-    return len({str(Path(spec["run"]["_run_dir"])) for spec in evaluation_specs})
-
-
-def artifact_source_info(
-    preloaded_sources: dict[str, dict],
-    run_dir: str,
-    field: str,
-):
-    cached = preloaded_sources.get(str(Path(run_dir)))
-    if cached is None:
-        return None
-    return cached.get("source_info", {}).get(field)
-
-
-def infer_segment_protocol(runs: list[dict]) -> tuple[int, int]:
-    first = runs[0]["dataset"]["config"]
-    segment_bits = int(first["segment_bits"])
-    num_segments = int(first["num_segments"])
-    for run in runs[1:]:
-        config = run["dataset"]["config"]
-        if int(config["segment_bits"]) != segment_bits or int(config["num_segments"]) != num_segments:
-            raise ValueError("All selected observed runs must share the same segment protocol.")
-    return segment_bits, num_segments
-
-
-def parse_int_list(raw: str, *, label: str, allow_zero: bool) -> list[int]:
-    values = []
-    seen = set()
-    for token in raw.split(","):
-        item = token.strip()
-        if not item:
-            continue
-        value = int(item)
-        if not allow_zero and value == 0:
-            raise ValueError(f"{label} must not contain zero.")
-        if value in seen:
-            continue
-        seen.add(value)
-        values.append(value)
-    if not values:
-        raise ValueError(f"{label} requires at least one integer.")
-    return values
-
-
-def mean_of(rows: list[dict], key: str) -> float:
-    if not rows:
-        return 0.0
-    return float(sum(float(row[key]) for row in rows) / len(rows))
-
-
-def min_of(rows: list[dict], key: str) -> float:
-    if not rows:
-        return 0.0
-    return float(min(float(row[key]) for row in rows))
-
-
-def max_of(rows: list[dict], key: str) -> float:
-    if not rows:
-        return 0.0
-    return float(max(float(row[key]) for row in rows))
-
-
-def source_kind_sort_key(source_kind: str, null_model: str | None) -> tuple[int, str]:
-    if source_kind == "observed":
-        return (0, "observed")
-    if null_model == "markov1":
-        return (1, "markov1")
-    if null_model == "matched-lz":
-        return (2, "matched-lz")
-    return (9, source_kind)
-
-
-def truncate_label(value: str, width: int) -> str:
-    if len(value) <= width:
-        return value
-    if width <= 3:
-        return value[:width]
-    return value[: width - 3] + "..."
-
-
-def fmt(value: float | None) -> str:
-    if value is None:
-        return "-"
-    return f"{float(value):.4f}"
-
-
-def phase_print(title: str, detail: str, *, quiet: bool) -> None:
-    if quiet:
-        return
-    print(f"[Phase] {title}")
-    print(f"        {detail}")
-    print("")
-
-
-def case_note(detail: str, *, quiet: bool) -> None:
-    if quiet:
-        return
-    print(f"[Case] {detail}")
-
-
-def window_note(detail: str, *, quiet: bool) -> None:
-    if quiet:
-        return
-    print(f"[Window] {detail}")
 
 
 if __name__ == "__main__":

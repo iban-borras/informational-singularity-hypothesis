@@ -70,6 +70,7 @@ def build_return_lag_rows(
     pattern_selection: str,
     long_lag_threshold: int,
     selection_overrides: dict[str, dict] | None = None,
+    preloaded_sources: dict[str, dict] | None = None,
     show_progress: bool = False,
 ) -> list[dict]:
     rows = []
@@ -80,7 +81,7 @@ def build_return_lag_rows(
     for run in runs:
         config = run["dataset"]["config"]
         run_dir = Path(run["_run_dir"])
-        selection_info = normalized_overrides.get(str(config["variant"]).upper())
+        selection_info = _resolve_selection_override(config, normalized_overrides)
         if selection_info is None:
             selection_info = prepare_pattern_selection(
                 run,
@@ -89,8 +90,12 @@ def build_return_lag_rows(
                 pattern_selection=pattern_selection,
             )
         selected_patterns = [dict(item) for item in selection_info["selected_patterns"]]
+        preloaded_source = None
+        if preloaded_sources is not None:
+            preloaded_source = preloaded_sources.get(str(run_dir))
         segments, source_info = load_run_segments(
             run["dataset"],
+            preloaded_source=preloaded_source,
             show_progress=show_progress,
             progress_label=config["variant"],
         )
@@ -124,6 +129,8 @@ def build_return_lag_rows(
             "generated_at": run["generated_at"],
             "source_kind": source_info["source_kind"],
             "source_struct_path": source_info["source_struct_path"],
+            "source_freeze_mode": str(source_info.get("source_freeze_mode", "run-local")),
+            "frozen_total_bits": source_info.get("frozen_total_bits"),
             "null_model": source_info.get("null_model"),
             "selected_patterns": selected_patterns,
             "lag_result": lag_result,
@@ -142,32 +149,98 @@ def build_return_lag_rows(
     return rows
 
 
+def _resolve_selection_override(
+    config: dict,
+    normalized_overrides: dict[str, dict],
+) -> dict | None:
+    variant_key = str(config.get("variant", "")).upper()
+    if variant_key and variant_key in normalized_overrides:
+        return normalized_overrides[variant_key]
+
+    source_variant_key = str(config.get("source_variant", "")).upper()
+    if source_variant_key and source_variant_key in normalized_overrides:
+        return normalized_overrides[source_variant_key]
+
+    if "-" in variant_key:
+        base_variant_key = variant_key.split("-", 1)[0]
+        if base_variant_key in normalized_overrides:
+            return normalized_overrides[base_variant_key]
+
+    return None
+
+
 def load_run_segments(
     dataset: dict,
     *,
+    preloaded_source: dict | None = None,
     show_progress: bool = False,
     progress_label: str | None = None,
 ) -> tuple[list[np.ndarray], dict]:
+    config = dataset["config"]
+    segment_bits = int(config["segment_bits"])
+    num_segments = int(config["num_segments"])
+    segment_offset_bits = int(config.get("segment_offset_bits", 0))
+    total_required = int(
+        config.get("loaded_observable_bits")
+        or (segment_offset_bits + (segment_bits * num_segments))
+    )
+    if preloaded_source is not None:
+        source_bits = preloaded_source["bits"]
+        if int(source_bits.size) < total_required:
+            raise ValueError(
+                f"Frozen source has {source_bits.size} bits but {total_required} are required for the requested window."
+            )
+        info = dict(preloaded_source.get("source_info", {}))
+    else:
+        source_bits, info = load_run_source_bits(
+            dataset,
+            required_bits=total_required,
+            show_progress=show_progress,
+            progress_label=progress_label,
+        )
+
+    segments = split_into_segments(
+        source_bits,
+        segment_bits=segment_bits,
+        num_segments=num_segments,
+        start_offset_bits=segment_offset_bits,
+    )
+    return segments, info
+
+
+def load_run_source_bits(
+    dataset: dict,
+    *,
+    required_bits: int | None = None,
+    show_progress: bool = False,
+    progress_label: str | None = None,
+) -> tuple[np.ndarray, dict]:
     config = dataset["config"]
     struct_path = Path(config["input_struct_path"]).resolve()
     segment_bits = int(config["segment_bits"])
     num_segments = int(config["num_segments"])
     segment_offset_bits = int(config.get("segment_offset_bits", 0))
-    required_bits = int(
-        config.get("loaded_observable_bits")
-        or (segment_offset_bits + (segment_bits * num_segments))
+    effective_required_bits = int(
+        required_bits
+        if required_bits is not None
+        else (
+            config.get("loaded_observable_bits")
+            or (segment_offset_bits + (segment_bits * num_segments))
+        )
     )
 
     progress_name = f"Load observable bits ({progress_label})" if progress_label else "Load observable bits"
     if show_progress:
-        with ProgressIndicator(progress_name, total=required_bits) as progress:
-            source_bits = load_observable_prefix_bits(struct_path, required_bits, progress=progress)
+        with ProgressIndicator(progress_name, total=effective_required_bits) as progress:
+            source_bits = load_observable_prefix_bits(struct_path, effective_required_bits, progress=progress)
     else:
-        source_bits = load_observable_prefix_bits(struct_path, required_bits)
+        source_bits = load_observable_prefix_bits(struct_path, effective_required_bits)
 
     info = {
         "source_kind": "observed",
         "source_struct_path": str(struct_path),
+        "loaded_observable_bits": effective_required_bits,
+        "source_freeze_mode": "run-local",
     }
     if config.get("sequence_kind") == "null_surrogate":
         null_name = str(config["null_model"])
@@ -187,14 +260,37 @@ def load_run_segments(
                 "null_metadata": null_metadata,
             }
         )
+    return source_bits, info
 
-    segments = split_into_segments(
-        source_bits,
-        segment_bits=segment_bits,
-        num_segments=num_segments,
-        start_offset_bits=segment_offset_bits,
-    )
-    return segments, info
+
+def prepare_frozen_source_cache(
+    runs: list[dict],
+    *,
+    required_bits: int,
+    show_progress: bool = False,
+) -> dict[str, dict]:
+    frozen_sources: dict[str, dict] = {}
+    for run in runs:
+        run_dir = str(Path(run["_run_dir"]))
+        if run_dir in frozen_sources:
+            continue
+        config = run["dataset"]["config"]
+        source_bits, source_info = load_run_source_bits(
+            run["dataset"],
+            required_bits=required_bits,
+            show_progress=show_progress,
+            progress_label=str(config["variant"]),
+        )
+        frozen_sources[run_dir] = {
+            "bits": source_bits,
+            "source_info": {
+                **source_info,
+                "source_freeze_mode": "sweep-global-frozen",
+                "frozen_total_bits": required_bits,
+                "frozen_run_dir": run_dir,
+            },
+        }
+    return frozen_sources
 
 
 def compute_return_lag_result(
@@ -237,6 +333,7 @@ def compute_return_lag_result(
     segment_profile_sets = []
     segment_profile_maps = []
     segment_start_bit = 0
+    previous_tail = np.array([], dtype=np.uint8)
 
     segment_iter = _wrap_progress(
         list(enumerate(segments)),
@@ -246,7 +343,16 @@ def compute_return_lag_result(
         unit="segment",
     )
     for segment_index, segment in segment_iter:
-        codes = rolling_codes_uint64_max64(segment, pattern_scale)
+        if pattern_scale > 1 and previous_tail.size:
+            analysis_bits = np.concatenate((previous_tail, segment))
+            analysis_start_bit = int(segment_start_bit - previous_tail.size)
+        else:
+            analysis_bits = segment
+            analysis_start_bit = int(segment_start_bit)
+        if analysis_bits.size < pattern_scale:
+            codes = np.array([], dtype=np.uint64)
+        else:
+            codes = rolling_codes_uint64_max64(analysis_bits, pattern_scale)
         segment_bin_counts: dict[str, int] = {}
         segment_occurrence_count = 0
         segment_return_count = 0
@@ -263,7 +369,7 @@ def compute_return_lag_result(
             segment_occurrence_count += occurrence_count
             if occurrence_count:
                 active_patterns.add(item["pattern"])
-                global_positions = local_positions + int(segment_start_bit)
+                global_positions = local_positions + analysis_start_bit
                 lags = _build_global_lags(global_positions, stats["last_global_position"])
                 stats["last_global_position"] = int(global_positions[-1])
             else:
@@ -303,6 +409,15 @@ def compute_return_lag_result(
                 "top_return_bins": _top_bins(segment_bin_counts, limit=5),
             }
         )
+        if pattern_scale > 1:
+            carry_size = min(pattern_scale - 1, int(segment.size))
+            previous_tail = (
+                np.ascontiguousarray(segment[-carry_size:].copy())
+                if carry_size > 0
+                else np.array([], dtype=np.uint8)
+            )
+        else:
+            previous_tail = np.array([], dtype=np.uint8)
         segment_start_bit += int(segment.size)
     _close_progress(segment_iter)
 
@@ -361,6 +476,7 @@ def compute_return_lag_result(
         "notes": [
             "selected patterns are frozen from the configured Phase 1 selection source before lag evaluation begins",
             "return lag = distance in window-start positions between consecutive occurrences of the same selected pattern across the full analyzed strip",
+            "cross-segment pattern starts are preserved by carrying an m-1 overlap into each subsequent segment",
             "cross-segment returns are preserved by carrying the last occurrence of each selected pattern across segment boundaries",
             "lag bins are log2 buckets over exact return distances",
             "long_lag_fraction measures the share of returns at or above the configured long-lag threshold",

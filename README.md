@@ -35,6 +35,8 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase1_coherence_report.py` | Derived tail-coherence readout |
 | `hsi_v2_phase1_transport_report.py` | Derived transport-persistence readout |
 | `hsi_v2_phase1_gate_map.py` | Compact Porta 1 table plus a 2D gate-plane visual (`retention@last` vs `active_mean_tail`) with `SVG` and optional `PNG` output |
+| `hsi_v2_phase2_null_pressure_window_sweep.py` | Strict observed-anchored return-profile opening against strong nulls over a deep window band |
+| `hsi_v2_phase2_transport_defect_strict.py` | Strict-band transport-defect pilot on observed-anchored support |
 
 Current empirical class split from the first real HSI v2 Phase 1 batch:
 
@@ -44,10 +46,18 @@ Current empirical class split from the first real HSI v2 Phase 1 batch:
 - `A/J/L` -> collapsed
 - `K` -> trivial
 
+Current Phase 2 reading:
+
+- strict `null_pressure` provides the first defensible Gate 2 opening against `matched-lz`
+- the strongest opening concentrates in the `717M -> 720M` band
+- strict `N2-01` transport defect cleanly rejects `markov1` but remains too endogenous to separate `matched-lz`
+- the next formal target is an observed-kernel counterfactual defect
+
 To recover the current HSI v2 state quickly, start here:
 
 - `Documentation/HSI_v2_Report_and_Data_Guide.md`
 - `Documentation/HSI_v2_Phase1_Live_Findings.md`
+- `Documentation/HSI_v2_Phase2_Live_Findings.md`
 - `../docs/HSI_v2_Decision_Log.md`
 
 ## Project Structure

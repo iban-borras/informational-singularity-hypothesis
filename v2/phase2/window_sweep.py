@@ -4,7 +4,7 @@ from copy import deepcopy
 from itertools import combinations
 from typing import Callable
 
-from v2.phase2.return_lag import build_return_lag_rows
+from v2.phase2.return_lag import build_return_lag_rows, prepare_frozen_source_cache
 from v2.phase2.return_profile_compare import compare_return_profiles
 
 
@@ -32,9 +32,15 @@ def build_window_sweep(
 
     segment_bits, num_segments = _infer_segment_protocol(runs)
     window_span_bits = segment_bits * num_segments
+    frozen_total_bits = start_offset_bits + ((window_count - 1) * window_step_bits) + window_span_bits
     selected_variants = [str(run["dataset"]["config"]["variant"]).upper() for run in runs]
     _validate_pairs(comparison_pairs, selected_variants)
     selection_override_summary = _summarize_selection_overrides(selection_overrides)
+    frozen_source_cache = prepare_frozen_source_cache(
+        runs,
+        required_bits=frozen_total_bits,
+        show_progress=show_progress,
+    )
 
     windows = []
     pair_rows = []
@@ -52,6 +58,7 @@ def build_window_sweep(
             pattern_selection=pattern_selection,
             long_lag_threshold=long_lag_threshold,
             selection_overrides=selection_overrides,
+            preloaded_sources=frozen_source_cache,
             show_progress=show_progress,
         )
         rows_by_variant = {str(row["variant"]).upper(): row for row in return_lag_rows}
@@ -109,6 +116,8 @@ def build_window_sweep(
                     "segment_profile_weighted_jaccard": row["segment_profile_weighted_jaccard"],
                     "selection_source_variant": row.get("selection_source_variant"),
                     "selection_anchor_kind": row.get("selection_anchor_kind"),
+                    "source_freeze_mode": row.get("source_freeze_mode"),
+                    "frozen_total_bits": row.get("frozen_total_bits"),
                 }
             )
 
@@ -141,6 +150,8 @@ def build_window_sweep(
         "window_count": window_count,
         "start_offset_bits": start_offset_bits,
         "window_step_bits": window_step_bits,
+        "source_freeze_mode": "sweep-global-frozen",
+        "frozen_total_bits": frozen_total_bits,
         "comparison_pairs": [f"{left}:{right}" for left, right in comparison_pairs],
         "selection_override_variants": selection_override_summary["variants"],
         "selection_override_sources": selection_override_summary["sources"],
@@ -150,7 +161,7 @@ def build_window_sweep(
         "top_pair_rows": ranked_pairs[: min(10, len(ranked_pairs))],
         "notes": [
             "Window sweep freezes the selected Phase 1 runs and the chosen pattern list for each evaluated variant.",
-            "The only intentional mutation across windows is segment_offset_bits and the implied loaded_observable_bits.",
+            "The only intentional mutation across windows is segment_offset_bits; source bitstreams are generated once at the sweep-global required length and then sliced window-by-window.",
             "Pairwise comparisons reuse the existing return-profile divergence machinery on observed rows window-by-window.",
         ],
     }
@@ -176,6 +187,8 @@ def render_window_sweep_report(
         f"- Pattern scale: {pattern_scale}",
         f"- Top patterns: {top_patterns}",
         f"- Pattern selection: {pattern_selection}",
+        f"- Source freeze mode: {sweep.get('source_freeze_mode', 'run-local')}",
+        f"- Frozen source bits: {sweep.get('frozen_total_bits', '-')}",
     ]
     if sweep.get("selection_override_variants"):
         sources = ", ".join(sweep.get("selection_override_sources", [])) or "external source"
@@ -243,13 +256,13 @@ def render_window_sweep_report(
             "",
             "## Variant Window Readout",
             "",
-            "| Window | Offset | Variant | Selected | Occ | Ret | Mean lag | Lag H | Dom bin | Long | seg J | seg wJ |",
-            "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Window | Offset | Variant | Freeze mode | Selected | Occ | Ret | Mean lag | Lag H | Dom bin | Long | seg J | seg wJ |",
+            "| ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for row in sweep["variant_rows"]:
         lines.append(
-            f"| {row['window_index']} | {row['segment_offset_bits']} | {row['variant']} | "
+            f"| {row['window_index']} | {row['segment_offset_bits']} | {row['variant']} | {row.get('source_freeze_mode', '-')} | "
             f"{row['selected_pattern_count']} | {row['total_occurrence_count']} | {row['total_return_count']} | "
             f"{_fmt(row['mean_return_lag'])} | {_fmt(row['lag_entropy'])} | "
             f"{_fmt(row['dominant_bin_mass_fraction'])} | {_fmt(row['long_lag_fraction'])} | "

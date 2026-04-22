@@ -28,6 +28,7 @@ from v2.phase2.null_pressure import (
     render_null_pressure_console_summary,
     render_null_pressure_report,
     select_null_pressure_runs,
+    summarize_null_pressure_rows,
 )
 from v2.phase2.return_lag import prepare_pattern_selection
 from v2.phase2.window_sweep import build_window_sweep, render_window_sweep_report
@@ -234,6 +235,8 @@ def main() -> int:
             family_inferred=selected["family_inferred"],
             selection_anchor_variant=observed_variant,
             selection_anchor_run_dir=observed_run["_run_dir"],
+            source_freeze_mode=sweep.get("source_freeze_mode", "run-local"),
+            frozen_total_bits=sweep.get("frozen_total_bits"),
         )
         pair_dir = run_dir / build_null_pressure_pair_slug(
             observed_variant=observed_variant,
@@ -263,6 +266,8 @@ def main() -> int:
         pair_summary_payload = {
             "generated_at": generated_at,
             "selection": pair_selection,
+            "source_freeze_mode": sweep.get("source_freeze_mode", "run-local"),
+            "frozen_total_bits": sweep.get("frozen_total_bits"),
             "pair_rows": sweep["pair_rows"],
             "variant_rows": sweep["variant_rows"],
             "top_pair_rows": sweep["top_pair_rows"],
@@ -282,6 +287,8 @@ def main() -> int:
                 "null_phase1_run": spec["run"]["_run_dir"],
             },
             "selection": pair_selection,
+            "source_freeze_mode": sweep.get("source_freeze_mode", "run-local"),
+            "frozen_total_bits": sweep.get("frozen_total_bits"),
         }
 
         with open(pair_dataset_path, "w", encoding="utf-8") as handle:
@@ -347,6 +354,8 @@ def main() -> int:
         "window_step_bits": window_step_bits,
         "window_count": args.window_count,
         "family_inferred": selected["family_inferred"],
+        "source_freeze_mode": "sweep-global-frozen",
+        "frozen_total_bits": args.start_offset_bits + ((args.window_count - 1) * window_step_bits) + window_span_bits,
     }
 
     dataset_path = run_dir / "dataset.json"
@@ -354,18 +363,21 @@ def main() -> int:
     report_path = run_dir / "report.md"
     manifest_path = run_dir / "manifest.json"
     generated_at = datetime.now().isoformat(timespec="seconds")
+    aggregate_summaries = summarize_null_pressure_rows(aggregate_rows)
 
     dataset_payload = {
         "stage": "phase2_return_lag_null_pressure",
         "generated_at": generated_at,
         "selection": aggregate_selection,
         "pair_rows": aggregate_rows,
+        "summaries": aggregate_summaries,
         "artifacts": artifacts,
     }
     summary_payload = {
         "generated_at": generated_at,
         "selection": aggregate_selection,
         "pair_rows": aggregate_rows,
+        "summaries": aggregate_summaries,
         "artifacts": artifacts,
     }
     manifest_payload = {
@@ -431,6 +443,8 @@ def build_pair_selection(
     family_inferred: bool,
     selection_anchor_variant: str,
     selection_anchor_run_dir: str,
+    source_freeze_mode: str,
+    frozen_total_bits: int | None,
 ) -> dict:
     config = observed_run["dataset"]["config"]
     return {
@@ -455,6 +469,8 @@ def build_pair_selection(
         "window_step_bits": window_step_bits,
         "window_count": window_count,
         "family_inferred": family_inferred,
+        "source_freeze_mode": source_freeze_mode,
+        "frozen_total_bits": frozen_total_bits,
     }
 
 

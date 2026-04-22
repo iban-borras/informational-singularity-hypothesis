@@ -257,17 +257,19 @@ def render_null_pressure_console_summary(rows: list[dict]) -> str:
     lines = [
         "Phase 2 null-pressure window sweep",
         "-" * 132,
-        f"{'null':<28}{'seed':>8}{'max_profJS':>12}{'min_profwJ':>12}{'max_dmean':>12}{'worst_off':>12}{'best_topeq':>12}",
+        f"{'null':<28}{'seed':>8}{'js_min':>10}{'js_avg':>10}{'js_max':>10}{'d_avg':>10}{'top_avg':>10}{'worst_off':>12}{'close_off':>12}",
     ]
     for summary in summarize_null_pressure_rows(rows):
         lines.append(
             f"{summary['null_label']:<28}"
             f"{_fmt_seed(summary['null_seed']):>8}"
-            f"{summary['max_profile_js']:>12.4f}"
-            f"{summary['min_profile_wj']:>12.4f}"
-            f"{summary['max_d_mean']:>12.4f}"
+            f"{summary['min_profile_js']:>10.4f}"
+            f"{summary['avg_profile_js']:>10.4f}"
+            f"{summary['max_profile_js']:>10.4f}"
+            f"{summary['avg_d_mean']:>10.4f}"
+            f"{summary['avg_top_eq']:>10.4f}"
             f"{summary['worst_offset_bits']:>12}"
-            f"{summary['best_top_eq']:>12.4f}"
+            f"{summary['closest_offset_bits']:>12}"
         )
     return "\n".join(lines)
 
@@ -311,21 +313,26 @@ def render_null_pressure_report(
     lines.extend(
         [
             "",
-            "## Max Divergence By Null",
+            "## Envelope By Null",
             "",
-            "| Null | Model | Seed | Max Prof JS | Min Prof wJ | Max d_mean | Worst offset | Best top_eq |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Null | Model | Seed | Prof JS min | Prof JS avg | Prof JS max | Prof wJ min | Prof wJ avg | Prof wJ max | d_mean min | d_mean avg | d_mean max | top_eq min | top_eq avg | top_eq max | Worst offset | Closest offset |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for summary in summarize_null_pressure_rows(rows):
         lines.append(
             f"| {summary['null_label']} | {summary['null_model']} | {_fmt_seed(summary['null_seed'])} | "
-            f"{summary['max_profile_js']:.4f} | {summary['min_profile_wj']:.4f} | "
-            f"{summary['max_d_mean']:.4f} | {summary['worst_offset_bits']} | {summary['best_top_eq']:.4f} |"
+            f"{summary['min_profile_js']:.4f} | {summary['avg_profile_js']:.4f} | {summary['max_profile_js']:.4f} | "
+            f"{summary['min_profile_wj']:.4f} | {summary['avg_profile_wj']:.4f} | {summary['max_profile_wj']:.4f} | "
+            f"{summary['min_d_mean']:.4f} | {summary['avg_d_mean']:.4f} | {summary['max_d_mean']:.4f} | "
+            f"{summary['min_top_eq']:.4f} | {summary['avg_top_eq']:.4f} | {summary['max_top_eq']:.4f} | "
+            f"{summary['worst_offset_bits']} | {summary['closest_offset_bits']} |"
         )
 
     lines.extend(
         [
+            "",
+            "Interpretation note: `worst_offset_bits` marks the window of maximum profile JS divergence, while `closest_offset_bits` marks the window where the null most closely imitates the observed return profile on that same axis.",
             "",
             "## Window Pair Readout",
             "",
@@ -353,19 +360,38 @@ def summarize_null_pressure_rows(rows: list[dict]) -> list[dict]:
 
     summaries = []
     for (_null_model, _null_seed), group in grouped.items():
+        min_js_row = min(group, key=lambda item: item["weighted_profile_js_divergence"])
         max_js_row = max(group, key=lambda item: item["weighted_profile_js_divergence"])
         min_wj_row = min(group, key=lambda item: item["weighted_profile_jaccard"])
+        max_wj_row = max(group, key=lambda item: item["weighted_profile_jaccard"])
+        min_d_mean_row = min(group, key=lambda item: item["weighted_relative_mean_lag_gap"])
         max_d_mean_row = max(group, key=lambda item: item["weighted_relative_mean_lag_gap"])
+        min_top_eq_row = min(group, key=lambda item: item["weighted_top_bin_match_fraction"])
         best_top_eq_row = max(group, key=lambda item: item["weighted_top_bin_match_fraction"])
+        group_size = float(len(group))
+        avg_profile_js = sum(item["weighted_profile_js_divergence"] for item in group) / group_size
+        avg_profile_wj = sum(item["weighted_profile_jaccard"] for item in group) / group_size
+        avg_d_mean = sum(item["weighted_relative_mean_lag_gap"] for item in group) / group_size
+        avg_top_eq = sum(item["weighted_top_bin_match_fraction"] for item in group) / group_size
         summaries.append(
             {
                 "null_label": max_js_row["null_label"],
                 "null_model": max_js_row["null_model"],
                 "null_seed": max_js_row.get("null_seed"),
+                "min_profile_js": min_js_row["weighted_profile_js_divergence"],
+                "avg_profile_js": avg_profile_js,
                 "max_profile_js": max_js_row["weighted_profile_js_divergence"],
                 "min_profile_wj": min_wj_row["weighted_profile_jaccard"],
+                "avg_profile_wj": avg_profile_wj,
+                "max_profile_wj": max_wj_row["weighted_profile_jaccard"],
+                "min_d_mean": min_d_mean_row["weighted_relative_mean_lag_gap"],
+                "avg_d_mean": avg_d_mean,
                 "max_d_mean": max_d_mean_row["weighted_relative_mean_lag_gap"],
+                "min_top_eq": min_top_eq_row["weighted_top_bin_match_fraction"],
+                "avg_top_eq": avg_top_eq,
+                "max_top_eq": best_top_eq_row["weighted_top_bin_match_fraction"],
                 "worst_offset_bits": max_js_row["segment_offset_bits"],
+                "closest_offset_bits": min_js_row["segment_offset_bits"],
                 "best_top_eq": best_top_eq_row["weighted_top_bin_match_fraction"],
             }
         )
