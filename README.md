@@ -38,6 +38,7 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase2_null_pressure_window_sweep.py` | Strict observed-anchored return-profile opening against strong nulls over a deep window band |
 | `hsi_v2_phase2_transport_defect_strict.py` | Strict-band transport-defect pilot on observed-anchored support |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Canonical two-stage revalidation of parent-shell survival: independent lag probe plus lag-aware band readout |
+| `hsi_v2_phase2_parent_density_pipeline.py` | Canonical one-command launcher for Phase 2 density work: shell-lag revalidation plus partition-level mass retention and survivor-internal density deformation |
 
 Current empirical class split from the first real HSI v2 Phase 1 batch:
 
@@ -52,7 +53,7 @@ Current Phase 2 reading:
 - strict `null_pressure` provides the first defensible Gate 2 opening against `matched-lz`
 - the strongest opening concentrates in the `717M -> 720M` band
 - strict `N2-01` transport defect cleanly rejects `markov1` but remains too endogenous to separate `matched-lz`
-- the next formal target is an observed-kernel counterfactual defect
+- parent-survival and parent-density readouts are calibrated internal diagnostics, below strict `null_pressure` in evidentiary priority
 
 To recover the current HSI v2 state quickly, start here:
 
@@ -267,6 +268,7 @@ HSI v2 reuses Level 0 structural snapshots as input, but writes all new artifact
 | `hsi_v2_phase1_transport_report.py` | Compare transport persistence across runs | `python hsi_v2_phase1_transport_report.py` |
 | `hsi_v2_phase1_gate_map.py` | Build the compact Porta 1 gate table plus `SVG` plane and `PNG` when matplotlib is available | `python hsi_v2_phase1_gate_map.py` |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Run the canonical Phase 2 shell-lag revalidation pipeline in one shot | `python hsi_v2_phase2_parent_survival_revalidation.py --variants E,B --anchor-variant E --iteration 20 --segment-bits 1000000 --num-segments 3 --scales 8,12,16,20,24,28,32,40,48 --phase1-policies prefix,suffix --low-scale 40 --high-scale 48 --top-patterns 64 --pattern-selection bridge-linked` |
+| `hsi_v2_phase2_parent_density_pipeline.py` | Run the canonical Phase 2 density pipeline in one shot | `python hsi_v2_phase2_parent_density_pipeline.py --profile canonical-all` |
 
 Current default HSI v2 Phase 1 protocol:
 

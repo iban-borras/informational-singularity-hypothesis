@@ -33,6 +33,7 @@ from hsi_v2_phase2_transport_defect_strict import (
 from v2.common.cli import parse_variants, resolve_dir
 from v2.common.naming import compact_int
 from v2.phase1.tower import parse_scales
+from v2.phase2.null_pressure import parse_null_models, parse_seed_list, select_null_pressure_runs
 from v2.phase2.kernel_common_support import (
     compute_window_local_common_support_kernel_result,
 )
@@ -67,6 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="results/hsi_v2/phase2/parent_survival_band_lagaware",
     )
+    parser.add_argument(
+        "--stage",
+        type=str,
+        default="observed",
+        choices=("observed", "nulls", "all"),
+    )
     parser.add_argument("--variants", type=str, default="E,B")
     parser.add_argument("--anchor-variant", type=str, default="E")
     parser.add_argument("--iteration", type=int, default=None)
@@ -92,6 +99,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--window-bits", type=int, default=None)
     parser.add_argument("--candidate-lag-bits", type=int, default=None)
     parser.add_argument("--lag-summary", type=str, default="")
+    parser.add_argument("--null-models", type=str, default="markov1,matched-lz")
+    parser.add_argument("--matched-lz-seeds", type=str, default="")
     parser.add_argument("--no-family-inference", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     return parser
@@ -119,6 +128,20 @@ def main() -> int:
     if args.top_patterns <= 0:
         parser.error("--top-patterns must be positive.")
 
+    null_models: list[str] = []
+    matched_lz_seeds: list[int] = []
+    if args.stage in {"nulls", "all"}:
+        try:
+            null_models = parse_null_models(args.null_models)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if not null_models:
+            parser.error("At least one null model is required for --stage nulls/all.")
+        try:
+            matched_lz_seeds = parse_seed_list(args.matched_lz_seeds)
+        except ValueError:
+            parser.error("--matched-lz-seeds must be a comma-separated list of integers.")
+
     try:
         offsets = parse_int_list(args.offsets, label="--offsets", allow_zero=True)
     except ValueError as exc:
@@ -142,7 +165,7 @@ def main() -> int:
     phase_print(
         "Preparing lag-aware parent-survival band",
         (
-            f"anchor={anchor_variant} | candidate={candidate_variant} | "
+            f"stage={args.stage} | anchor={anchor_variant} | candidate={candidate_variant} | "
             f"m={args.low_scale}->{args.high_scale} | sel={args.pattern_selection} | "
             f"lag={candidate_lag_bits}"
         ),
@@ -177,6 +200,43 @@ def main() -> int:
     if anchor_run is None or candidate_run is None:
         parser.error("Missing observed anchor or candidate run.")
 
+    evaluation_specs = []
+    if args.stage in {"observed", "all"}:
+        evaluation_specs.extend(
+            build_observed_specs(
+                observed_by_variant,
+                anchor_run=anchor_run,
+                variants=variants,
+            )
+        )
+    if args.stage in {"nulls", "all"}:
+        try:
+            selected_nulls = select_null_pressure_runs(
+                runs,
+                observed_variant=candidate_variant,
+                null_models=null_models,
+                matched_lz_seeds=matched_lz_seeds,
+                iteration=args.iteration,
+                segment_bits=args.segment_bits,
+                num_segments=args.num_segments,
+                segment_offset_bits=args.segment_offset_bits,
+                scales=phase1_scales,
+                policies=phase1_policies,
+                pattern_scale=args.high_scale,
+                no_family_inference=args.no_family_inference,
+            )
+        except ValueError as exc:
+            parser.error(f"{candidate_variant}: {exc}")
+        evaluation_specs.extend(
+            build_null_specs_for_candidate(
+                selected_nulls["null_specs"],
+                anchor_run=anchor_run,
+                candidate_variant=candidate_variant,
+            )
+        )
+    if not evaluation_specs:
+        parser.error("No evaluation specs remain after selection.")
+
     segment_bits, num_segments = infer_segment_protocol(observed_runs)
     window_bits = (
         int(args.window_bits)
@@ -186,11 +246,6 @@ def main() -> int:
     if window_bits < args.high_scale:
         parser.error("--window-bits must be at least as large as --high-scale.")
 
-    evaluation_specs = build_observed_specs(
-        observed_by_variant,
-        anchor_run=anchor_run,
-        variants=variants,
-    )
     low_selection = prepare_pattern_selection(
         anchor_run,
         pattern_scale=args.low_scale,
@@ -314,7 +369,7 @@ def main() -> int:
     generated_at = datetime.now().isoformat(timespec="seconds")
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     selection = {
-        "stage": "observed-lag-aware",
+        "stage": f"{args.stage}-lag-aware",
         "anchor_variant": anchor_variant,
         "candidate_variant": candidate_variant,
         "variants": variants,
@@ -332,6 +387,8 @@ def main() -> int:
         "family_inferred": family_inferred,
         "kernel_mode": "window-local-lag-aware",
         "candidate_lag_bits": candidate_lag_bits,
+        "null_models": null_models,
+        "matched_lz_seeds": matched_lz_seeds,
     }
     run_slug = build_run_slug(selection, timestamp)
     run_dir = output_dir / run_slug
@@ -442,6 +499,30 @@ def resolve_candidate_lag_bits(args, parser: argparse.ArgumentParser) -> int:
             parser.error(f"The lag summary does not contain recommended_lag_bits: {lag_summary_path}")
         return int(lag_bits)
     parser.error("Provide either --candidate-lag-bits or --lag-summary.")
+
+
+def build_null_specs_for_candidate(
+    null_specs: list[dict],
+    *,
+    anchor_run: dict,
+    candidate_variant: str,
+) -> list[dict]:
+    specs = []
+    for item in null_specs:
+        specs.append(
+            {
+                "variant": candidate_variant,
+                "run": item["run"],
+                "anchor_run": anchor_run,
+                "anchor_variant": str(anchor_run["dataset"]["config"]["variant"]).upper(),
+                "anchor_kind": "observed-fixed",
+                "source_kind": "null_surrogate",
+                "source_label": item["null_label"],
+                "null_model": item["null_model"],
+                "null_seed": item.get("null_seed"),
+            }
+        )
+    return specs
 
 
 def build_run_slug(selection: dict, timestamp: str) -> str:

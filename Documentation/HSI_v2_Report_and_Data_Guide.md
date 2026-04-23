@@ -67,6 +67,7 @@ Phase 2 should therefore be read with care:
 | `hsi_v2_phase2_null_pressure_window_sweep.py` | `results/hsi_v2/phase2/window_sweep*/phase2-return-lag-null-pressure__*/` | Runs the strict observed-anchored return-profile opening against nulls over a deep window band |
 | `hsi_v2_phase2_transport_defect_strict.py` | `results/hsi_v2/phase2/transport_defect_strict*/phase2-transport-defect-strict__*/` | Runs the strict-band transport-defect pilot on observed-anchored support |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | `results/hsi_v2/phase2/parent_survival_revalidation/phase2-parent-survival-revalidation__*/` | Runs the canonical two-stage shell-lag revalidation pipeline: independent lag probe plus lag-aware parent-survival band |
+| `hsi_v2_phase2_parent_density_pipeline.py` | `results/hsi_v2/phase2/parent_density_pipeline/phase2-parent-density-pipeline__*/` | Runs the canonical one-command density pipeline: shell-lag revalidation plus partition-level mass retention and survivor-internal density deformation |
 
 Other Phase 2 public scripts exist in the repo, but the current scientific reading should prioritize the strict objects above unless the decision log says otherwise.
 
@@ -145,6 +146,12 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
   - a top-level `summary.json`, `report.md`, and `manifest.json`
   - a nested `probe/phase2-parent-shell-lag-probe__.../` artifact family
   - a nested `lagaware/phase2-parent-survival-band-lagaware__.../` artifact family
+- `parent_density_pipeline/phase2-parent-density-pipeline__.../`
+  Canonical density wrapper runs. Each pipeline run contains:
+  - a top-level `summary.json`, `report.md`, and `manifest.json`
+  - a nested `revalidation/phase2-parent-survival-revalidation__.../` artifact family
+  - a nested `density/phase2-parent-density-residual__.../` artifact family
+  The density readout separates full partition mass retention from survivor-internal deformation. Older exact-only density artifacts should not be read as full partition retention.
 - exploratory families such as `phase2-return-lag__...`, `phase2-sparse-graph__...`, `phase2-square-cocycle__...`, and `phase2-defect-pilot__...`
   Useful for search-space recovery, but not all of them are current canonical evidence.
 

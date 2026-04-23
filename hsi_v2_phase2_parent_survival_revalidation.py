@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from hsi_v2_phase2_transport_defect_strict import parse_int_list, phase_print
 from v2.common.cli import parse_variants, resolve_dir
 from v2.common.naming import compact_int
+from v2.phase2.null_pressure import parse_null_models, parse_seed_list
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=str,
         default="results/hsi_v2/phase2/parent_survival_revalidation",
+    )
+    parser.add_argument(
+        "--stage",
+        type=str,
+        default="observed",
+        choices=("observed", "nulls", "all"),
     )
     parser.add_argument("--variants", type=str, default="E,B")
     parser.add_argument("--anchor-variant", type=str, default="E")
@@ -87,6 +94,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scan-step-bits", type=int, default=500000)
     parser.add_argument("--scan-forward-bits", type=int, default=12000000)
     parser.add_argument("--scan-backward-bits", type=int, default=0)
+    parser.add_argument("--null-models", type=str, default="markov1,matched-lz")
+    parser.add_argument("--matched-lz-seeds", type=str, default="")
     parser.add_argument("--no-family-inference", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     return parser
@@ -117,6 +126,20 @@ def main() -> int:
         parser.error("--scan-step-bits must be positive.")
     if args.scan_forward_bits < 0 or args.scan_backward_bits < 0:
         parser.error("--scan-forward-bits and --scan-backward-bits must be non-negative.")
+
+    null_models: list[str] = []
+    matched_lz_seeds: list[int] = []
+    if args.stage in {"nulls", "all"}:
+        try:
+            null_models = parse_null_models(args.null_models)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if not null_models:
+            parser.error("At least one null model is required for --stage nulls/all.")
+        try:
+            matched_lz_seeds = parse_seed_list(args.matched_lz_seeds)
+        except ValueError:
+            parser.error("--matched-lz-seeds must be a comma-separated list of integers.")
 
     try:
         definition_offsets = parse_int_list(
@@ -156,7 +179,7 @@ def main() -> int:
     phase_print(
         "Preparing canonical parent-survival revalidation",
         (
-            f"anchor={anchor_variant} | candidate={candidate_variant} | "
+            f"stage={args.stage} | anchor={anchor_variant} | candidate={candidate_variant} | "
             f"m={args.low_scale}->{args.high_scale} | sel={args.pattern_selection}"
         ),
         quiet=args.quiet,
@@ -213,7 +236,13 @@ def main() -> int:
     probe_summary_path = latest_child_file(probe_output_dir, "summary.json")
     probe_report_path = latest_child_file(probe_output_dir, "report.md")
     probe_payload = load_json(probe_summary_path)
-    recommended_lag_bits = int(probe_payload["summary"]["recommended_lag_bits"])
+    recommended_lag_raw = probe_payload.get("summary", {}).get("recommended_lag_bits")
+    if recommended_lag_raw is None:
+        parser.error(
+            "The shell-lag probe did not yield recommended_lag_bits. "
+            f"Check the probe artifact: {probe_summary_path}"
+        )
+    recommended_lag_bits = int(recommended_lag_raw)
 
     phase_print(
         "Resolved external lag estimate",
@@ -229,6 +258,8 @@ def main() -> int:
         str(phase1_dir),
         "--output-dir",
         str(lagaware_output_dir),
+        "--stage",
+        args.stage,
         "--variants",
         ",".join(variants),
         "--anchor-variant",
@@ -250,6 +281,12 @@ def main() -> int:
         "--lag-summary",
         str(probe_summary_path),
     ]
+    if null_models:
+        lagaware_cmd.extend(["--null-models", ",".join(null_models)])
+    if matched_lz_seeds:
+        lagaware_cmd.extend(
+            ["--matched-lz-seeds", ",".join(str(seed) for seed in matched_lz_seeds)]
+        )
     append_optional_int_arg(lagaware_cmd, "--iteration", args.iteration)
     append_optional_int_arg(lagaware_cmd, "--segment-bits", args.segment_bits)
     append_optional_int_arg(lagaware_cmd, "--num-segments", args.num_segments)
@@ -273,6 +310,7 @@ def main() -> int:
     summary_payload = {
         "generated_at": generated_at,
         "selection": {
+            "stage": args.stage,
             "anchor_variant": anchor_variant,
             "candidate_variant": candidate_variant,
             "variants": variants,
@@ -283,6 +321,8 @@ def main() -> int:
             "pattern_selection": args.pattern_selection,
             "definition_offsets": definition_offsets,
             "offsets": offsets,
+            "null_models": null_models,
+            "matched_lz_seeds": matched_lz_seeds,
         },
         "probe_summary_path": str(probe_summary_path),
         "lagaware_summary_path": str(lagaware_summary_path),
@@ -325,7 +365,7 @@ def main() -> int:
         print("Phase 2 canonical parent-survival revalidation")
         print("-" * 118)
         print(
-            f"anchor={anchor_variant} candidate={candidate_variant} "
+            f"stage={args.stage} anchor={anchor_variant} candidate={candidate_variant} "
             f"lag={recommended_lag_bits} "
             f"probe={probe_summary_path.parent.name} "
             f"lagaware={lagaware_summary_path.parent.name}"
@@ -389,11 +429,14 @@ def render_report(payload: dict) -> str:
         "",
         f"- Anchor variant: {selection['anchor_variant']}",
         f"- Candidate variant: {selection['candidate_variant']}",
+        f"- Stage: {selection['stage']}",
         f"- Low/high scales: {selection['low_scale']} -> {selection['high_scale']}",
         f"- Pattern selection: {selection['pattern_selection']}",
         f"- Top patterns: {selection['top_patterns']}",
         f"- Definition offsets: {', '.join(str(value) for value in selection['definition_offsets'])}",
         f"- Band offsets: {', '.join(str(value) for value in selection['offsets'])}",
+        f"- Null models: {', '.join(selection.get('null_models', [])) or '-'}",
+        f"- Matched-LZ seeds: {', '.join(str(value) for value in selection.get('matched_lz_seeds', [])) or '-'}",
         "",
         "## Pipeline Outcome",
         "",

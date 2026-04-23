@@ -257,6 +257,37 @@ Interpretation:
 
 This is scientifically better than the earlier, cleaner story because it keeps the temporal objection open where the data demand it.
 
+### 10. The parent-density residual readout is now corrected for survivor bias
+
+The hostile audit of the first density readout found a real conditioning problem.
+
+The old readout filtered to `exact` rows before computing mass retention. That was legitimate only as a survivor-conditioned quantity, not as full partition retention.
+
+The corrected readout now separates two objects:
+
+- full partition mass retention, computed over all active anchor rows including `dead` and `dark`
+- survivor-internal density deformation, computed only where the candidate has positive support and `log2` is defined
+
+The grouped summary now reports pooled ratio-of-sums as the primary value, not an unweighted mean of window ratios.
+
+Corrected canonical rerun for anchor `E`, candidate `B`, lag `+15M`, scales `40 -> 48`, selector `bridge-linked`, `top = 64`, and the `714M -> 723M` half-megabit band:
+
+| Source | Partition | Part ret | Surv ret | Surv def | Surv bias | Dead m |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `E` observed | Shell | 1.0000 | 1.0000 | 0.0000 | 0.0000 | 0.0000 |
+| `B` observed | Shell | 0.9375 | 1.0227 | 0.8630 | -0.3669 | 0.0833 |
+| `B-markov1` | Shell | 0.0000 | - | - | - | 0.5607 |
+| `B-matched-lz` envelope | Shell | 0.1882-0.4219 | 0.2118-0.4219 | 1.6775-2.6091 | -2.6072 to -1.6194 | 0.0000-0.1114 |
+
+Interpretation:
+
+- `B` no longer looks like an artificial shell amplifier once dead mass is counted
+- `B` still retains far more shell mass than `matched-lz`
+- `matched-lz` preserves broad support but its shell density is weak and strongly negatively biased
+- `markov1` remains a collapse control in this shell-density object
+
+This keeps the density line scientifically useful, but still as an internal diagnostic below the strict `null_pressure` opening in evidentiary priority.
+
 ---
 
 ## Current Repo-Facing Scientific Position
@@ -271,6 +302,7 @@ What HSI v2 currently supports in Phase 2:
 - `matched-lz` remains the strongest and most informative null
 - the counterfactual move to a frozen observed law was the correct methodological escalation
 - the parent-survival line now supports delayed shell realignment plus local residual mismatch in `E -> B`
+- the corrected parent-density residual line separates full mass retention from survivor-internal deformation and avoids survivor bias
 
 What HSI v2 does **not** yet support in Phase 2:
 
@@ -282,6 +314,7 @@ What HSI v2 does **not** yet support in Phase 2:
 - a final transport law
 - a completed defect theory
 - a geometry claim derived from Phase 2
+- a paper-final claim based only on the parent-density residual readout
 
 ---
 
@@ -310,6 +343,10 @@ What HSI v2 does **not** yet support in Phase 2:
 ### Canonical parent-shell revalidation
 
 - `results/hsi_v2/phase2/parent_survival_revalidation/phase2-parent-survival-revalidation__anchor-E__cand-B__m-40-48__sel-bridge-linked__top-64__off-714M-plus-19__20260422T202310/`
+
+### Corrected parent-density residual readout
+
+- `results/hsi_v2/phase2/parent_density_residual_corrected/phase2-parent-density-residual__anchor-E__cand-B__lag-15M__m-40-48__sel-bridge-linked__top-64__off-714M-plus-19__20260423T091934/`
 
 ---
 
@@ -341,6 +378,12 @@ If you want the current survival-line reading specifically, read:
 3. the nested lag-aware band summary
 4. D-0047 in `../docs/HSI_v2_Decision_Log.md`
 
+If you want the current parent-density reading specifically, read:
+
+1. the corrected parent-density residual report under `results/hsi_v2/phase2/parent_density_residual_corrected/...`
+2. the matching `summary.json`
+3. D-0048 in `../docs/HSI_v2_Decision_Log.md`
+
 ---
 
 ## Bottom Line
@@ -359,6 +402,7 @@ The canonical parent-survival revalidation now adds:
 - the anchor-defined shell reappears in `B` after an external lag of about `+15M` bits
 - after lag correction, the main phenomenon is delayed realignment, not literal extinction
 - but the realignment is not perfectly rigid and still leaves local residual mismatch
+- the corrected density readout shows that `B` retains shell mass much more strongly than `matched-lz`, without hiding dead rows
 
 So the next serious move is not to overstate a transport-defect victory.
 
