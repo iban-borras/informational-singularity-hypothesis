@@ -68,6 +68,8 @@ Phase 2 should therefore be read with care:
 | `hsi_v2_phase2_transport_defect_strict.py` | `results/hsi_v2/phase2/transport_defect_strict*/phase2-transport-defect-strict__*/` | Runs the strict-band transport-defect pilot on observed-anchored support |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | `results/hsi_v2/phase2/parent_survival_revalidation/phase2-parent-survival-revalidation__*/` | Runs the canonical two-stage shell-lag revalidation pipeline: independent lag probe plus lag-aware parent-survival band |
 | `hsi_v2_phase2_parent_density_pipeline.py` | `results/hsi_v2/phase2/parent_density_pipeline/phase2-parent-density-pipeline__*/` | Runs the canonical one-command density pipeline: shell-lag revalidation plus partition-level mass retention and survivor-internal density deformation |
+| `hsi_v2_phase2_parent_shell_atlas.py` | `results/hsi_v2/phase2/parent_shell_atlas/phase2-parent-shell-atlas__*/` | Builds the lag-aware shell atlas from a canonical revalidation artifact |
+| `hsi_v2_phase2_parent_shell_atlas_pipeline.py` | `results/hsi_v2/phase2/parent_shell_atlas_pipeline/phase2-parent-shell-atlas-pipeline__*/` | Runs the canonical one-command shell-atlas pipeline: revalidation plus lag-aware shell atlas |
 
 Other Phase 2 public scripts exist in the repo, but the current scientific reading should prioritize the strict objects above unless the decision log says otherwise.
 
@@ -152,6 +154,16 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
   - a nested `revalidation/phase2-parent-survival-revalidation__.../` artifact family
   - a nested `density/phase2-parent-density-residual__.../` artifact family
   The density readout separates full partition mass retention from survivor-internal deformation. Older exact-only density artifacts should not be read as full partition retention.
+- `parent_shell_atlas/phase2-parent-shell-atlas__.../`
+  Lag-aware shell atlas artifacts derived from a canonical revalidation run. Each atlas run contains:
+  - `structure.csv`, `subtypes.csv`, `patterns.csv`, `concentration.csv`, and `atlas.csv`
+  - pooled `net_deficit_mass`, `gross_loss_pressure_sum`, and `jitter_gap_mass`
+  - observation-conditional shell subtype summaries for the monitored child universe
+- `parent_shell_atlas_pipeline/phase2-parent-shell-atlas-pipeline__.../`
+  Canonical shell-atlas wrapper runs. Each pipeline run contains:
+  - a top-level `summary.json`, `report.md`, and `manifest.json`
+  - a nested `revalidation/phase2-parent-survival-revalidation__.../` artifact family
+  - a nested `atlas/phase2-parent-shell-atlas__.../` artifact family
 - exploratory families such as `phase2-return-lag__...`, `phase2-sparse-graph__...`, `phase2-square-cocycle__...`, and `phase2-defect-pilot__...`
   Useful for search-space recovery, but not all of them are current canonical evidence.
 
@@ -246,6 +258,9 @@ python .\hsi_v2_phase1_report.py
 python .\hsi_v2_phase1_coherence_report.py
 python .\hsi_v2_phase1_transport_report.py
 python .\hsi_v2_phase1_gate_map.py
+
+# Phase 2 shell atlas pipeline
+python .\hsi_v2_phase2_parent_shell_atlas_pipeline.py --profile canonical-all
 ```
 
 ---

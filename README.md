@@ -39,6 +39,8 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase2_transport_defect_strict.py` | Strict-band transport-defect pilot on observed-anchored support |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Canonical two-stage revalidation of parent-shell survival: independent lag probe plus lag-aware band readout |
 | `hsi_v2_phase2_parent_density_pipeline.py` | Canonical one-command launcher for Phase 2 density work: shell-lag revalidation plus partition-level mass retention and survivor-internal density deformation |
+| `hsi_v2_phase2_parent_shell_atlas.py` | Lag-aware shell atlas over the canonical revalidation artifact, with pooled net deficit, gross loss pressure, and jitter-gap diagnostics |
+| `hsi_v2_phase2_parent_shell_atlas_pipeline.py` | Canonical one-command launcher for the shell-atlas line: revalidation plus lag-aware shell atlas |
 
 Current empirical class split from the first real HSI v2 Phase 1 batch:
 
@@ -269,6 +271,7 @@ HSI v2 reuses Level 0 structural snapshots as input, but writes all new artifact
 | `hsi_v2_phase1_gate_map.py` | Build the compact Porta 1 gate table plus `SVG` plane and `PNG` when matplotlib is available | `python hsi_v2_phase1_gate_map.py` |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Run the canonical Phase 2 shell-lag revalidation pipeline in one shot | `python hsi_v2_phase2_parent_survival_revalidation.py --variants E,B --anchor-variant E --iteration 20 --segment-bits 1000000 --num-segments 3 --scales 8,12,16,20,24,28,32,40,48 --phase1-policies prefix,suffix --low-scale 40 --high-scale 48 --top-patterns 64 --pattern-selection bridge-linked` |
 | `hsi_v2_phase2_parent_density_pipeline.py` | Run the canonical Phase 2 density pipeline in one shot | `python hsi_v2_phase2_parent_density_pipeline.py --profile canonical-all` |
+| `hsi_v2_phase2_parent_shell_atlas_pipeline.py` | Run the canonical Phase 2 shell-atlas pipeline in one shot | `python hsi_v2_phase2_parent_shell_atlas_pipeline.py --profile canonical-all` |
 
 Current default HSI v2 Phase 1 protocol:
 
