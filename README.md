@@ -41,6 +41,21 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase2_parent_density_pipeline.py` | Canonical one-command launcher for Phase 2 density work: shell-lag revalidation plus partition-level mass retention and survivor-internal density deformation |
 | `hsi_v2_phase2_parent_shell_atlas.py` | Lag-aware shell atlas over the canonical revalidation artifact, with pooled net deficit, gross loss pressure, and jitter-gap diagnostics |
 | `hsi_v2_phase2_parent_shell_atlas_pipeline.py` | Canonical one-command launcher for the shell-atlas line: revalidation plus lag-aware shell atlas |
+| `hsi_v2_phase2_parent_shell_atlas_sensitivity.py` | N2-06 sensitivity sweep for the shell atlas over top-k and lag neighborhoods |
+| `hsi_v2_phase2_jitter_provenance.py` | N2-07 same-parent temporal provenance readout: separates uncompensated shell deficit from jitter-compensated local loss |
+| `hsi_v2_phase2_jitter_provenance_sensitivity.py` | N2-07b sensitivity wrapper for jitter provenance across N2-06 top-k and lag atlas artifacts |
+| `hsi_v2_phase2_child_destination_routing.py` | N2-08 child-destination routing readout over monitored shell parents (`top=128` by default) |
+| `hsi_v2_phase2_deficit_jitter_plane.py` | Deterministic visual readout of the audited shell-atlas sensitivity result (`netDef` vs `jitter-gap`) |
+| `hsi_v2_phase3_min_defect_spectrum_pilot.py` | Phase 3 pre-geometric minimal defect/spectrum pilot: commuting-square defect plus sparse bridge-graph normalized-Laplacian readout |
+| `hsi_v2_phase3_defect_spectrum_sensitivity.py` | Phase 3 seed/window sensitivity sweep for the minimal defect/spectrum pilot |
+| `hsi_v2_phase3_lag_conditioned_defect_spectrum_pilot.py` | Phase 3 N3-02 lag-conditioned defect/spectrum pilot: anchor-defined local square evaluated in a lag-shifted candidate window |
+| `hsi_v2_phase3_phase_channel_spectral_graph.py` | Phase 3 N3-03 non-local spectral readout over the audited N2-14 phase-channel transition graph |
+| `hsi_v2_phase3_micro_child_routing_spectral_graph.py` | Phase 3 N3-04 exploratory micro-spectral graph over child-routing events inside the N3-03 phase-channel scaffold |
+| `hsi_v2_phase3_quotient_child_routing_spectral_graph.py` | Phase 3 N3-05 exploratory quotient graph: projects retained child destinations back to prefix/suffix parent families |
+| `hsi_v2_phase3_weighted_quotient_child_routing_spectral_graph.py` | Phase 3 N3-05b exploratory weighted quotient graph: uses pooled retained child mass as edge weight over the same prefix/suffix quotient |
+| `hsi_v2_phase3_component_quotient_child_routing_spectrum.py` | Phase 3 N3-05c exploratory component-wise normalization over the N3-05b weighted quotient |
+| `hsi_v2_phase3_hamming_quotient_child_routing_spectral_graph.py` | Phase 3 N3-06 exploratory Hamming quotient over the N3-05b weighted quotient, with a predeclared radius sweep |
+| `hsi_v2_phase3_flow_entropy_readout.py` | Phase 3 N3-07 direct flow-entropy readout derived from N3-05c, scoring observed B/E against the matched-LZ envelope |
 
 Current empirical class split from the first real HSI v2 Phase 1 batch:
 
@@ -56,12 +71,25 @@ Current Phase 2 reading:
 - the strongest opening concentrates in the `717M -> 720M` band
 - strict `N2-01` transport defect cleanly rejects `markov1` but remains too endogenous to separate `matched-lz`
 - parent-survival and parent-density readouts are calibrated internal diagnostics, below strict `null_pressure` in evidentiary priority
+- the shell-atlas and jitter-provenance line reads observed `B` as temporally compensated redistribution, unlike the net-deficit dominated `matched-lz` envelope
+- child-destination routing currently reads `B` as partial same-destination conservation at `top=128`, not as rerouting to alien children
+- Phase 2 is now frozen as a reproducible paper-support stack; Phase 3 starts with a minimal defect/spectrum contract and must not be read as geometry yet
+- The first Phase 3 minimal defect/spectrum sensitivity sweep rejects `markov1` but does not separate `matched-lz`, so the next Phase 3 object must be lag-conditioned rather than purely local-square based
+- The first N3-02 lag-conditioned smoke keeps B/E coherent and rejects `markov1`, but `matched-lz` still shadows at the simplest single-lag local-square level; treat it as an internal falsification step, not as a Phase 3 opening
+- N3-03 turns the audited N2-14 phase-channel transition graph into a non-local spectral object; accepted internal readout finds connected top=128 negative/positive channel components and no stable top=96 path
+- N3-04 is the first exploratory micro-spectral child-routing graph; the smoke readout preserves strong B vs `matched-lz` retention differences but does not yet produce a clean micro-scale spectral separator
+- N3-05 tests a prefix/suffix projective quotient; the unit graph remains topologically too similar between observed B/E and `matched-lz`, suggesting the next quotient object must expose pooled mass weights rather than only edge presence
+- N3-05b tests that pooled-mass quotient: it still does not produce connected quotient geometry, but it exposes a strong weighted flow-capacity separation (`B/E` high, `matched-lz` reduced, `markov1` zero)
+- N3-05c normalizes N3-05b component by component; accepted-internal D-0069 reads observed `B/E` as lower-entropy flow than `matched-lz` inside the same fragmented prefix/suffix scaffold
+- N3-06 tests a Hamming quotient radius sweep; accepted-negative D-0070 shows the scaffold fuses from 24 components to 3/2 and finally 1 at high radius, but this connectivity transition is common to observed B/E and `matched-lz`, so it is not a Phase 3 geometric separator
+- N3-07 is accepted-internal in D-0071: observed `B/E` score `4/4` as `strict-low-entropy-flow` against the strongest `matched-LZ` seed envelope in both negative and positive channels; this closes the current internal Phase 3 infrastructure arc without authorizing a geometry or paper-facing Phase 3 claim
 
 To recover the current HSI v2 state quickly, start here:
 
 - `Documentation/HSI_v2_Report_and_Data_Guide.md`
 - `Documentation/HSI_v2_Phase1_Live_Findings.md`
 - `Documentation/HSI_v2_Phase2_Live_Findings.md`
+- `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md`
 - `../docs/HSI_v2_Decision_Log.md`
 
 ## Project Structure
@@ -272,6 +300,11 @@ HSI v2 reuses Level 0 structural snapshots as input, but writes all new artifact
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Run the canonical Phase 2 shell-lag revalidation pipeline in one shot | `python hsi_v2_phase2_parent_survival_revalidation.py --variants E,B --anchor-variant E --iteration 20 --segment-bits 1000000 --num-segments 3 --scales 8,12,16,20,24,28,32,40,48 --phase1-policies prefix,suffix --low-scale 40 --high-scale 48 --top-patterns 64 --pattern-selection bridge-linked` |
 | `hsi_v2_phase2_parent_density_pipeline.py` | Run the canonical Phase 2 density pipeline in one shot | `python hsi_v2_phase2_parent_density_pipeline.py --profile canonical-all` |
 | `hsi_v2_phase2_parent_shell_atlas_pipeline.py` | Run the canonical Phase 2 shell-atlas pipeline in one shot | `python hsi_v2_phase2_parent_shell_atlas_pipeline.py --profile canonical-all` |
+| `hsi_v2_phase2_parent_shell_atlas_sensitivity.py` | Run the N2-06 shell-atlas sensitivity sweep | `python hsi_v2_phase2_parent_shell_atlas_sensitivity.py --profile canonical-sensitivity` |
+| `hsi_v2_phase2_jitter_provenance.py` | Build the N2-07 same-parent jitter-provenance readout from the latest shell atlas | `python hsi_v2_phase2_jitter_provenance.py` |
+| `hsi_v2_phase2_jitter_provenance_sensitivity.py` | Build the N2-07b jitter-provenance sensitivity envelope from the latest shell-atlas sensitivity sweep | `python hsi_v2_phase2_jitter_provenance_sensitivity.py` |
+| `hsi_v2_phase2_child_destination_routing.py` | Build the N2-08 child-destination routing readout from the latest `top=128`, `lag=15M` shell atlas | `python hsi_v2_phase2_child_destination_routing.py` |
+| `hsi_v2_phase2_deficit_jitter_plane.py` | Render the Phase 2 deficit-jitter visual plane from a sensitivity run | `python hsi_v2_phase2_deficit_jitter_plane.py` |
 
 Current default HSI v2 Phase 1 protocol:
 

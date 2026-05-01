@@ -102,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--null-models", type=str, default="markov1,matched-lz")
     parser.add_argument("--matched-lz-seeds", type=str, default="")
     parser.add_argument("--no-family-inference", action="store_true")
+    parser.add_argument(
+        "--log-windows",
+        action="store_true",
+        help="Print one diagnostic line per case/window. Off by default to keep long sweeps readable.",
+    )
     parser.add_argument("--quiet", action="store_true")
     return parser
 
@@ -309,7 +314,7 @@ def main() -> int:
                     f"anchor_off={offset_bits} | cand_off={candidate_offset_bits} | "
                     f"variant={spec['variant']} | source={spec['source_label']}"
                 ),
-                quiet=args.quiet,
+                quiet=args.quiet or not args.log_windows,
             )
             result = compute_window_local_common_support_kernel_result(
                 anchor_run_dir=spec["anchor_run"]["_run_dir"],

@@ -1,0 +1,797 @@
+#!/usr/bin/env python3
+"""HSI v2 Phase 2 N2-11 child-routing lag-response pipeline.
+
+This wrapper does not introduce a new routing observable. It reuses the
+audited child-destination routing stack and evaluates it over an explicit
+lag grid, so boundary bands can be read as response profiles instead of as
+single-lag decisions.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import sys
+import time
+from collections import OrderedDict, defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from hsi_v2_phase2_child_routing_persistence import (
+    build_lagaware_cmd,
+    build_offsets,
+    build_probe_cmd,
+    build_selection,
+    write_synthetic_revalidation_summary,
+)
+from hsi_v2_phase2_parent_survival_revalidation import (
+    append_flag,
+    flush_output,
+    latest_child_file,
+    load_json,
+    run_subprocess,
+)
+from hsi_v2_phase2_transport_defect_strict import parse_int_list, phase_print
+from utils.progress import HeartbeatProgress, format_time
+from v2.common.cli import resolve_dir
+from v2.common.naming import compact_int
+
+
+DEFAULT_BAND_STARTS = (
+    "696000000,705000000,714000000,723000000,726000000,729000000"
+)
+DEFAULT_LAGS = "-88000000,-27000000,-17000000,-14000000,-5500000,0,26500000,87000000"
+
+
+def parse_lag_list(text: str) -> list[int]:
+    values: list[int] = []
+    for raw in text.split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        try:
+            values.append(int(item))
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"Invalid lag value: {item!r}") from exc
+    if not values:
+        raise argparse.ArgumentTypeError("At least one lag is required")
+    return values
+
+
+def lag_slug(lag_bits: int) -> str:
+    if lag_bits < 0:
+        return "neg-" + compact_int(abs(lag_bits))
+    if lag_bits > 0:
+        return "pos-" + compact_int(lag_bits)
+    return "zero"
+
+
+def band_label(start_bits: int, window_count: int, window_step_bits: int) -> str:
+    stop_bits = start_bits + (window_count - 1) * window_step_bits
+    return f"{compact_int(start_bits)}-{compact_int(stop_bits)}"
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def source_kind(row: dict[str, Any]) -> str:
+    variant = str(row.get("variant", ""))
+    source_label = str(row.get("source_label", row.get("source", "")))
+    if variant == "B" and source_label == "observed":
+        return "B_observed"
+    if variant == "E" and source_label == "observed":
+        return "E_observed"
+    if "markov1" in source_label or variant.endswith("markov1"):
+        return "markov1"
+    if "matched-lz" in source_label or variant.endswith("matched-lz"):
+        return "matched_lz"
+    return "other"
+
+
+def metric_float(row: dict[str, Any], key: str) -> float | None:
+    value = row.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def aggregate_response(source_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for row in source_rows:
+        grouped[(str(row["band"]), int(row["lag_bits"]))].append(row)
+
+    response_rows: list[dict[str, Any]] = []
+    for (band, lag_bits), rows in sorted(grouped.items(), key=lambda x: (x[0][0], x[0][1])):
+        b_value: float | None = None
+        e_value: float | None = None
+        markov_value: float | None = None
+        matched_values: list[float] = []
+        for row in rows:
+            retention = metric_float(row, "child_destination_retention_pooled")
+            kind = source_kind(row)
+            if retention is None:
+                continue
+            if kind == "B_observed":
+                b_value = retention
+            elif kind == "E_observed":
+                e_value = retention
+            elif kind == "markov1":
+                markov_value = retention
+            elif kind == "matched_lz":
+                matched_values.append(retention)
+
+        matched_min = min(matched_values) if matched_values else None
+        matched_max = max(matched_values) if matched_values else None
+        matched_avg = sum(matched_values) / len(matched_values) if matched_values else None
+        response_rows.append(
+            {
+                "band": band,
+                "lag_bits": lag_bits,
+                "lag": compact_int(lag_bits),
+                "B_retention": b_value,
+                "E_retention": e_value,
+                "markov1_retention": markov_value,
+                "matched_lz_min": matched_min,
+                "matched_lz_avg": matched_avg,
+                "matched_lz_max": matched_max,
+                "matched_lz_n": len(matched_values),
+                "B_minus_matched_lz_max": (
+                    b_value - matched_max
+                    if b_value is not None and matched_max is not None
+                    else None
+                ),
+            }
+        )
+    return response_rows
+
+
+def fmt_float(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.4f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def run_subprocess_with_heartbeat(
+    command: list[str],
+    *,
+    cwd: Path,
+    quiet_children: bool,
+    task_name: str,
+    detail: str,
+) -> None:
+    if quiet_children:
+        with HeartbeatProgress(task_name, interval=5.0, message=detail):
+            run_subprocess(command, cwd=cwd)
+    else:
+        run_subprocess(command, cwd=cwd)
+
+
+def progress_detail(
+    *,
+    completed: int,
+    total: int,
+    started_at: float,
+    latest_band: str,
+    latest_lag_bits: int,
+    latest_status: str,
+) -> str:
+    elapsed = max(0.0, time.perf_counter() - started_at)
+    pct = (completed / total) * 100.0 if total > 0 else 100.0
+    if completed > 0 and completed < total:
+        eta_seconds = (elapsed / completed) * (total - completed)
+        eta_text = format_time(eta_seconds)
+    elif completed >= total:
+        eta_text = "0s"
+    else:
+        eta_text = "-"
+    return (
+        f"{completed}/{total} | {pct:5.1f}% | elapsed={format_time(elapsed)} | "
+        f"ETA ~{eta_text} | latest={latest_band}:{compact_int(latest_lag_bits)} | "
+        f"status={latest_status}"
+    )
+
+
+def render_console_summary(response_rows: list[dict[str, Any]]) -> str:
+    lines = [
+        "Phase 2 N2-11 child-routing lag-response profile",
+        "-" * 112,
+        f"{'band':<12} {'lag':>9} {'B':>8} {'markov1':>8} {'mlz_min':>8} {'mlz_avg':>8} {'mlz_max':>8} {'B-max':>8}",
+    ]
+    for row in response_rows:
+        lines.append(
+            f"{row['band']:<12} {row['lag']:>9} "
+            f"{fmt_float(row.get('B_retention')):>8} "
+            f"{fmt_float(row.get('markov1_retention')):>8} "
+            f"{fmt_float(row.get('matched_lz_min')):>8} "
+            f"{fmt_float(row.get('matched_lz_avg')):>8} "
+            f"{fmt_float(row.get('matched_lz_max')):>8} "
+            f"{fmt_float(row.get('B_minus_matched_lz_max')):>8}"
+        )
+    return "\n".join(lines)
+
+
+def render_report(
+    *,
+    args: argparse.Namespace,
+    run_dir: Path,
+    target_rows: list[dict[str, Any]],
+    response_rows: list[dict[str, Any]],
+) -> str:
+    lines = [
+        "# HSI v2 Phase 2 N2-11 child-routing lag-response profile",
+        "",
+        "This run reuses the audited child-destination routing contract and sweeps explicit candidate lags.",
+        "The goal is to read phase response directly, not to select a single lag by fiat.",
+        "",
+        "## Parameters",
+        "",
+        f"- Stage: `{args.stage}`",
+        f"- Anchor variant: `{args.anchor_variant}`",
+        f"- Candidate variant: `{args.candidate_variant}`",
+        f"- Top patterns: `{args.top_patterns}`",
+        f"- Window count: `{args.window_count}`",
+        f"- Window step bits: `{args.window_step_bits}`",
+        f"- Lags: `{args.lags}`",
+        "",
+        "## Response Summary",
+        "",
+        "| Band | Lag | B retention | markov1 | matched-LZ min | matched-LZ avg | matched-LZ max | B - max(matched-LZ) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in response_rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row["band"]),
+                    str(row["lag"]),
+                    fmt_float(row.get("B_retention")),
+                    fmt_float(row.get("markov1_retention")),
+                    fmt_float(row.get("matched_lz_min")),
+                    fmt_float(row.get("matched_lz_avg")),
+                    fmt_float(row.get("matched_lz_max")),
+                    fmt_float(row.get("B_minus_matched_lz_max")),
+                ]
+            )
+            + " |"
+        )
+    if not response_rows:
+        lines.append("| - | - | - | - | - | - | - | - |")
+
+    lines.extend(
+        [
+            "",
+            "## Targets",
+            "",
+            "| Band | Lag | Status |",
+            "|---|---:|---|",
+        ]
+    )
+    for row in target_rows:
+        lines.append(f"| {row['band']} | {row['lag']} | {row['status']} |")
+
+    lines.extend(
+        [
+            "",
+            "## Files",
+            "",
+            f"- Run directory: `{run_dir}`",
+            "- Summary: `summary.json`",
+            "- Response CSV: `lag_response.csv`",
+            "- Source CSV: `source_response.csv`",
+            "- Targets CSV: `targets.csv`",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run N2-11 child-routing lag-response profiles across bands and lags."
+    )
+    parser.add_argument("--phase1-dir", default="results/hsi_v2/phase1_high_scales")
+    parser.add_argument("--output-dir", default="results/hsi_v2/phase2/child_routing_lag_response")
+    parser.add_argument("--profile", default="lag-response-boundary")
+    parser.add_argument("--stage", choices=["observed", "nulls", "all"], default="all")
+    parser.add_argument("--anchor-variant", default="E")
+    parser.add_argument("--candidate-variant", default="B")
+    parser.add_argument("--iteration", type=int, default=20)
+    parser.add_argument("--segment-bits", type=int, default=1_000_000)
+    parser.add_argument("--num-segments", type=int, default=3)
+    parser.add_argument("--scales", default="8,12,16,20,24,28,32,40,48")
+    parser.add_argument("--phase1-policies", default="prefix,suffix")
+    parser.add_argument("--low-scale", type=int, default=40)
+    parser.add_argument("--high-scale", type=int, default=48)
+    parser.add_argument("--top-patterns", type=int, default=128)
+    parser.add_argument("--pattern-selection", default="bridge-linked")
+    parser.add_argument("--band-starts", default=DEFAULT_BAND_STARTS)
+    parser.add_argument("--window-count", type=int, default=19)
+    parser.add_argument("--window-step-bits", type=int, default=500_000)
+    parser.add_argument("--lags", default=DEFAULT_LAGS)
+    parser.add_argument("--probe-backward-bits", type=int, default=45_000_000)
+    parser.add_argument("--probe-forward-bits", type=int, default=45_000_000)
+    parser.add_argument("--scan-step-bits", type=int, default=500_000)
+    parser.add_argument("--null-models", default="")
+    parser.add_argument("--matched-lz-seeds", default="")
+    parser.add_argument("--max-targets", type=int, default=0)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--quiet-children",
+        action="store_true",
+        help="Keep N2-11 progress visible while silencing delegated child scripts.",
+    )
+    parser.add_argument("--quiet", action="store_true")
+    return parser
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if args.window_count <= 0:
+        raise SystemExit("--window-count must be positive")
+    if args.window_step_bits <= 0:
+        raise SystemExit("--window-step-bits must be positive")
+    if args.top_patterns <= 0:
+        raise SystemExit("--top-patterns must be positive")
+    if args.scan_step_bits <= 0:
+        raise SystemExit("--scan-step-bits must be positive")
+
+
+def build_targets(args: argparse.Namespace) -> list[dict[str, Any]]:
+    band_starts = parse_int_list(args.band_starts, label="--band-starts", allow_zero=True)
+    lag_values = parse_lag_list(args.lags)
+    targets: list[dict[str, Any]] = []
+    for start_bits in band_starts:
+        label = band_label(start_bits, args.window_count, args.window_step_bits)
+        offsets = build_offsets(
+            start_bits=start_bits,
+            count=args.window_count,
+            step_bits=args.window_step_bits,
+        )
+        for lag_bits in lag_values:
+            targets.append(
+                {
+                    "band_start_bits": start_bits,
+                    "band": label,
+                    "offsets": offsets,
+                    "lag_bits": lag_bits,
+                    "lag": compact_int(lag_bits),
+                    "lag_slug": lag_slug(lag_bits),
+                }
+            )
+    if args.max_targets:
+        targets = targets[: args.max_targets]
+    if not targets:
+        raise SystemExit("No lag-response targets were built")
+    return targets
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    validate_args(args)
+
+    project_root = Path(__file__).resolve().parent
+    phase1_dir = resolve_dir(args.phase1_dir, anchor_file=__file__)
+    output_dir = resolve_dir(args.output_dir, anchor_file=__file__)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    targets = build_targets(args)
+    lags = parse_lag_list(args.lags)
+    selection = build_selection(args)
+    if args.anchor_variant == args.candidate_variant:
+        raise SystemExit("--anchor-variant and --candidate-variant must differ")
+    selection["anchor_variant"] = args.anchor_variant
+    selection["candidate_variant"] = args.candidate_variant
+    selection["variants"] = f"{args.anchor_variant},{args.candidate_variant}"
+    selection["variants_list"] = [args.anchor_variant, args.candidate_variant]
+
+    first_band = targets[0]["band"]
+    last_band = targets[-1]["band"]
+    run_slug = (
+        "phase2-child-routing-lag-response"
+        f"__stage-{args.stage}"
+        f"__anchor-{args.anchor_variant}"
+        f"__cand-{args.candidate_variant}"
+        f"__top-{args.top_patterns}"
+        f"__bands-{first_band}-to-{last_band}"
+        f"__lags-{len(lags)}"
+        f"__{timestamp}"
+    )
+    run_dir = output_dir / run_slug
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    phase_print(
+        "Preparing N2-11 child-routing lag-response profile",
+        (
+            f"stage={args.stage} | anchor={args.anchor_variant} | "
+            f"candidate={args.candidate_variant} | targets={len(targets)} | "
+            f"bands={len(set(t['band'] for t in targets))} | lags={len(lags)}"
+        ),
+        quiet=args.quiet,
+    )
+    flush_output()
+
+    target_rows: list[dict[str, Any]] = []
+    source_rows: list[dict[str, Any]] = []
+    commands: list[dict[str, Any]] = []
+    child_quiet = args.quiet or args.quiet_children
+    started_at = time.perf_counter()
+    total_targets = len(targets)
+    completed_targets = 0
+
+    targets_by_band: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    for target in targets:
+        targets_by_band.setdefault(target["band"], []).append(target)
+
+    if args.dry_run:
+        for target in targets:
+            target_rows.append(
+                {
+                    "band": target["band"],
+                    "band_start_bits": target["band_start_bits"],
+                    "lag_bits": target["lag_bits"],
+                    "lag": target["lag"],
+                    "status": "planned",
+                }
+            )
+    else:
+        for band_index, (label, band_targets) in enumerate(targets_by_band.items(), start=1):
+            start_bits = int(band_targets[0]["band_start_bits"])
+            offsets = band_targets[0]["offsets"]
+            band_dir = run_dir / label
+            probe_dir = band_dir / "probe"
+            probe_scan_start = max(0, start_bits - args.probe_backward_bits)
+            probe_scan_stop = start_bits + args.probe_forward_bits
+
+            phase_print(
+                "Band probe",
+                (
+                    f"{band_index}/{len(targets_by_band)} | band={label} | "
+                    f"scan={compact_int(probe_scan_start)}..{compact_int(probe_scan_stop)}"
+                ),
+                quiet=args.quiet,
+            )
+            flush_output()
+            probe_cmd = build_probe_cmd(
+                script_dir=project_root,
+                phase1_dir=phase1_dir,
+                output_dir=probe_dir,
+                selection=selection,
+                top_patterns=args.top_patterns,
+                definition_offsets=offsets,
+                scan_start_bits=probe_scan_start,
+                scan_stop_bits=probe_scan_stop,
+                scan_step_bits=args.scan_step_bits,
+            )
+            append_flag(probe_cmd, "--quiet", child_quiet)
+            commands.append({"stage": "probe", "band": label, "cmd": probe_cmd})
+            run_subprocess_with_heartbeat(
+                probe_cmd,
+                cwd=project_root,
+                quiet_children=child_quiet,
+                task_name=f"N2-11 probe {label}",
+                detail=f"scan={compact_int(probe_scan_start)}..{compact_int(probe_scan_stop)}",
+            )
+            probe_summary_path = latest_child_file(probe_dir, "summary.json")
+            probe_summary = load_json(probe_summary_path)
+            recommended_lag = probe_summary.get("summary", {}).get("recommended_lag_bits")
+
+            for lag_index, target in enumerate(band_targets, start=1):
+                lag_bits = int(target["lag_bits"])
+                target_dir = band_dir / target["lag_slug"]
+                phase_print(
+                    "Lag-response target",
+                    (
+                        f"band {band_index}/{len(targets_by_band)} | "
+                        f"lag {lag_index}/{len(band_targets)} | band={label} | "
+                        f"lag={compact_int(lag_bits)} | "
+                        f"probe_rec={compact_int(int(recommended_lag)) if recommended_lag is not None else '-'}"
+                    ),
+                    quiet=args.quiet,
+                )
+                flush_output()
+
+                lagaware_dir = target_dir / "lagaware"
+                lagaware_cmd = build_lagaware_cmd(
+                    script_dir=project_root,
+                    phase1_dir=phase1_dir,
+                    output_dir=lagaware_dir,
+                    selection=selection,
+                    offsets=offsets,
+                    top_patterns=args.top_patterns,
+                    lag_bits=lag_bits,
+                )
+                append_flag(lagaware_cmd, "--quiet", child_quiet)
+                commands.append({"stage": "lagaware", "band": label, "lag_bits": lag_bits, "cmd": lagaware_cmd})
+                run_subprocess_with_heartbeat(
+                    lagaware_cmd,
+                    cwd=project_root,
+                    quiet_children=child_quiet,
+                    task_name=f"N2-11 lagaware {compact_int(lag_bits)}",
+                    detail=f"band={label}",
+                )
+                lagaware_summary_path = latest_child_file(lagaware_dir, "summary.json")
+
+                revalidation_summary_path = write_synthetic_revalidation_summary(
+                    band_root=target_dir,
+                    selection=selection,
+                    phase1_dir=phase1_dir,
+                    top_patterns=args.top_patterns,
+                    offsets=offsets,
+                    probe_lag_bits=recommended_lag,
+                    selected_lag_bits=lag_bits,
+                    lag_mode="lag-response",
+                    probe_summary_path=probe_summary_path,
+                    lagaware_summary_path=lagaware_summary_path,
+                )
+
+                atlas_dir = target_dir / "atlas"
+                atlas_cmd = [
+                    sys.executable,
+                    str(project_root / "hsi_v2_phase2_parent_shell_atlas.py"),
+                    "--revalidation-run",
+                    str(revalidation_summary_path),
+                    "--output-dir",
+                    str(atlas_dir),
+                ]
+                append_flag(atlas_cmd, "--quiet", child_quiet)
+                commands.append({"stage": "atlas", "band": label, "lag_bits": lag_bits, "cmd": atlas_cmd})
+                run_subprocess_with_heartbeat(
+                    atlas_cmd,
+                    cwd=project_root,
+                    quiet_children=child_quiet,
+                    task_name=f"N2-11 atlas {compact_int(lag_bits)}",
+                    detail=f"band={label}",
+                )
+                atlas_summary_path = latest_child_file(atlas_dir, "summary.json")
+                atlas_dataset_path = atlas_summary_path.with_name("dataset.json")
+                atlas_payload = load_json(atlas_dataset_path)
+                if not atlas_payload.get("atlas_rows"):
+                    target_rows.append(
+                        {
+                            "band": label,
+                            "band_start_bits": start_bits,
+                            "lag_bits": lag_bits,
+                            "lag": compact_int(lag_bits),
+                            "probe_recommended_lag_bits": recommended_lag,
+                            "probe_recommended_lag": (
+                                compact_int(int(recommended_lag))
+                                if recommended_lag is not None
+                                else None
+                            ),
+                            "status": "no-atlas-rows",
+                            "probe_summary_path": str(probe_summary_path),
+                            "lagaware_summary_path": str(lagaware_summary_path),
+                            "atlas_summary_path": str(atlas_summary_path),
+                            "child_summary_path": None,
+                        }
+                    )
+                    completed_targets += 1
+                    phase_print(
+                        "Lag-response progress",
+                        progress_detail(
+                            completed=completed_targets,
+                            total=total_targets,
+                            started_at=started_at,
+                            latest_band=label,
+                            latest_lag_bits=lag_bits,
+                            latest_status="no-atlas-rows",
+                        ),
+                        quiet=args.quiet,
+                    )
+                    flush_output()
+                    continue
+
+                child_dir = target_dir / "child_routing"
+                child_cmd = [
+                    sys.executable,
+                    str(project_root / "hsi_v2_phase2_child_destination_routing.py"),
+                    "--atlas-run",
+                    str(atlas_dataset_path),
+                    "--output-dir",
+                    str(child_dir),
+                ]
+                append_flag(child_cmd, "--quiet", child_quiet)
+                commands.append({"stage": "child_routing", "band": label, "lag_bits": lag_bits, "cmd": child_cmd})
+                run_subprocess_with_heartbeat(
+                    child_cmd,
+                    cwd=project_root,
+                    quiet_children=child_quiet,
+                    task_name=f"N2-11 child-routing {compact_int(lag_bits)}",
+                    detail=f"band={label}",
+                )
+                child_summary_path = latest_child_file(child_dir, "summary.json")
+                child_summary = load_json(child_summary_path)
+
+                target_rows.append(
+                    {
+                        "band": label,
+                        "band_start_bits": start_bits,
+                        "lag_bits": lag_bits,
+                        "lag": compact_int(lag_bits),
+                        "probe_recommended_lag_bits": recommended_lag,
+                        "probe_recommended_lag": (
+                            compact_int(recommended_lag) if recommended_lag is not None else None
+                        ),
+                        "status": "completed",
+                        "probe_summary_path": str(probe_summary_path),
+                        "lagaware_summary_path": str(lagaware_summary_path),
+                        "atlas_summary_path": str(atlas_summary_path),
+                        "child_summary_path": str(child_summary_path),
+                    }
+                )
+
+                for row in child_summary.get("source_summary", []):
+                    enriched = dict(row)
+                    enriched.update(
+                        {
+                            "band": label,
+                            "band_start_bits": start_bits,
+                            "lag_bits": lag_bits,
+                            "lag": compact_int(lag_bits),
+                            "probe_recommended_lag_bits": recommended_lag,
+                        }
+                    )
+                    source_rows.append(enriched)
+
+                completed_targets += 1
+                phase_print(
+                    "Lag-response progress",
+                    progress_detail(
+                        completed=completed_targets,
+                        total=total_targets,
+                        started_at=started_at,
+                        latest_band=label,
+                        latest_lag_bits=lag_bits,
+                        latest_status="completed",
+                    ),
+                    quiet=args.quiet,
+                )
+                flush_output()
+
+    response_rows = aggregate_response(source_rows)
+
+    summary = {
+        "run_id": run_slug,
+        "timestamp_utc": timestamp,
+        "parameters": {
+            "phase1_dir": str(phase1_dir),
+            "output_dir": str(output_dir),
+            "profile": args.profile,
+            "stage": args.stage,
+            "anchor_variant": args.anchor_variant,
+            "candidate_variant": args.candidate_variant,
+            "top_patterns": args.top_patterns,
+            "band_starts": args.band_starts,
+            "window_count": args.window_count,
+            "window_step_bits": args.window_step_bits,
+            "lags": args.lags,
+            "dry_run": args.dry_run,
+        },
+        "targets": target_rows,
+        "lag_response": response_rows,
+        "source_rows": source_rows,
+    }
+
+    manifest = {
+        "script": Path(__file__).name,
+        "run_dir": str(run_dir),
+        "phase1_dir": str(phase1_dir),
+        "commands": commands,
+        "outputs": {
+            "summary": str(run_dir / "summary.json"),
+            "report": str(run_dir / "report.md"),
+            "lag_response_csv": str(run_dir / "lag_response.csv"),
+            "source_response_csv": str(run_dir / "source_response.csv"),
+            "targets_csv": str(run_dir / "targets.csv"),
+        },
+    }
+
+    write_json(run_dir / "summary.json", summary)
+    write_json(run_dir / "manifest.json", manifest)
+    (run_dir / "report.md").write_text(
+        render_report(args=args, run_dir=run_dir, target_rows=target_rows, response_rows=response_rows),
+        encoding="utf-8",
+    )
+
+    write_csv(
+        run_dir / "targets.csv",
+        target_rows,
+        [
+            "band",
+            "band_start_bits",
+            "lag_bits",
+            "lag",
+            "probe_recommended_lag_bits",
+            "probe_recommended_lag",
+            "status",
+            "probe_summary_path",
+            "lagaware_summary_path",
+            "atlas_summary_path",
+            "child_summary_path",
+        ],
+    )
+    write_csv(
+        run_dir / "source_response.csv",
+        source_rows,
+        [
+            "band",
+            "band_start_bits",
+            "lag_bits",
+            "lag",
+            "probe_recommended_lag_bits",
+            "variant",
+            "source_label",
+            "child_destination_retention_pooled",
+            "window_synchronous_child_destination_retention_pooled",
+            "monitored_candidate_reroute_share_pooled",
+            "candidate_on_anchor_child_share_pooled",
+            "top_child_full_match_mass_fraction",
+            "anchor_child_deficit_mass_sum",
+            "dominant_routing_class",
+        ],
+    )
+    write_csv(
+        run_dir / "lag_response.csv",
+        response_rows,
+        [
+            "band",
+            "lag_bits",
+            "lag",
+            "B_retention",
+            "E_retention",
+            "markov1_retention",
+            "matched_lz_min",
+            "matched_lz_avg",
+            "matched_lz_max",
+            "matched_lz_n",
+            "B_minus_matched_lz_max",
+        ],
+    )
+
+    if response_rows:
+        print(render_console_summary(response_rows))
+    else:
+        status_counts: dict[str, int] = {}
+        for row in target_rows:
+            status = str(row.get("status", "unknown"))
+            status_counts[status] = status_counts.get(status, 0) + 1
+        status_text = ", ".join(
+            f"{status}={count}" for status, count in sorted(status_counts.items())
+        )
+        mode_text = "Dry run planned" if args.dry_run else "No response rows produced for"
+        print(
+            "Phase 2 N2-11 child-routing lag-response profile\n"
+            + "-" * 72
+            + f"\n{mode_text} {len(target_rows)} targets."
+            + (f" Status: {status_text}." if status_text else "")
+        )
+
+    print(f"\nSaved summary to: {run_dir / 'summary.json'}")
+    print(f"Saved report to: {run_dir / 'report.md'}")
+    print(f"Saved lag response CSV to: {run_dir / 'lag_response.csv'}")
+    print(f"Saved source response CSV to: {run_dir / 'source_response.csv'}")
+    print(f"Saved manifest to: {run_dir / 'manifest.json'}")
+    flush_output()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
