@@ -13,7 +13,7 @@ It complements, rather than replaces:
 - `Documentation/HSI_v2_Phase2_Visual_Readouts_Plan.md` for planned Phase 2 figures after sensitivity checks
 - `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md` for the frozen Phase 2 paper-support recovery path
 - `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md` for the frozen Phase 3 internal diagnostic recovery path
-- `../docs/HSI_v2_Decision_Log.md` for methodological defaults and decision history
+- `HSI_v2_Decision_Log.md` for methodological defaults and decision history
 
 ---
 
@@ -385,7 +385,7 @@ Read:
 
 Check:
 
-- `../docs/HSI_v2_Decision_Log.md` for accepted defaults and methodological decisions
+- `HSI_v2_Decision_Log.md` for accepted defaults and methodological decisions
 - `Documentation/HSI_v2_Phase1_Live_Findings.md` for current interpretation
 - `Documentation/HSI_v2_Phase2_Live_Findings.md` for the current strict Gate 2 readout
 - `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md` for the frozen Phase 3 internal diagnostic stack
@@ -482,7 +482,7 @@ For experimental recovery:
 3. `Documentation/HSI_v2_Phase1_Live_Findings.md`
 4. `Documentation/HSI_v2_Phase2_Live_Findings.md`
 5. `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
-6. `../docs/HSI_v2_Decision_Log.md`
+6. `HSI_v2_Decision_Log.md`
 
 For paper writing:
 
@@ -492,7 +492,7 @@ For paper writing:
 4. latest `phase1-coherence__...md`
 5. latest `phase1-transport__...md`
 6. `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
-7. `../docs/HSI_v2_Decision_Log.md`
+7. `HSI_v2_Decision_Log.md`
 
 For external review:
 
@@ -501,7 +501,7 @@ For external review:
 3. `Documentation/HSI_v2_Phase1_Live_Findings.md`
 4. `Documentation/HSI_v2_Phase2_Live_Findings.md`
 5. `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
-6. `../docs/HSI_v2_Decision_Log.md`
+6. `HSI_v2_Decision_Log.md`
 
 For visual readout planning:
 

@@ -16,7 +16,7 @@ This executive synthesis documents the legacy exploratory HSI/ISH result stack. 
 - `Documentation/HSI_v2_Report_and_Data_Guide.md`
 - `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md`
 - `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
-- `../docs/HSI_v2_Decision_Log.md`
+- `HSI_v2_Decision_Log.md`
 
 Do not read the older v1 metrics below as the evidentiary basis for the current HSI v2 paper. They remain useful historical context.
 

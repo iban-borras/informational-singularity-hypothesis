@@ -10,7 +10,7 @@ This document freezes the current Phase 2 recovery path after the paper integrat
 
 It is not the scientific source of truth. The canonical decisions remain in:
 
-- `../docs/HSI_v2_Decision_Log.md`
+- `HSI_v2_Decision_Log.md`
 - `../docs/HSI_v2_Phase2_Editorial_Architecture_Proposal.md`
 - `Documentation/HSI_v2_Phase2_Live_Findings.md`
 
@@ -77,7 +77,7 @@ Each serious run must keep writing `summary.json`, `report.md`, `manifest.json`,
 
 For a clean Phase 2 audit, read in this order:
 
-1. `docs/HSI_v2_Decision_Log.md` entries D-0040 through D-0064.
+1. `HSI_v2_Decision_Log.md` entries D-0040 through D-0064.
 2. `hsi_agents_project/Documentation/HSI_v2_Phase2_Live_Findings.md`.
 3. This freeze document.
 4. The strict `null_pressure` artifact family listed above.
@@ -90,7 +90,7 @@ For a clean Phase 2 audit, read in this order:
 - Do not claim a transport law, geometry, spectral geometry, wave law, or Gate 2 resolution from Phase 2 artifacts.
 - Do not use timestamped figure paths in paper-facing LaTeX when a stable alias exists.
 - Do not regenerate expensive artifacts unless the manifest or Decision Log says a contract changed.
-- Do not hide a changed default in code only; record it in `docs/HSI_v2_Decision_Log.md`.
+- Do not hide a changed default in code only; record it in `HSI_v2_Decision_Log.md`.
 
 ## Current Transition
 

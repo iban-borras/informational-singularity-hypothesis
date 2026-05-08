@@ -20,7 +20,7 @@ Its role is narrower:
 
 Canonical methodological decisions still live in:
 
-- `../docs/HSI_v2_Decision_Log.md`
+- `HSI_v2_Decision_Log.md`
 
 ---
 
@@ -1002,19 +1002,19 @@ If you want the current scientific state quickly, read:
 
 1. `Documentation/HSI_v2_Phase1_Live_Findings.md`
 2. `Documentation/HSI_v2_Phase2_Live_Findings.md`
-3. `../docs/HSI_v2_Decision_Log.md`
+3. `HSI_v2_Decision_Log.md`
 
 If you want the current counterfactual result specifically, read:
 
 1. the strict `N2-02` report under `results/hsi_v2/phase2/transport_defect_counterfactual/...`
 2. the matching `summary.json`
 3. `Documentation/HSI_v2_Phase2_Live_Findings.md`
-4. `../docs/HSI_v2_Decision_Log.md`
+4. `HSI_v2_Decision_Log.md`
 
 If you want to know what still counts as the best Gate 2 candidate, read:
 
 1. the strict `null_pressure` report under `results/hsi_v2/phase2/window_sweep_deep/null_pressure_strict/...`
-2. D-0037 in `../docs/HSI_v2_Decision_Log.md`
+2. D-0037 in `HSI_v2_Decision_Log.md`
 3. this live-findings document
 
 If you want the current survival-line reading specifically, read:
@@ -1022,34 +1022,34 @@ If you want the current survival-line reading specifically, read:
 1. the canonical parent-shell revalidation report under `results/hsi_v2/phase2/parent_survival_revalidation/...`
 2. the nested shell-lag probe summary
 3. the nested lag-aware band summary
-4. D-0047 in `../docs/HSI_v2_Decision_Log.md`
+4. D-0047 in `HSI_v2_Decision_Log.md`
 
 If you want the current parent-density reading specifically, read:
 
 1. the corrected parent-density residual report under `results/hsi_v2/phase2/parent_density_residual_corrected/...`
 2. the matching `summary.json`
-3. D-0048 in `../docs/HSI_v2_Decision_Log.md`
+3. D-0048 in `HSI_v2_Decision_Log.md`
 
 If you want the current shell-atlas and sensitivity reading specifically, read:
 
 1. the parent-shell atlas sensitivity report under `results/hsi_v2/phase2/parent_shell_atlas_sensitivity/...`
 2. `concentration_sensitivity.csv`
 3. `structure_sensitivity.csv`
-4. D-0049 and D-0050 in `../docs/HSI_v2_Decision_Log.md`
+4. D-0049 and D-0050 in `HSI_v2_Decision_Log.md`
 
 If you want the current same-parent jitter-provenance reading specifically, read:
 
 1. the N2-07b sensitivity report under `results/hsi_v2/phase2/jitter_provenance_sensitivity/...`
 2. `source_envelope.csv`
 3. the canonical N2-07 report under `results/hsi_v2/phase2/jitter_provenance/...`
-4. D-0052 in `../docs/HSI_v2_Decision_Log.md`
+4. D-0052 in `HSI_v2_Decision_Log.md`
 
 If you want the current child-destination routing reading specifically, read:
 
 1. the N2-08 report under `results/hsi_v2/phase2/child_destination_routing/...20260424T231132/`
 2. `source_routing.csv`
 3. `pattern_routing.csv`
-4. D-0053 in `../docs/HSI_v2_Decision_Log.md`
+4. D-0053 in `HSI_v2_Decision_Log.md`
 
 If you want the current child-routing persistence reading specifically, read:
 
@@ -1072,7 +1072,7 @@ If you want the current child-routing persistence reading specifically, read:
 17. the N2-12 top-k sensitivity runs under `results/hsi_v2/phase2/phase_channel_width_topk_sensitivity/...20260429T102045/` and `results/hsi_v2/phase2/phase_channel_width_topk_sensitivity_frontier_top96/...20260430T065831/`
 18. the N2-13a routing-signature readout under `results/hsi_v2/phase2/off_universe_mass_readout/...20260430T123656/`
 19. the N2-14 transition-graph readout under `results/hsi_v2/phase2/phase_channel_transition_graph/...20260430T140724/`
-20. D-0054, D-0055, D-0056, D-0057, D-0058, D-0059, D-0060, D-0061, and D-0062 in `../docs/HSI_v2_Decision_Log.md`
+20. D-0054, D-0055, D-0056, D-0057, D-0058, D-0059, D-0060, D-0061, and D-0062 in `HSI_v2_Decision_Log.md`
 
 ---
 

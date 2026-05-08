@@ -102,7 +102,7 @@ To recover the current HSI v2 state quickly, start here:
 - `Documentation/HSI_v2_Phase2_Live_Findings.md`
 - `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md`
 - `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
-- `../docs/HSI_v2_Decision_Log.md`
+- `Documentation/HSI_v2_Decision_Log.md`
 
 ## Project Structure
 

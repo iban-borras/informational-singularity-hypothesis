@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document is the repo-facing recovery note for the frozen Phase 3 internal diagnostic stack. It does not replace the canonical scientific record in `../docs/HSI_v2_Decision_Log.md`; it gives an external reviewer or future agent the shortest safe path from code to the Phase 3 artifacts used by the current manuscript cycle.
+This document is the repo-facing recovery note for the frozen Phase 3 internal diagnostic stack. It does not replace the canonical scientific record in `HSI_v2_Decision_Log.md`; it gives an external reviewer or future agent the shortest safe path from code to the Phase 3 artifacts used by the current manuscript cycle.
 
 Phase 3 is frozen for the current manuscript cycle by D-0078. The freeze means:
 
@@ -77,7 +77,7 @@ The robustness matrix artifact also emits `robustness_matrix.csv` and `case_summ
 
 Canonical decisions and audits live outside this repo-facing folder:
 
-- `../docs/HSI_v2_Decision_Log.md`, D-0066 through D-0079;
+- `HSI_v2_Decision_Log.md`, D-0066 through D-0079;
 - `../docs/HSI-audit-Phase3-N3-07.md`;
 - `../docs/HSI-audit-Phase3-N3-07-Rerun.md`;
 - `../docs/HSI-audit-Phase-Matched-LZ-Null.md`;
