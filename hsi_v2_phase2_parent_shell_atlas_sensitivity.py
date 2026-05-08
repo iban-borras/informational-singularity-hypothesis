@@ -28,6 +28,7 @@ from hsi_v2_phase2_parent_survival_revalidation import (
 from hsi_v2_phase2_transport_defect_strict import parse_int_list, phase_print
 from v2.common.cli import resolve_dir
 from v2.common.naming import compact_int
+from v2.phase2.null_pressure import PHASE2_SEEDED_NULLS, discover_phase1_runs_recursive
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -120,11 +121,29 @@ def main() -> int:
     )
     flush_output()
 
+    phase1_input_rows = ensure_required_phase1_inputs(
+        script_dir=script_dir,
+        phase1_dir=phase1_dir,
+        selection=selection,
+        quiet=args.quiet,
+    )
+
     result_rows: list[dict] = []
     structure_rows: list[dict] = []
     subtype_rows: list[dict] = []
     probe_rows: list[dict] = []
-    commands: list[dict] = []
+    commands: list[dict] = [
+        {
+            "stage": "phase1-input",
+            "variant": row["variant"],
+            "source_kind": row["source_kind"],
+            "null_model": row.get("null_model"),
+            "null_seed": row.get("null_seed"),
+            "action": row["action"],
+            "command": row.get("command"),
+        }
+        for row in phase1_input_rows
+    ]
 
     for top_patterns in top_values:
         top_root = run_dir / f"top-{top_patterns}"
@@ -271,6 +290,7 @@ def main() -> int:
                 int(item) for item in selection["matched_lz_seeds"].split(",") if item.strip()
             ],
         },
+        "phase1_input_recovery": phase1_input_rows,
         "probe_summary": probe_rows,
         "structure_sensitivity": structure_rows,
         "concentration_sensitivity": result_rows,
@@ -327,9 +347,7 @@ def build_selection(args) -> dict:
     if selection["stage"] == "observed":
         selection["null_models"] = ""
         selection["matched_lz_seeds"] = ""
-    elif "matched-lz" not in [
-        item.strip() for item in selection["null_models"].split(",") if item.strip()
-    ]:
+    elif not selection_uses_seeded_nulls(selection):
         selection["matched_lz_seeds"] = ""
 
     variants_list = [item.strip() for item in selection["variants"].split(",") if item.strip()]
@@ -340,6 +358,265 @@ def build_selection(args) -> dict:
         variant for variant in variants_list if variant != selection["anchor_variant"]
     )
     return selection
+
+
+def ensure_required_phase1_inputs(
+    *,
+    script_dir: Path,
+    phase1_dir: Path,
+    selection: dict,
+    quiet: bool,
+) -> list[dict]:
+    runs = discover_phase1_runs_recursive(phase1_dir)
+    recovery_rows: list[dict] = []
+
+    for variant in selection["variants_list"]:
+        if phase1_run_exists(runs, selection=selection, variant=variant, source_kind="observed"):
+            recovery_rows.append(
+                {
+                    "variant": variant,
+                    "source_kind": "observed",
+                    "action": "present",
+                }
+            )
+            continue
+        command = build_phase1_run_cmd(
+            script_dir=script_dir,
+            phase1_dir=phase1_dir,
+            selection=selection,
+            variant=variant,
+            source_kind="observed",
+        )
+        phase_print(
+            "Phase 0: generating missing Phase 1 observed tower",
+            f"variant={variant}",
+            quiet=quiet,
+        )
+        flush_output()
+        run_subprocess(command, cwd=script_dir)
+        recovery_rows.append(
+            {
+                "variant": variant,
+                "source_kind": "observed",
+                "action": "generated",
+                "command": command,
+            }
+        )
+
+    if selection["stage"] not in {"nulls", "all"}:
+        return recovery_rows
+
+    null_models = parse_csv_tokens(selection["null_models"])
+    candidate_variant = selection["candidate_variant"]
+    if "markov1" in null_models:
+        seed = 17
+        if phase1_run_exists(
+            runs,
+            selection=selection,
+            variant=candidate_variant,
+            source_kind="null_surrogate",
+            null_model="markov1",
+            null_seed=seed,
+        ):
+            recovery_rows.append(
+                {
+                    "variant": candidate_variant,
+                    "source_kind": "null_surrogate",
+                    "null_model": "markov1",
+                    "null_seed": seed,
+                    "action": "present",
+                }
+            )
+        else:
+            command = build_phase1_run_cmd(
+                script_dir=script_dir,
+                phase1_dir=phase1_dir,
+                selection=selection,
+                variant=candidate_variant,
+                source_kind="null_surrogate",
+                null_model="markov1",
+                null_seed=seed,
+            )
+            phase_print(
+                "Phase 0: generating missing Phase 1 null tower",
+                f"variant={candidate_variant} | null=markov1 | seed={seed}",
+                quiet=quiet,
+            )
+            flush_output()
+            run_subprocess(command, cwd=script_dir)
+            recovery_rows.append(
+                {
+                    "variant": candidate_variant,
+                    "source_kind": "null_surrogate",
+                    "null_model": "markov1",
+                    "null_seed": seed,
+                    "action": "generated",
+                    "command": command,
+                }
+            )
+
+    for null_model in [model for model in null_models if model in PHASE2_SEEDED_NULLS]:
+        seeds = parse_seed_csv(selection["matched_lz_seeds"])
+        for seed in seeds:
+            if phase1_run_exists(
+                runs,
+                selection=selection,
+                variant=candidate_variant,
+                source_kind="null_surrogate",
+                null_model=null_model,
+                null_seed=seed,
+            ):
+                recovery_rows.append(
+                    {
+                        "variant": candidate_variant,
+                        "source_kind": "null_surrogate",
+                        "null_model": null_model,
+                        "null_seed": seed,
+                        "action": "present",
+                    }
+                )
+                continue
+            command = build_phase1_run_cmd(
+                script_dir=script_dir,
+                phase1_dir=phase1_dir,
+                selection=selection,
+                variant=candidate_variant,
+                source_kind="null_surrogate",
+                null_model=null_model,
+                null_seed=seed,
+            )
+            phase_print(
+                "Phase 0: generating missing Phase 1 null tower",
+                f"variant={candidate_variant} | null={null_model} | seed={seed}",
+                quiet=quiet,
+            )
+            flush_output()
+            run_subprocess(command, cwd=script_dir)
+            recovery_rows.append(
+                    {
+                        "variant": candidate_variant,
+                        "source_kind": "null_surrogate",
+                        "null_model": null_model,
+                        "null_seed": seed,
+                        "action": "generated",
+                        "command": command,
+                }
+            )
+    return recovery_rows
+
+
+def phase1_run_exists(
+    runs: list[dict],
+    *,
+    selection: dict,
+    variant: str,
+    source_kind: str,
+    null_model: str | None = None,
+    null_seed: int | None = None,
+) -> bool:
+    for run in runs:
+        config = run["dataset"].get("config", {})
+        if str(config.get("sequence_kind", "observed")) != source_kind:
+            continue
+        if source_kind == "observed":
+            run_variant = str(config.get("variant") or config.get("source_variant") or "").upper()
+        else:
+            run_variant = str(config.get("source_variant") or "").upper()
+        if run_variant != variant.upper():
+            continue
+        if source_kind == "null_surrogate":
+            if normalize_null_name(config.get("null_model")) != normalize_null_name(null_model):
+                continue
+            if int_or_default(config.get("null_seed")) != int(null_seed):
+                continue
+        if int_or_default(config.get("iteration")) != int(selection["iteration"]):
+            continue
+        if int_or_default(config.get("segment_bits")) != int(selection["segment_bits"]):
+            continue
+        if int_or_default(config.get("num_segments")) != int(selection["num_segments"]):
+            continue
+        if list(config.get("scales", [])) != parse_seed_scales(selection["scales"]):
+            continue
+        if list(config.get("policies", [])) != parse_csv_tokens(selection["phase1_policies"]):
+            continue
+        return True
+    return False
+
+
+def build_phase1_run_cmd(
+    *,
+    script_dir: Path,
+    phase1_dir: Path,
+    selection: dict,
+    variant: str,
+    source_kind: str,
+    null_model: str | None = None,
+    null_seed: int | None = None,
+) -> list[str]:
+    if source_kind == "observed":
+        output_dir = phase1_dir / "auto_observed" / variant
+    else:
+        output_dir = phase1_dir / "auto_nulls" / str(null_model) / f"seed-{null_seed}" / variant
+    command = [
+        sys.executable,
+        str(script_dir / "hsi_v2_phase1_run.py"),
+        "--variant",
+        variant,
+        "--iteration",
+        str(selection["iteration"]),
+        "--segment-bits",
+        str(selection["segment_bits"]),
+        "--num-segments",
+        str(selection["num_segments"]),
+        "--scales",
+        selection["scales"],
+        "--policies",
+        selection["phase1_policies"],
+        "--output-dir",
+        str(output_dir),
+    ]
+    if source_kind == "null_surrogate":
+        command.extend(["--null-model", str(null_model), "--null-seed", str(null_seed)])
+    return command
+
+
+def parse_csv_tokens(raw) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple, set)):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+def parse_seed_csv(raw: str) -> list[int]:
+    values: list[int] = []
+    seen: set[int] = set()
+    for item in parse_csv_tokens(raw):
+        value = int(item)
+        if value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return values
+
+
+def parse_seed_scales(raw: str) -> list[int]:
+    return [int(item) for item in parse_csv_tokens(raw)]
+
+
+def selection_uses_seeded_nulls(selection: dict) -> bool:
+    return any(model in PHASE2_SEEDED_NULLS for model in parse_csv_tokens(selection.get("null_models", "")))
+
+
+def int_or_default(value, default: int = -1) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_null_name(value) -> str:
+    return str(value or "").strip().lower().replace("_", "-")
 
 
 def build_probe_cmd(
@@ -571,14 +848,29 @@ def render_report(payload: dict) -> str:
         f"- Candidate variant: {selection['candidate_variant']}",
         f"- Top-k values: {', '.join(str(value) for value in selection['top_patterns_list'])}",
         f"- Lag values: {', '.join(str(value) for value in selection['lag_bits_list'])}",
-        f"- Null models: {', '.join(selection['null_models']) or '-'}",
-        f"- Matched-LZ seeds: {', '.join(str(value) for value in selection['matched_lz_seeds']) or '-'}",
+        f"- Null models: {', '.join(parse_csv_tokens(selection['null_models'])) or '-'}",
+        f"- Matched-LZ seeds: {', '.join(str(value) for value in parse_seed_csv(selection['matched_lz_seeds'])) or '-'}",
         "",
-        "## Lag Probe Summary",
+        "## Phase 1 Input Recovery",
         "",
-        "| Top-k | Probe recommended lag | Probe summary |",
-        "| ---: | ---: | --- |",
+        "| Variant | Source kind | Null | Seed | Action |",
+        "| --- | --- | --- | ---: | --- |",
     ]
+    for row in payload.get("phase1_input_recovery", []):
+        lines.append(
+            f"| {row['variant']} | {row['source_kind']} | "
+            f"{row.get('null_model') or '-'} | {row.get('null_seed') or '-'} | "
+            f"{row['action']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Lag Probe Summary",
+            "",
+            "| Top-k | Probe recommended lag | Probe summary |",
+            "| ---: | ---: | --- |",
+        ]
+    )
     for row in payload["probe_summary"]:
         lines.append(
             f"| {row['top_patterns']} | {row['recommended_lag_bits']} | "

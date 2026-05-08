@@ -1,7 +1,7 @@
 # HSI Level 0 — Variant Degradation Models
 
 **Date:** 2025-12-13
-**Status:** 7 active variants (B, D, E, F, G, H, I)
+**Status:** 7 active HSI variants (B, D, E, F, G, H, I) + 1 anti-canonical (N)
 
 ## Update: Algorithm Corrections & Variant I
 
@@ -14,7 +14,7 @@
 - **Variant A** — Incompatible with stratified order principle (fundamental to HSI)
 - **Variant C** — Incompatible with micro-state reality principle (ontological commitment of HSI)
 
-**Active variants:** B, D, E, F, G, H, I (all scientifically aligned with the HSI paradigm)
+**Active variants:** B, D, E, F, G, H, I (all scientifically aligned with the HSI paradigm). **Anti-canonical exploration:** N (deliberate violation of P2; documented for completeness).
 
 ---
 
@@ -305,6 +305,18 @@ All surviving variants are **scientifically compatible** with the core principle
 
 ---
 
+## Variant N — Absolute as agent (anti-canonical exploration)
+
+**Status:** Implemented and explored as a deliberate violation of P2 (Absolute as residue, not agent). Documented for completeness; not part of the canonical HSI variant family.
+
+**Goal:** Test what happens when the Absolute is positioned at the *beginning* of the decay frame instead of at the end: `Dα = 1(Accα)` instead of `Dα = (Accα)1`.
+
+**Result:** Variant N produces the exact binary complement of the Fibonacci word (4180 bits, 100% match). It is a deterministic crystal: regular and closed, but ontologically trivial. The Absolute as agent does not generate complexity; it predetermines it.
+
+**Why it is documented:** The discovery that violating P2 in the simplest possible way recovers Fibonacci — the same mathematical object that hides inside the noise of canonical Variant B — is itself a non-trivial scientific finding. See `Paper_Latex/main_v2_cat.tex` §4.2 ("Variant N: l'Absolut com a agent") and the Substack article `Articles_i_publicacions/HSI_Del_Vacio_al_Codigo_Substack.md`.
+
+---
+
 ## Control Variants (A, J, K, L, M) — Implemented Dec 2025
 
 These variants serve as **null/positive controls** for validating the φ-detection methodology.
@@ -345,16 +357,22 @@ python level1_deep_analysis.py --variants A,B,M -i 15 --analysis lz
 
 ---
 
-## Future candidates (N–Z, not implemented yet)
+## Future candidates (O–Z, not implemented yet)
 
 These are design sketches for potential future variants:
-- N — Windowed finalize: global simplify applied only to a sliding window
 - O — Multi‑Absolute frame: `Dα = (Accα)11` to test double‑encapsulation
 - … (reserve P–Z for additional controlled decay models)
+
+Note: the earlier "N — Windowed finalize" placeholder has been removed because the identifier N is now occupied by the implemented anti-canonical variant (Absolute as agent); future windowed-finalize designs should adopt a different identifier.
 
 ---
 
 ## Change log (relevant to this spec)
+
+### 2026-05-04
+- **DOCUMENTED Variant N** as anti-canonical exploration: the simplest possible derivation from the No-Res ↔ No-Res-Absolut oscillation, with the Absolute positioned as agent (`1(Acc)`) instead of residue. Implementation explored on user request after the v1 paper draft; results integrated into Paper v2 §4.2.
+- The earlier "Variant N — Windowed finalize" placeholder under Future candidates is removed; future windowed-finalize designs should adopt a different identifier.
+- Cross-reference for N marked as `[implementation path: TBD by code cleanup pre-Phase 4]`; to be completed during the experimental code cleanup that precedes Phase 4.
 
 ### 2025-12-13
 - **ADDED Variant I:** Inverse of E (10→0 first, then 01→0) for pass-order asymmetry testing
@@ -382,6 +400,9 @@ These are design sketches for potential future variants:
 - **G:** `_collapse_inside_parentheses_local` (no final global)
 - **H:** `_collapse_inside_parentheses_one_local` + per-tick `_collapse_global_ignore_parentheses`
 - **I:** Two-phase: `_simplify_variant_i_phase1` (10→0), then `_simplify_variant_i_phase2` (01→0)
+
+**Anti-canonical exploration:**
+- **N:** [implementation path: TBD by code cleanup pre-Phase 4]
 
 **Eliminated variants:**
 - ~~**A:**~~ `_collapse_global_ignore_parentheses`

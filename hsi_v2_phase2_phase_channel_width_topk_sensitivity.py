@@ -52,8 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--window-count", type=int, default=19)
     parser.add_argument("--window-step-bits", type=int, default=500_000)
     parser.add_argument("--lags", default=DEFAULT_LAGS)
+    parser.add_argument("--null-models", default="")
+    parser.add_argument("--matched-lz-seeds", default="")
     parser.add_argument("--b-threshold", type=float, default=0.90)
     parser.add_argument("--margin-threshold", type=float, default=0.30)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel lag targets per band in the delegated N2-11 lag-response run.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument(
@@ -180,8 +188,11 @@ def main(argv: list[str] | None = None) -> int:
             "window_count": args.window_count,
             "window_step_bits": args.window_step_bits,
             "lags": args.lags,
+            "null_models": args.null_models,
+            "matched_lz_seeds": args.matched_lz_seeds,
             "b_threshold": args.b_threshold,
             "margin_threshold": args.margin_threshold,
+            "workers": args.workers,
             "dry_run": args.dry_run,
         },
         "run_paths": {str(top): str(path) for top, path in sorted(run_paths.items())},
@@ -232,6 +243,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--window-step-bits must be positive")
     if args.reference_top <= 0:
         raise SystemExit("--reference-top must be positive")
+    if args.workers <= 0:
+        raise SystemExit("--workers must be positive")
 
 
 def resolve_reference_run(args: argparse.Namespace) -> Path:
@@ -280,6 +293,11 @@ def build_lag_response_command(
         str(args.window_step_bits),
         "--lags=" + args.lags,
     ]
+    if args.null_models:
+        command.extend(["--null-models", args.null_models])
+    if args.matched_lz_seeds:
+        command.extend(["--matched-lz-seeds", args.matched_lz_seeds])
+    command.extend(["--workers", str(args.workers)])
     append_flag(command, "--dry-run", args.dry_run)
     append_flag(command, "--quiet-children", not args.verbose_children)
     append_flag(command, "--quiet", args.quiet)
@@ -290,6 +308,7 @@ def load_response_rows(*, top: int, run_dir: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with (run_dir / "lag_response.csv").open("r", encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
+            null_family, null_n, null_max, margin = selected_seeded_lz_null(row)
             item = {
                 "top_patterns": top,
                 "band": row["band"],
@@ -298,11 +317,38 @@ def load_response_rows(*, top: int, run_dir: Path) -> list[dict[str, Any]]:
                 "channel": "negative" if int(row["lag_bits"]) < 0 else "positive",
                 "B_retention": to_float(row["B_retention"]),
                 "markov1_retention": to_float(row["markov1_retention"]),
-                "matched_lz_max": to_float(row["matched_lz_max"]),
-                "B_minus_matched_lz_max": to_float(row["B_minus_matched_lz_max"]),
+                "null_family": null_family,
+                "null_family_n": null_n,
+                "matched_lz_max": null_max,
+                "B_minus_matched_lz_max": margin,
             }
             rows.append(item)
     return sorted(rows, key=lambda row: (row["top_patterns"], band_start(row["band"]), row["lag_bits"]))
+
+
+def selected_seeded_lz_null(row: dict[str, str]) -> tuple[str, int, float | None, float | None]:
+    """Map the active seeded LZ-family null into the legacy N2-12b fields.
+
+    Downstream N2-13/N2-14 contracts read ``matched_lz_max`` as the current
+    LZ-family null envelope.  Preserve that public shape while allowing
+    phase-matched-LZ runs to flow through the same audited readouts.
+    """
+    phase_n = int(to_float(row.get("phase_matched_lz_n", "")) or 0)
+    phase_max = to_float(row.get("phase_matched_lz_max", ""))
+    if phase_n > 0 and phase_max is not None:
+        return (
+            "phase_matched_lz",
+            phase_n,
+            phase_max,
+            to_float(row.get("B_minus_phase_matched_lz_max", "")),
+        )
+    matched_n = int(to_float(row.get("matched_lz_n", "")) or 0)
+    return (
+        "matched_lz",
+        matched_n,
+        to_float(row.get("matched_lz_max", "")),
+        to_float(row.get("B_minus_matched_lz_max", "")),
+    )
 
 
 def build_envelopes(
@@ -599,6 +645,8 @@ RESPONSE_FIELDS = [
     "channel",
     "B_retention",
     "markov1_retention",
+    "null_family",
+    "null_family_n",
     "matched_lz_max",
     "B_minus_matched_lz_max",
 ]

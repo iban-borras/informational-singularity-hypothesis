@@ -12,6 +12,10 @@ from v2.phase1.report import (
 )
 
 
+PHASE2_SEEDED_NULLS = {"matched-lz", "phase-matched-lz", "block-entropy"}
+PHASE2_SUPPORTED_NULLS = {"markov1", *PHASE2_SEEDED_NULLS}
+
+
 def discover_phase1_runs_recursive(phase1_dir: Path) -> list[dict]:
     runs = []
     for dataset_path in sorted(phase1_dir.rglob("dataset.json")):
@@ -68,7 +72,7 @@ def parse_null_models(raw: str) -> list[str]:
         item = _normalize_null_model_name(token)
         if not item:
             continue
-        if item not in {"markov1", "matched-lz"}:
+        if item not in PHASE2_SUPPORTED_NULLS:
             raise ValueError(f"Unsupported null model {token!r}.")
         if item in seen:
             continue
@@ -175,14 +179,14 @@ def select_null_pressure_runs(
             null_specs.append(_build_null_spec(latest))
             continue
 
-        if model == "matched-lz":
+        if model in PHASE2_SEEDED_NULLS:
             candidates = [
                 run
                 for run in matching_nulls
-                if _normalize_null_model_name(run["dataset"]["config"].get("null_model")) == "matched-lz"
+                if _normalize_null_model_name(run["dataset"]["config"].get("null_model")) == model
             ]
             if not candidates:
-                raise ValueError("No matched-lz null runs matched the requested selection.")
+                raise ValueError(f"No {model} null runs matched the requested selection.")
 
             latest_by_seed: dict[int, dict] = {}
             for run in candidates:
@@ -195,7 +199,8 @@ def select_null_pressure_runs(
             missing = [seed for seed in selected_seeds if seed not in latest_by_seed]
             if missing:
                 raise ValueError(
-                    "Missing matched-lz runs for seeds: " + ", ".join(str(seed) for seed in missing)
+                    f"Missing {model} runs for seeds: "
+                    + ", ".join(str(seed) for seed in missing)
                 )
             for seed in selected_seeds:
                 null_specs.append(_build_null_spec(latest_by_seed[seed]))
@@ -431,6 +436,14 @@ def _normalize_null_model_name(raw: object) -> str:
     item = str(raw).strip().lower().replace("_", "-")
     if item == "markov-1":
         return "markov1"
+    if item in {
+        "blockentropy",
+        "block-entropy-shuffle",
+        "block-shuffled-entropy",
+        "entropy-block",
+        "entropy-matched-block",
+    }:
+        return "block-entropy"
     return item
 
 
@@ -458,4 +471,8 @@ def _null_model_sort_key(null_model: str) -> tuple[int, str]:
         return (0, null_model)
     if null_model == "matched-lz":
         return (1, null_model)
+    if null_model == "phase-matched-lz":
+        return (2, null_model)
+    if null_model == "block-entropy":
+        return (3, null_model)
     return (9, null_model)

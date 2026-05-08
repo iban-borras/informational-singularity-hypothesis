@@ -9,6 +9,19 @@
 
 ---
 
+## HSI v2 Note
+
+This executive synthesis documents the legacy exploratory HSI/ISH result stack. The current paper-support stack for HSI v2 is stricter and should be recovered from:
+
+- `Documentation/HSI_v2_Report_and_Data_Guide.md`
+- `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md`
+- `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
+- `../docs/HSI_v2_Decision_Log.md`
+
+Do not read the older v1 metrics below as the evidentiary basis for the current HSI v2 paper. They remain useful historical context.
+
+---
+
 ## 1. Overview
 
 This document presents the complete experimental results of the **Informational Singularity Hypothesis (ISH)** computational validation. ISH proposes that Nothingness, being ontologically unique and therefore total, generates an irreducible self-referential contradiction that constitutes the first informational distinction — the Informational Singularity.

@@ -204,7 +204,13 @@ def main() -> int:
             f"model={args.null_model} | seed={args.null_seed} | source_variant={variant_label}",
             quiet=args.quiet,
         )
-        bits, null_metadata = generate_control(source_bits, args.null_model, args.null_seed)
+        bits, null_metadata = generate_control(
+            source_bits,
+            args.null_model,
+            args.null_seed,
+            show_progress=not args.quiet,
+            progress_label=f"{variant_label}-{args.null_model}",
+        )
         analysis_variant_label = f"{variant_label}-{args.null_model}"
         sequence_kind = "null_surrogate"
 

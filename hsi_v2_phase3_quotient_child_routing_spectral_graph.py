@@ -111,6 +111,16 @@ def main() -> int:
         top_patterns=args.top_patterns,
         parent_scale=args.parent_scale,
     )
+    if readout["missing_cells"]:
+        lines = [
+            "Missing routed cells; refusing to emit an incomplete N3-05 artifact.",
+            "Provide child-routing rows for every transition cell before rerunning.",
+        ]
+        for cell in readout["missing_cells"]:
+            lines.append(
+                f"- {cell['channel']} {cell['band']} lag={cell['best_margin_lag_bits']}"
+            )
+        raise SystemExit("\n".join(lines))
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     run_slug = (
@@ -165,8 +175,6 @@ def main() -> int:
 
     if not args.quiet:
         print(render_console_summary(readout["graph_summary"]))
-        if readout["missing_cells"]:
-            print(f"\n[warn] Missing routed cells: {len(readout['missing_cells'])}")
         print(f"\nSaved summary to: {summary_path}")
         print(f"Saved report to: {report_path}")
         print(f"Saved graph summary CSV to: {graph_summary_path}")

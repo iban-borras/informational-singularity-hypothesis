@@ -12,6 +12,7 @@ It complements, rather than replaces:
 - `Documentation/HSI_v2_Phase2_Live_Findings.md` for the current post-gate temporal readout
 - `Documentation/HSI_v2_Phase2_Visual_Readouts_Plan.md` for planned Phase 2 figures after sensitivity checks
 - `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md` for the frozen Phase 2 paper-support recovery path
+- `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md` for the frozen Phase 3 internal diagnostic recovery path
 - `../docs/HSI_v2_Decision_Log.md` for methodological defaults and decision history
 
 ---
@@ -37,10 +38,13 @@ HSI v2 currently covers three disciplined layers:
    - lag-conditioned and phase-channel spectral readouts
    - exploratory child-routing quotient graphs, including the pooled-mass weighted quotient
    - direct flow-entropy readouts derived from component-normalized quotient artifacts
+   - the robustness matrix comparing canonical `matched-lz`, disjoint-seed `matched-lz`, and `phase-matched-lz` hard-null runs
 
-The current goal is intentionally narrow:
+Phase 3 is frozen for the current manuscript cycle by D-0078. The next scientific cycle is Phase 4, starting from the predictive backlog recorded in D-0079.
 
-> demonstrate or refute a non-trivial projective hierarchy before attempting defects, graphs, spectrum, or geometry.
+The governing discipline remains intentionally narrow:
+
+> read every downstream defect, graph, spectrum, or geometry-facing object as conditional on the non-trivial projective hierarchy established by Phase 1.
 
 Phase 2 and Phase 3 should therefore be read with care:
 
@@ -83,6 +87,11 @@ Phase 2 and Phase 3 should therefore be read with care:
 | `hsi_v2_phase2_jitter_provenance.py` | `results/hsi_v2/phase2/jitter_provenance/phase2-jitter-provenance__*/` | Builds the N2-07 same-parent temporal provenance readout from a shell-atlas artifact |
 | `hsi_v2_phase2_jitter_provenance_sensitivity.py` | `results/hsi_v2/phase2/jitter_provenance_sensitivity/phase2-jitter-provenance-sensitivity__*/` | Builds the N2-07b jitter-provenance sensitivity envelope over N2-06 atlas artifacts |
 | `hsi_v2_phase2_child_destination_routing.py` | `results/hsi_v2/phase2/child_destination_routing/phase2-child-destination-routing__*/` | Builds the N2-08 child-destination routing readout over monitored shell parents |
+| `hsi_v2_phase2_child_routing_persistence.py` | `results/hsi_v2/phase2/child_routing_persistence/phase2-child-routing-persistence__*/` | Runs N2-09 child-routing persistence over neighboring temporal bands |
+| `hsi_v2_phase2_child_routing_lag_response.py` | `results/hsi_v2/phase2/child_routing_lag_response/phase2-child-routing-lag-response__*/` | Runs N2-11 lag-response profiles over an explicit band/lag grid, with automatic Phase 1 prerequisite recovery, frozen-source cache reuse, and optional `--workers` lag-target parallelism |
+| `hsi_v2_phase2_phase_channel_width.py` | `results/hsi_v2/phase2/phase_channel_width*/phase2-phase-channel-width__*/` | Builds N2-12 sampled phase-channel width/envelope readouts from lag-response artifacts |
+| `hsi_v2_phase2_phase_channel_width_topk_sensitivity.py` | `results/hsi_v2/phase2/phase_channel_width_topk_sensitivity*/phase2-phase-channel-width-topk-sensitivity__*/` | Runs N2-12b top-k sensitivity over sampled phase-channel envelopes |
+| `hsi_v2_phase2_phase_channel_transition_graph.py` | `results/hsi_v2/phase2/phase_channel_transition_graph*/phase2-phase-channel-transition-graph__*/` | Builds N2-14 phase-channel transition graphs used as Phase 3 source circuits |
 | `hsi_v2_phase2_deficit_jitter_plane.py` | `results/hsi_v2/phase2/visual_readouts/phase2-deficit-jitter-plane__*/` | Renders a deterministic visual plane from audited shell-atlas sensitivity artifacts |
 
 ### Phase 3 layer
@@ -99,6 +108,7 @@ Phase 2 and Phase 3 should therefore be read with care:
 | `hsi_v2_phase3_component_quotient_child_routing_spectrum.py` | `results/hsi_v2/phase3/component_quotient_child_routing_spectrum/phase3-component-quotient-spectrum__*/` | Runs the N3-05c component-wise normalized readout over an N3-05b weighted quotient artifact |
 | `hsi_v2_phase3_hamming_quotient_child_routing_spectral_graph.py` | `results/hsi_v2/phase3/hamming_quotient_child_routing_spectral_graph/phase3-hamming-quotient-spectral-graph__*/` | Runs the N3-06 exploratory Hamming quotient radius sweep over an N3-05b weighted quotient artifact |
 | `hsi_v2_phase3_flow_entropy_readout.py` | `results/hsi_v2/phase3/flow_entropy_readout/phase3-flow-entropy-readout__*/` | Runs the N3-07 direct low-entropy flow readout over an N3-05c component-normalized quotient artifact |
+| `hsi_v2_phase3_robustness_matrix.py` | `results/hsi_v2/phase3/robustness_matrix/phase3-robustness-matrix__*/` | Builds the frozen Phase 3 robustness matrix from pinned canonical, disjoint-seed, and phase-matched-LZ artifacts |
 
 Other Phase 2 public scripts exist in the repo, but the current scientific reading should prioritize the strict objects above unless the decision log says otherwise.
 
@@ -152,6 +162,7 @@ Other Phase 2 public scripts exist in the repo, but the current scientific readi
   The full Phase 1 tower outputs for that surrogate sequence.
 
 Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed into the default observed-batch reports.
+The current public strong-null generator includes `markov1`, `matched-lz`, and `phase-matched-lz`; the last one is a seeded LZ-family null that preserves block phase classes while still destroying exact long-range ordering.
 
 `results/hsi_v2/phase1/reports/`
 
@@ -198,6 +209,7 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
   - a top-level `summary.json`, `report.md`, `manifest.json`, `structure_sensitivity.csv`, `concentration_sensitivity.csv`, and `subtype_sensitivity.csv`
   - nested top-k and lag-specific probe, lag-aware, and atlas artifact families
   - the same `net_deficit_mass`, `gross_loss_pressure_sum`, and `jitter_gap_mass` contract as the atlas
+  - automatic Phase 1 input recovery: missing observed towers and requested `markov1` / seeded LZ-family null towers such as `matched-lz` and `phase-matched-lz` are generated before the long sweep starts and recorded in the manifest/report
 - `jitter_provenance/phase2-jitter-provenance__.../`
   N2-07 same-parent temporal provenance readouts derived from shell-atlas artifacts. Each run contains:
   - `source_provenance.csv`, `pattern_provenance.csv`, and `window_deltas.csv`
@@ -213,6 +225,17 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
   - `source_routing.csv`, `pattern_routing.csv`, and `routing_rows.csv`
   - `summary.json`, `report.md`, `dataset.json`, and `manifest.json`
   - child-destination retention, candidate reroute share, top-child match mass, and preview-truncation flags
+- `child_routing_lag_response/phase2-child-routing-lag-response__.../`
+  N2-11 child-routing lag-response profiles over explicit band/lag grids. Each run contains:
+  - `lag_response.csv` and `source_response.csv`
+  - `summary.json`, `report.md`, and `manifest.json`
+  - automatic Phase 1 prerequisite recovery for observed, `markov1`, `matched-lz`, and `phase-matched-lz` inputs
+  - frozen source cache reuse under `results/hsi_v2/source_cache/frozen_sources/` by default
+  - optional `--workers N`: the wrapper warms the cache with the largest-required target in each band, then parallelizes remaining lag targets with child scripts silenced and wrapper-level heartbeat/progress output
+- `phase_channel_width*/phase2-phase-channel-width__.../`
+  N2-12/N2-12b channel-width and top-k sensitivity artifacts derived from lag-response outputs. These are diagnostic, not manuscript-facing claims by themselves.
+- `phase_channel_transition_graph*/phase2-phase-channel-transition-graph__.../`
+  N2-14 transition-graph artifacts used as source circuits by Phase 3 quotient and flow-entropy readouts.
 - `visual_readouts/phase2-deficit-jitter-plane__.../`
   Deterministic Phase 2 visual readouts. The deficit-jitter plane contains:
   - `deficit_jitter_plane.svg`
@@ -316,7 +339,22 @@ Strong-null Phase 1 runs live under `phase1/nulls/` so they do not get mixed int
   - `report.md`
   - `flow_entropy_summary.csv`
   - `manifest.json`
-  The accepted internal D-0071 reading is that observed `B/E` score `4/4` as `strict-low-entropy-flow` against the strongest `matched-LZ` seed envelope in both negative and positive channels. This is an internal routing-thermodynamic closure, not a geometry or paper-facing Phase 3 claim.
+  The accepted internal D-0071/D-0074 reading is that observed `B/E` score `4/4` as `strict-low-entropy-flow` against the strongest `matched-LZ` seed envelope in both negative and positive channels. As of D-0075, the scorer can also use the seeded LZ-family envelope present in a rerun artifact, including `phase-matched-lz`. This is an internal routing-thermodynamic closure, not a geometry or paper-facing Phase 3 claim.
+
+- `flow_entropy_readout_independent_seeds/phase3-flow-entropy-readout__.../`
+  Disjoint-seed N3-07 reruns. These artifacts verify that the low-entropy-flow readout is not an artifact of the canonical `matched-lz` seed family.
+
+- `flow_entropy_readout_phase_matched_lz_reval/phase3-flow-entropy-readout__.../`
+  N3-07 reruns against the stronger seeded `phase-matched-lz` null family. These artifacts show that the raw phase-channel scaffold can weaken while the component-normalized flow-entropy discriminator still survives.
+
+- `robustness_matrix/phase3-robustness-matrix__.../`
+  Frozen Phase 3 robustness synthesis. Each run contains:
+  - `summary.json`
+  - `report.md`
+  - `robustness_matrix.csv`
+  - `case_summary.csv`
+  - `manifest.json`
+  The default script arguments point to exact timestamped artifacts, not to modification-time "latest" directories.
 
 ---
 
@@ -350,6 +388,7 @@ Check:
 - `../docs/HSI_v2_Decision_Log.md` for accepted defaults and methodological decisions
 - `Documentation/HSI_v2_Phase1_Live_Findings.md` for current interpretation
 - `Documentation/HSI_v2_Phase2_Live_Findings.md` for the current strict Gate 2 readout
+- `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md` for the frozen Phase 3 internal diagnostic stack
 
 ---
 
@@ -427,6 +466,9 @@ python .\hsi_v2_phase2_child_destination_routing.py
 
 # Phase 2 deficit-jitter visual plane
 python .\hsi_v2_phase2_deficit_jitter_plane.py
+
+# Phase 3 robustness matrix from pinned artifacts
+python .\hsi_v2_phase3_robustness_matrix.py
 ```
 
 ---
@@ -439,7 +481,8 @@ For experimental recovery:
 2. `Documentation/HSI_v2_Report_and_Data_Guide.md`
 3. `Documentation/HSI_v2_Phase1_Live_Findings.md`
 4. `Documentation/HSI_v2_Phase2_Live_Findings.md`
-5. `../docs/HSI_v2_Decision_Log.md`
+5. `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
+6. `../docs/HSI_v2_Decision_Log.md`
 
 For paper writing:
 
@@ -448,7 +491,8 @@ For paper writing:
 3. latest `phase1-report__...md`
 4. latest `phase1-coherence__...md`
 5. latest `phase1-transport__...md`
-6. `../docs/HSI_v2_Decision_Log.md`
+6. `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
+7. `../docs/HSI_v2_Decision_Log.md`
 
 For external review:
 
@@ -456,7 +500,8 @@ For external review:
 2. report markdown and matching JSON
 3. `Documentation/HSI_v2_Phase1_Live_Findings.md`
 4. `Documentation/HSI_v2_Phase2_Live_Findings.md`
-5. `../docs/HSI_v2_Decision_Log.md`
+5. `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
+6. `../docs/HSI_v2_Decision_Log.md`
 
 For visual readout planning:
 

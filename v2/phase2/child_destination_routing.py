@@ -830,6 +830,8 @@ def _source_kind_sort_key(source_kind: str, null_model: str | None) -> int:
         return 1
     if null_model == "matched-lz":
         return 2
+    if null_model == "phase-matched-lz":
+        return 3
     return 9
 
 

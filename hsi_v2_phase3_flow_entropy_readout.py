@@ -164,7 +164,7 @@ def render_report(payload: dict[str, Any]) -> str:
         "",
         "- This readout is derived from N3-05c component-normalized quotient artifacts.",
         "- It does not define a new graph, quotient, metric, or radius.",
-        "- It scores observed B/E against the matched-LZ seed envelope per channel.",
+        "- It scores observed B/E against the seeded LZ-family null envelope per channel.",
         "- Lower entropy and fewer effective components are interpreted as more canalized flow.",
         "- Higher top-k component share is interpreted as stronger concentration.",
         "- This is internal and pre-geometric; it is not a topology or curvature claim.",
@@ -175,7 +175,7 @@ def render_report(payload: dict[str, Any]) -> str:
         "",
         "## Compact Readout",
         "",
-        "| Variant | Source | Channel | H | Eff. comps | Top3 | Top5 | dH vs best matched | dEff vs best matched | dTop3 vs best matched | dTop5 vs best matched | Score | Verdict |",
+        "| Variant | Source | Channel | H | Eff. comps | Top3 | Top5 | dH vs best LZ-null | dEff vs best LZ-null | dTop3 vs best LZ-null | dTop5 vs best LZ-null | Score | Verdict |",
         "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for row in payload["flow_entropy_rows"]:

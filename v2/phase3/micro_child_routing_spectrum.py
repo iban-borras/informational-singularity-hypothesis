@@ -439,6 +439,8 @@ def source_sort_key(source_kind: str, null_model: str, null_seed: str) -> tuple[
         return (1, to_int(null_seed))
     if null_model == "matched-lz":
         return (2, to_int(null_seed))
+    if null_model == "phase-matched-lz":
+        return (3, to_int(null_seed))
     return (9, to_int(null_seed))
 
 

@@ -30,6 +30,7 @@ from hsi_v2_phase2_parent_survival_revalidation import (
 )
 from hsi_v2_phase2_transport_defect_strict import phase_print
 from v2.common.cli import resolve_dir
+from v2.phase2.null_pressure import PHASE2_SEEDED_NULLS
 
 
 CANONICAL_ALL_PROFILE = {
@@ -312,7 +313,7 @@ def build_selection(args) -> dict:
     if selection["stage"] == "observed":
         selection["null_models"] = ""
         selection["matched_lz_seeds"] = ""
-    elif "matched-lz" not in [item.strip() for item in selection["null_models"].split(",") if item.strip()]:
+    elif not selection_uses_seeded_nulls(selection):
         selection["matched_lz_seeds"] = ""
 
     variants_list = [item.strip() for item in selection["variants"].split(",") if item.strip()]
@@ -323,6 +324,14 @@ def build_selection(args) -> dict:
         variant for variant in variants_list if variant != selection["anchor_variant"]
     )
     return selection
+
+
+def selection_uses_seeded_nulls(selection: dict) -> bool:
+    return any(
+        item.strip() in PHASE2_SEEDED_NULLS
+        for item in selection["null_models"].split(",")
+        if item.strip()
+    )
 
 
 def render_report(payload: dict) -> str:

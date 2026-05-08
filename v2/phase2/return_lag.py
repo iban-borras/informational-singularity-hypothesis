@@ -1,15 +1,27 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import hashlib
 import json
 import math
+import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
 
 from utils.progress import ProgressIndicator
 from v2.common.io import load_observable_prefix_bits, split_into_segments
-from v2.common.null_models import generate_control
+from v2.common.null_models import (
+    LZ_CALIBRATION_WINDOW_BITS,
+    LZ_MAX_WINDOWS,
+    MARKOV1_PROGRESS_CHUNK_BITS,
+    MATCHED_LZ_BLOCK_BITS,
+    PHASE_MATCHED_LZ_PERIOD_BLOCKS,
+    generate_control,
+)
 from v2.phase1.tower import rolling_codes_uint64_max64
 
 from .defects import _require_edge, classify_variant_role, load_policy_fibers
@@ -18,6 +30,17 @@ try:
     from tqdm import tqdm
 except Exception:
     tqdm = None
+
+
+SOURCE_CACHE_VERSION = "hsi-v2-source-cache-v1"
+SOURCE_CACHE_ROOT = (
+    Path(__file__).resolve().parents[2]
+    / "results"
+    / "hsi_v2"
+    / "source_cache"
+    / "frozen_sources"
+)
+SOURCE_CACHE_LOCK_STALE_SECONDS = 6 * 60 * 60
 
 
 def load_pattern_space(run_dir: Path, pattern_scale: int) -> dict:
@@ -229,12 +252,74 @@ def load_run_source_bits(
         )
     )
 
-    progress_name = f"Load observable bits ({progress_label})" if progress_label else "Load observable bits"
-    if show_progress:
-        with ProgressIndicator(progress_name, total=effective_required_bits) as progress:
-            source_bits = load_observable_prefix_bits(struct_path, effective_required_bits, progress=progress)
-    else:
-        source_bits = load_observable_prefix_bits(struct_path, effective_required_bits)
+    if config.get("sequence_kind") == "null_surrogate":
+        null_name = str(config["null_model"])
+        null_seed = int(config["null_seed"])
+        cache_identity = _source_cache_identity(
+            config=config,
+            struct_path=struct_path,
+            required_bits=effective_required_bits,
+            null_name=null_name,
+            null_seed=null_seed,
+        )
+        cached = _load_cached_null_source(
+            cache_identity,
+            required_bits=effective_required_bits,
+            show_progress=show_progress,
+            progress_label=progress_label,
+        )
+        if cached is not None:
+            return cached
+
+        lock_path = _source_cache_root() / f"{cache_identity['identity_hash']}.lock"
+        with _source_cache_lock(lock_path):
+            cached = _load_cached_null_source(
+                cache_identity,
+                required_bits=effective_required_bits,
+                show_progress=show_progress,
+                progress_label=progress_label,
+            )
+            if cached is not None:
+                return cached
+
+            source_bits = _load_observed_source_bits(
+                struct_path,
+                effective_required_bits=effective_required_bits,
+                show_progress=show_progress,
+                progress_label=progress_label,
+            )
+            source_bits, null_metadata = generate_control(
+                source_bits,
+                null_name,
+                null_seed,
+                show_progress=show_progress,
+                progress_label=progress_label,
+            )
+            cache_info = _store_cached_null_source(
+                cache_identity,
+                source_bits,
+                null_metadata=null_metadata,
+                show_progress=show_progress,
+                progress_label=progress_label,
+            )
+            info = {
+                "source_kind": "null_surrogate",
+                "source_struct_path": str(struct_path),
+                "loaded_observable_bits": effective_required_bits,
+                "source_freeze_mode": "run-local",
+                "null_model": null_name,
+                "null_seed": null_seed,
+                "null_metadata": null_metadata,
+                **cache_info,
+            }
+            return source_bits, info
+
+    source_bits = _load_observed_source_bits(
+        struct_path,
+        effective_required_bits=effective_required_bits,
+        show_progress=show_progress,
+        progress_label=progress_label,
+    )
 
     info = {
         "source_kind": "observed",
@@ -242,25 +327,212 @@ def load_run_source_bits(
         "loaded_observable_bits": effective_required_bits,
         "source_freeze_mode": "run-local",
     }
-    if config.get("sequence_kind") == "null_surrogate":
-        null_name = str(config["null_model"])
-        null_seed = int(config["null_seed"])
-        source_bits, null_metadata = generate_control(
-            source_bits,
-            null_name,
-            null_seed,
-            show_progress=show_progress,
-            progress_label=progress_label,
-        )
-        info.update(
-            {
-                "source_kind": "null_surrogate",
-                "null_model": null_name,
-                "null_seed": null_seed,
-                "null_metadata": null_metadata,
-            }
-        )
     return source_bits, info
+
+
+def _load_observed_source_bits(
+    struct_path: Path,
+    *,
+    effective_required_bits: int,
+    show_progress: bool,
+    progress_label: str | None,
+) -> np.ndarray:
+    progress_name = f"Load observable bits ({progress_label})" if progress_label else "Load observable bits"
+    if show_progress:
+        with ProgressIndicator(progress_name, total=effective_required_bits) as progress:
+            return load_observable_prefix_bits(
+                struct_path,
+                effective_required_bits,
+                progress=progress,
+            )
+    return load_observable_prefix_bits(struct_path, effective_required_bits)
+
+
+def _source_cache_root() -> Path:
+    override = os.environ.get("HSI_V2_SOURCE_CACHE_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return SOURCE_CACHE_ROOT
+
+
+def _source_cache_identity(
+    *,
+    config: dict,
+    struct_path: Path,
+    required_bits: int,
+    null_name: str,
+    null_seed: int,
+) -> dict:
+    stat = struct_path.stat()
+    identity_payload = {
+        "cache_version": SOURCE_CACHE_VERSION,
+        "input_struct_path": str(struct_path),
+        "input_struct_size": int(stat.st_size),
+        "input_struct_mtime_ns": int(stat.st_mtime_ns),
+        "source_variant": str(config.get("source_variant", config.get("variant", ""))),
+        "iteration": config.get("iteration"),
+        "null_model": null_name,
+        "null_seed": int(null_seed),
+        "generator_constants": {
+            "lz_calibration_window_bits": int(LZ_CALIBRATION_WINDOW_BITS),
+            "lz_max_windows": int(LZ_MAX_WINDOWS),
+            "matched_lz_block_bits": [int(value) for value in MATCHED_LZ_BLOCK_BITS],
+            "phase_matched_lz_period_blocks": [
+                int(value) for value in PHASE_MATCHED_LZ_PERIOD_BLOCKS
+            ],
+            "markov1_progress_chunk_bits": int(MARKOV1_PROGRESS_CHUNK_BITS),
+        },
+    }
+    identity_json = json.dumps(identity_payload, sort_keys=True, separators=(",", ":"))
+    identity_hash = hashlib.sha256(identity_json.encode("utf-8")).hexdigest()[:24]
+    return {
+        "identity": identity_payload,
+        "identity_hash": identity_hash,
+        "requested_bits": int(required_bits),
+    }
+
+
+def _load_cached_null_source(
+    cache_identity: dict,
+    *,
+    required_bits: int,
+    show_progress: bool,
+    progress_label: str | None,
+) -> tuple[np.ndarray, dict] | None:
+    cache_root = _source_cache_root()
+    identity_hash = str(cache_identity["identity_hash"])
+    candidates = []
+    if cache_root.exists():
+        for meta_path in cache_root.glob(f"{identity_hash}__bits-*.json"):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as handle:
+                    metadata = json.load(handle)
+            except (OSError, json.JSONDecodeError):
+                continue
+            cached_bits = int(metadata.get("required_bits", 0))
+            bits_path = Path(metadata.get("bits_path", ""))
+            if cached_bits >= required_bits and bits_path.is_file():
+                candidates.append((cached_bits, bits_path, meta_path, metadata))
+    if not candidates:
+        return None
+
+    cached_bits, bits_path, meta_path, metadata = min(candidates, key=lambda item: item[0])
+    task_name = (
+        f"Load cached source ({progress_label})"
+        if progress_label
+        else "Load cached source"
+    )
+    if show_progress:
+        with ProgressIndicator(task_name, total=1) as progress:
+            source_bits = np.load(bits_path, mmap_mode="r")
+            progress.update(1, message=f"{required_bits:,}/{cached_bits:,} bits | cache hit")
+    else:
+        source_bits = np.load(bits_path, mmap_mode="r")
+    if int(source_bits.size) < required_bits:
+        return None
+
+    identity = dict(metadata.get("identity", {}))
+    info = {
+        "source_kind": "null_surrogate",
+        "source_struct_path": str(identity.get("input_struct_path", "")),
+        "loaded_observable_bits": int(required_bits),
+        "source_freeze_mode": "run-local",
+        "null_model": identity.get("null_model"),
+        "null_seed": identity.get("null_seed"),
+        "null_metadata": metadata.get("null_metadata"),
+        "source_cache_status": "hit",
+        "source_cache_key": identity_hash,
+        "source_cache_path": str(bits_path),
+        "source_cache_metadata_path": str(meta_path),
+        "source_cache_total_bits": int(cached_bits),
+        "source_cache_requested_bits": int(required_bits),
+    }
+    return source_bits[:required_bits], info
+
+
+def _store_cached_null_source(
+    cache_identity: dict,
+    source_bits: np.ndarray,
+    *,
+    null_metadata: dict | None,
+    show_progress: bool,
+    progress_label: str | None,
+) -> dict:
+    cache_root = _source_cache_root()
+    cache_root.mkdir(parents=True, exist_ok=True)
+
+    identity_hash = str(cache_identity["identity_hash"])
+    total_bits = int(source_bits.size)
+    stem = f"{identity_hash}__bits-{total_bits}"
+    bits_path = cache_root / f"{stem}.npy"
+    meta_path = cache_root / f"{stem}.json"
+
+    if not bits_path.is_file():
+        tmp_bits_path = cache_root / f"{stem}.{os.getpid()}.tmp.npy"
+        task_name = (
+            f"Save source cache ({progress_label})"
+            if progress_label
+            else "Save source cache"
+        )
+        if show_progress:
+            with ProgressIndicator(task_name, total=1) as progress:
+                np.save(tmp_bits_path, np.ascontiguousarray(source_bits, dtype=np.uint8))
+                progress.update(1, message=f"{total_bits:,} bits")
+        else:
+            np.save(tmp_bits_path, np.ascontiguousarray(source_bits, dtype=np.uint8))
+        os.replace(tmp_bits_path, bits_path)
+
+    metadata = {
+        "cache_version": SOURCE_CACHE_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "identity_hash": identity_hash,
+        "identity": cache_identity["identity"],
+        "required_bits": total_bits,
+        "bits_path": str(bits_path),
+        "null_metadata": null_metadata,
+    }
+    tmp_meta_path = cache_root / f"{stem}.{os.getpid()}.tmp.json"
+    with open(tmp_meta_path, "w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2, sort_keys=True)
+    os.replace(tmp_meta_path, meta_path)
+
+    return {
+        "source_cache_status": "miss-stored",
+        "source_cache_key": identity_hash,
+        "source_cache_path": str(bits_path),
+        "source_cache_metadata_path": str(meta_path),
+        "source_cache_total_bits": total_bits,
+        "source_cache_requested_bits": total_bits,
+    }
+
+
+@contextmanager
+def _source_cache_lock(lock_path: Path):
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = None
+    while True:
+        try:
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(lock_fd, f"{os.getpid()}\n".encode("ascii"))
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - lock_path.stat().st_mtime
+                if age > SOURCE_CACHE_LOCK_STALE_SECONDS:
+                    lock_path.unlink()
+                    continue
+            except OSError:
+                pass
+            time.sleep(1.0)
+    try:
+        yield
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def prepare_frozen_source_cache(

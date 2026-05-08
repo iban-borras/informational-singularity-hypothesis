@@ -9,11 +9,14 @@ from typing import Any
 def build_flow_entropy_readout(component_run: Path) -> dict[str, Any]:
     rows = load_csv(component_run / "source_summary.csv")
     readout_rows = []
+    reference_variants = sorted(
+        {row["variant"] for row in rows if is_seeded_lz_reference(row)}
+    )
     for channel in sorted({row["channel"] for row in rows}):
         channel_rows = [row for row in rows if row["channel"] == channel]
-        matched_rows = [row for row in channel_rows if row["variant"] == "B-matched-lz"]
+        matched_rows = [row for row in channel_rows if is_seeded_lz_reference(row)]
         if not matched_rows:
-            raise ValueError(f"No matched-LZ envelope rows found for channel {channel!r}")
+            raise ValueError(f"No seeded LZ-family envelope rows found for channel {channel!r}")
         observed_rows = [row for row in channel_rows if row["source_label"] == "observed"]
         markov_rows = [row for row in channel_rows if row["variant"] == "B-markov1"]
         matched_stats = summarize_matched_lz(channel, matched_rows)
@@ -23,16 +26,24 @@ def build_flow_entropy_readout(component_run: Path) -> dict[str, Any]:
     return {
         "selection": {
             "component_run": str(component_run),
+            "reference_null_variants": reference_variants,
         },
         "notes": [
             "N3-07 is a direct flow-entropy readout derived from the audited N3-05c component-normalized quotient.",
             "Lower component entropy and fewer effective components indicate more canalized flow.",
             "Higher top-k component share indicates stronger concentration.",
-            "Scores are evaluated against the matched-LZ seed envelope per channel.",
+            "Scores are evaluated against the seeded LZ-family null envelope per channel.",
             "This is internal and pre-geometric: it is a routing-thermodynamic readout, not a topology or curvature claim.",
         ],
         "flow_entropy_rows": readout_rows,
     }
+
+
+def is_seeded_lz_reference(row: dict[str, str]) -> bool:
+    variant = row.get("variant", "")
+    if not variant.startswith("B-") or variant == "B-markov1":
+        return False
+    return "matched-lz" in variant
 
 
 def summarize_matched_lz(channel: str, rows: list[dict[str, str]]) -> dict[str, Any]:

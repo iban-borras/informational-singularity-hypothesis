@@ -74,6 +74,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--matched-lz-seeds", default="")
     parser.add_argument("--b-threshold", type=float, default=0.90)
     parser.add_argument("--margin-threshold", type=float, default=0.0)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel lag targets per band in the delegated N2-11 lag-response run.",
+    )
     parser.add_argument("--max-targets", type=int, default=0)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -175,8 +181,11 @@ def main(argv: list[str] | None = None) -> int:
             "radius_bits": args.radius_bits,
             "lag_step_bits": args.lag_step_bits,
             "lags": lags,
+            "null_models": args.null_models,
+            "matched_lz_seeds": args.matched_lz_seeds,
             "b_threshold": args.b_threshold,
             "margin_threshold": args.margin_threshold,
+            "workers": args.workers,
             "dry_run": args.dry_run,
             "max_targets": args.max_targets,
         },
@@ -228,6 +237,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--lag-step-bits must be positive")
     if args.scan_step_bits <= 0:
         raise SystemExit("--scan-step-bits must be positive")
+    if args.workers <= 0:
+        raise SystemExit("--workers must be positive")
     if args.max_targets < 0:
         raise SystemExit("--max-targets must be non-negative")
 
@@ -288,6 +299,7 @@ def build_n2_11_command(
         command.extend(["--null-models", args.null_models])
     if args.matched_lz_seeds:
         command.extend(["--matched-lz-seeds", args.matched_lz_seeds])
+    command.extend(["--workers", str(args.workers)])
     if args.max_targets:
         command.extend(["--max-targets", str(args.max_targets)])
     append_flag(command, "--dry-run", args.dry_run)
@@ -310,8 +322,7 @@ def build_channel_rows(
         if abs(delta) > radius_bits:
             continue
         b_retention = as_float(row.get("B_retention"))
-        matched_max = as_float(row.get("matched_lz_max"))
-        margin = as_float(row.get("B_minus_matched_lz_max"))
+        null_family, null_n, matched_max, margin = selected_seeded_lz_null(row)
         rows.append(
             {
                 "band": row["band"],
@@ -323,6 +334,8 @@ def build_channel_rows(
                 "delta_from_center": compact_int(delta),
                 "B_retention": b_retention,
                 "markov1_retention": as_float(row.get("markov1_retention")),
+                "null_family": null_family,
+                "null_family_n": null_n,
                 "matched_lz_max": matched_max,
                 "B_minus_matched_lz_max": margin,
             }
@@ -330,6 +343,25 @@ def build_channel_rows(
     return sorted(
         rows,
         key=lambda item: (band_start(str(item["band"])), item["channel_center_bits"], item["lag_bits"]),
+    )
+
+
+def selected_seeded_lz_null(row: dict[str, Any]) -> tuple[str, int, float | None, float | None]:
+    phase_n = int(as_float(row.get("phase_matched_lz_n")) or 0)
+    phase_max = as_float(row.get("phase_matched_lz_max"))
+    if phase_n > 0 and phase_max is not None:
+        return (
+            "phase_matched_lz",
+            phase_n,
+            phase_max,
+            as_float(row.get("B_minus_phase_matched_lz_max")),
+        )
+    matched_n = int(as_float(row.get("matched_lz_n")) or 0)
+    return (
+        "matched_lz",
+        matched_n,
+        as_float(row.get("matched_lz_max")),
+        as_float(row.get("B_minus_matched_lz_max")),
     )
 
 
@@ -558,6 +590,8 @@ CHANNEL_RESPONSE_FIELDS = [
     "delta_from_center",
     "B_retention",
     "markov1_retention",
+    "null_family",
+    "null_family_n",
     "matched_lz_max",
     "B_minus_matched_lz_max",
 ]

@@ -15,7 +15,7 @@ The ISH proposes that all reality emerges from a primordial tension between "Not
 
 > **📖 Important**: For detailed technical documentation, see the `Documentation/` folder which contains analysis guides, variant specifications, and order metrics explanations.
 
-## HSI v2 Status (Apr 2026)
+## HSI v2 Status (May 2026)
 
 HSI v2 is the current disciplined extension of the original ISH/HSI experimental stack. Its first goal is narrower and stricter than the v1 exploratory program:
 
@@ -35,6 +35,8 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase1_coherence_report.py` | Derived tail-coherence readout |
 | `hsi_v2_phase1_transport_report.py` | Derived transport-persistence readout |
 | `hsi_v2_phase1_gate_map.py` | Compact Porta 1 table plus a 2D gate-plane visual (`retention@last` vs `active_mean_tail`) with `SVG` and optional `PNG` output |
+| `hsi_v2_generate_external_recursive_controls.py` | Generate/reuse D-0087 Level-0 snapshots for external recursive controls `O` and `P` |
+| `hsi_v2_phase1_external_recursive_controls.py` | One-command D-0087 Phase 1 recovery run for `O/P` plus dual-seed `phase-matched-lz` controls |
 | `hsi_v2_phase2_null_pressure_window_sweep.py` | Strict observed-anchored return-profile opening against strong nulls over a deep window band |
 | `hsi_v2_phase2_transport_defect_strict.py` | Strict-band transport-defect pilot on observed-anchored support |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Canonical two-stage revalidation of parent-shell survival: independent lag probe plus lag-aware band readout |
@@ -45,6 +47,11 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase2_jitter_provenance.py` | N2-07 same-parent temporal provenance readout: separates uncompensated shell deficit from jitter-compensated local loss |
 | `hsi_v2_phase2_jitter_provenance_sensitivity.py` | N2-07b sensitivity wrapper for jitter provenance across N2-06 top-k and lag atlas artifacts |
 | `hsi_v2_phase2_child_destination_routing.py` | N2-08 child-destination routing readout over monitored shell parents (`top=128` by default) |
+| `hsi_v2_phase2_child_routing_persistence.py` | N2-09 child-routing persistence sweep across adjacent temporal bands |
+| `hsi_v2_phase2_child_routing_lag_response.py` | N2-11 lag-response profile over explicit band/lag grids, with cached source reuse, optional workers, and LZ-family null support |
+| `hsi_v2_phase2_phase_channel_width.py` | N2-12 phase-channel width/envelope readout derived from lag-response artifacts |
+| `hsi_v2_phase2_phase_channel_width_topk_sensitivity.py` | N2-12b top-k sensitivity for phase-channel envelopes |
+| `hsi_v2_phase2_phase_channel_transition_graph.py` | N2-14 phase-channel transition graph over sampled channel envelopes |
 | `hsi_v2_phase2_deficit_jitter_plane.py` | Deterministic visual readout of the audited shell-atlas sensitivity result (`netDef` vs `jitter-gap`) |
 | `hsi_v2_phase3_min_defect_spectrum_pilot.py` | Phase 3 pre-geometric minimal defect/spectrum pilot: commuting-square defect plus sparse bridge-graph normalized-Laplacian readout |
 | `hsi_v2_phase3_defect_spectrum_sensitivity.py` | Phase 3 seed/window sensitivity sweep for the minimal defect/spectrum pilot |
@@ -56,6 +63,7 @@ The public HSI v2 scripts currently available are:
 | `hsi_v2_phase3_component_quotient_child_routing_spectrum.py` | Phase 3 N3-05c exploratory component-wise normalization over the N3-05b weighted quotient |
 | `hsi_v2_phase3_hamming_quotient_child_routing_spectral_graph.py` | Phase 3 N3-06 exploratory Hamming quotient over the N3-05b weighted quotient, with a predeclared radius sweep |
 | `hsi_v2_phase3_flow_entropy_readout.py` | Phase 3 N3-07 direct flow-entropy readout derived from N3-05c, scoring observed B/E against the matched-LZ envelope |
+| `hsi_v2_phase3_robustness_matrix.py` | Phase 3 post-freeze robustness matrix over canonical matched-LZ, disjoint matched-LZ seeds, and phase-matched-LZ artifacts |
 
 Current empirical class split from the first real HSI v2 Phase 1 batch:
 
@@ -83,6 +91,9 @@ Current Phase 2 reading:
 - N3-05c normalizes N3-05b component by component; accepted-internal D-0069 reads observed `B/E` as lower-entropy flow than `matched-lz` inside the same fragmented prefix/suffix scaffold
 - N3-06 tests a Hamming quotient radius sweep; accepted-negative D-0070 shows the scaffold fuses from 24 components to 3/2 and finally 1 at high radius, but this connectivity transition is common to observed B/E and `matched-lz`, so it is not a Phase 3 geometric separator
 - N3-07 is accepted-internal in D-0071: observed `B/E` score `4/4` as `strict-low-entropy-flow` against the strongest `matched-LZ` seed envelope in both negative and positive channels; this closes the current internal Phase 3 infrastructure arc without authorizing a geometry or paper-facing Phase 3 claim
+- D-0074 and D-0076 harden N3-07 with disjoint `matched-lz` seeds and the stronger seeded `phase-matched-lz` null family. The raw phase-channel scaffold weakens at the boundary under the stronger null, but the component-normalized low-entropy flow discriminator survives.
+- D-0078 freezes the current Phase 3 internal diagnostic stack for the manuscript cycle. Bug fixes, logging, reproducibility hardening, and documentation remain allowed; new Phase 3 claims require a new Decision Log entry.
+- D-0079 records the initial Phase 4 backlog: predictive, pre-registered extensions beyond the frozen manuscript cycle.
 
 To recover the current HSI v2 state quickly, start here:
 
@@ -90,6 +101,7 @@ To recover the current HSI v2 state quickly, start here:
 - `Documentation/HSI_v2_Phase1_Live_Findings.md`
 - `Documentation/HSI_v2_Phase2_Live_Findings.md`
 - `Documentation/HSI_v2_Phase2_Reproducibility_Freeze.md`
+- `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
 - `../docs/HSI_v2_Decision_Log.md`
 
 ## Project Structure
@@ -297,6 +309,8 @@ HSI v2 reuses Level 0 structural snapshots as input, but writes all new artifact
 | `hsi_v2_phase1_coherence_report.py` | Compare tail coherence across runs | `python hsi_v2_phase1_coherence_report.py` |
 | `hsi_v2_phase1_transport_report.py` | Compare transport persistence across runs | `python hsi_v2_phase1_transport_report.py` |
 | `hsi_v2_phase1_gate_map.py` | Build the compact Porta 1 gate table plus `SVG` plane and `PNG` when matplotlib is available | `python hsi_v2_phase1_gate_map.py` |
+| `hsi_v2_generate_external_recursive_controls.py` | Generate/reuse D-0087 Level-0 snapshots for controls `O/P` | `python hsi_v2_generate_external_recursive_controls.py` |
+| `hsi_v2_phase1_external_recursive_controls.py` | Run D-0087 external recursive controls through Phase 1 and `phase-matched-lz` seeds `607,709` | `python hsi_v2_phase1_external_recursive_controls.py --quiet-children` |
 | `hsi_v2_phase2_parent_survival_revalidation.py` | Run the canonical Phase 2 shell-lag revalidation pipeline in one shot | `python hsi_v2_phase2_parent_survival_revalidation.py --variants E,B --anchor-variant E --iteration 20 --segment-bits 1000000 --num-segments 3 --scales 8,12,16,20,24,28,32,40,48 --phase1-policies prefix,suffix --low-scale 40 --high-scale 48 --top-patterns 64 --pattern-selection bridge-linked` |
 | `hsi_v2_phase2_parent_density_pipeline.py` | Run the canonical Phase 2 density pipeline in one shot | `python hsi_v2_phase2_parent_density_pipeline.py --profile canonical-all` |
 | `hsi_v2_phase2_parent_shell_atlas_pipeline.py` | Run the canonical Phase 2 shell-atlas pipeline in one shot | `python hsi_v2_phase2_parent_shell_atlas_pipeline.py --profile canonical-all` |
@@ -325,6 +339,8 @@ Current HSI v2 output layout:
 - `results/hsi_v2/phase1/phase1-tower__*/`
 - `results/hsi_v2/phase1/nulls/phase1-tower__*/`
 - `results/hsi_v2/phase1/reports/`
+- `results/hsi_v2/phase1_external_recursive_controls/`
+- `results/level0/phi_snapshots/var_O/` and `results/level0/phi_snapshots/var_P/`
 
 For data navigation and interpretation:
 
