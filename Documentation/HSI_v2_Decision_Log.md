@@ -6686,3 +6686,288 @@ After every session the manuscript was regex-audited against the canonical fence
 
 ---
 
+## D-0100
+
+- Date: 2026-05-08
+- Status: `accepted-pre-execution-contract`
+- Cycle: Phase 1 threshold-sensitivity / hostile-review response
+- Trigger: a brief-blind hostile-review pass on manuscript v2.01 raised a valid p-hacking objection against the Phase 1 stability thresholds in `v2/phase1/tower.py`: `cv_max = 1.5`, `min_count_floor = 16`, `min_count_rate = 1e-6`, and `min_segment_support = max(2, ceil(N/2))`. The objection asks whether Gate 1 and the compact-selective regime survive if those low-pass filters are relaxed, tightened, or partially disabled.
+
+### Decision
+
+D-0100 accepts a pre-execution one-at-a-time threshold-sensitivity contract for Phase 1. The contract is recorded in `hsi_agents_project/Documentation/HSI_v2_Phase1_Threshold_Sensitivity_Preregistration.md` and is anchored by SHA256:
+
+`F239810076F1670F8EFC3A4904927970E4E8FE22B68F0E1A311B57837757E108`
+
+The accepted launcher is `hsi_v2_phase1_threshold_sensitivity.py`. It must not modify `v2/phase1/tower.py`; it only orchestrates `hsi_v2_phase1_run.py` with existing CLI parameters.
+
+The accepted grid is one-at-a-time around the canonical Phase 1 point:
+
+- Baseline: `cv_max = 1.5`, `min_count_floor = 16`, `min_count_rate = 1e-6`, `min_segment_support = default` (effective value `2` for `N=3`).
+- `cv_max`: `1.0, 1.5, 2.0, 2.5, 3.0, inf`.
+- `min_count_floor`: `4, 8, 16, 32, 64`.
+- `min_count_rate`: `0, 1e-7, 1e-6, 1e-5, 1e-4`.
+- `min_segment_support`: `1, 2, 3`.
+- Deduplicated total: `16` threshold combinations.
+
+The fixed Phase 1 scope is:
+
+- Variants: `B,E,I`.
+- Sequence kinds: observed, `matched-lz`, `phase-matched-lz`.
+- Scales: `8,12,16,20,24,28,32`.
+- Projection policies: `prefix,suffix`.
+- Iteration: `20`.
+- Segment layout: `3 x 1,000,000` bits.
+- Initial null seed: `607`.
+- Escalation seed: `709`.
+
+### Escalation rule
+
+Every threshold combination is first evaluated against null seed `607`. The additional seed `709` is run only if the initial readout is fragile:
+
+- final verdict is not `survives`, or
+- `score_margin < 0.30`, or
+- `retention_margin < 0.30`.
+
+The second seed expands the null envelope by maximum, never by averaging. It therefore cannot rescue a positive result by smoothing away a hard null.
+
+### Score and verdict
+
+All raw Phase 1 observables remain in the CSV outputs. The scalar score is only a compact ordering aid:
+
+`compact_selective_score = retention_last * min(prefix_survival_last, suffix_survival_last)`
+
+For each threshold combination:
+
+- `hsi_score_min`: minimum score over observed `B,E,I`.
+- `null_score_max`: maximum score over all null rows in the active envelope.
+- `score_margin = hsi_score_min - null_score_max`.
+- `hsi_retention_min`: minimum `retention_last` over observed `B,E,I`.
+- `null_retention_max`: maximum `retention_last` over all null rows.
+- `retention_margin = hsi_retention_min - null_retention_max`.
+
+Verdict thresholds:
+
+- `survives`: `hsi_score_min >= 0.75`, `score_margin >= 0.25`, `hsi_retention_min >= 0.70`, and `retention_margin >= 0.25`.
+- `weakens`: `hsi_score_min >= 0.60`, `score_margin >= 0.10`, `hsi_retention_min >= 0.55`, and `retention_margin >= 0.10`.
+- `collapses`: otherwise.
+
+### Hypotheses
+
+- H1: the compact-selective Gate 1 signature survives across a broad OAT region, meaning the canonical thresholds are not a narrow hand-tuned point.
+- H2: the compact-selective Gate 1 signature appears only near the canonical threshold combination, which would be a serious negative result requiring manuscript revision.
+
+### Practical Impact
+
+- New pre-registration document: `hsi_agents_project/Documentation/HSI_v2_Phase1_Threshold_Sensitivity_Preregistration.md`.
+- New launcher: `hsi_v2_phase1_threshold_sensitivity.py`.
+- Output root: `hsi_agents_project/results/hsi_v2/phase1_sensitivity_thresholds/`.
+- Required outputs: `summary.json`, `report.md`, `combo_summary.csv`, `row_summary.csv`, `oat_heatmap.csv`, `oat_heatmap.svg`, and `manifest.json`.
+- No manuscript change is authorized by this entry. Any paper-facing update requires post-execution readout, Grace audit if needed, and a later decision entry.
+
+### Validation traces
+
+- Ariadna implementation validation (2026-05-08): `.\venv\Scripts\python.exe -m py_compile hsi_v2_phase1_threshold_sensitivity.py` completed successfully.
+- Ariadna dry-run validation (2026-05-08): `.\venv\Scripts\python.exe hsi_v2_phase1_threshold_sensitivity.py --dry-run --limit-combos 1 --workers 2` produced the expected 9 initial targets for one threshold combination; the full OAT dry-run produced 144 initial targets.
+- Ariadna smoke validation (2026-05-08): `.\venv\Scripts\python.exe hsi_v2_phase1_threshold_sensitivity.py --limit-combos 1 --variants B --segment-bits 10000 --num-segments 3 --workers 1 --quiet` completed successfully as a non-scientific wiring test. Its verdict is explicitly non-evidential because it does not use the canonical 3 x 1M protocol.
+- Pre-registration SHA256 computed before execution: `F239810076F1670F8EFC3A4904927970E4E8FE22B68F0E1A311B57837757E108`.
+
+---
+
+## D-0101
+
+- Date: 2026-05-08
+- Status: `accepted-empirical-closure`
+- Cycle: Phase 1 threshold-sensitivity / hostile-review response
+- Trigger: execution and Grace audit of the D-0100 threshold-sensitivity contract.
+
+### Source Artifacts
+
+- Pre-execution contract: `hsi_agents_project/Documentation/HSI_v2_Phase1_Threshold_Sensitivity_Preregistration.md`.
+- Contract SHA256: `F239810076F1670F8EFC3A4904927970E4E8FE22B68F0E1A311B57837757E108`.
+- Launcher: `hsi_v2_phase1_threshold_sensitivity.py`.
+- Canonical run: `hsi_agents_project/results/hsi_v2/phase1_sensitivity_thresholds/phase1-threshold-sensitivity__oat-16__seed-607__20260508T122043/`.
+- Post-execution audit: `docs/HSI-audit-Phase1-Sensitivity.md`.
+
+### Empirical Readout
+
+The D-0100 run completed the full one-at-a-time threshold-sensitivity grid:
+
+- `16` threshold combinations.
+- `144` initial targets under null seed `607`.
+- `6` escalation targets under null seed `709`, triggered only for `min_count_rate = 1e-4`.
+- `150` total Phase 1 child rows.
+
+Verdict distribution:
+
+- `15/16` combinations: `survives`.
+- `1/16` combinations: `weakens`.
+- `0/16` combinations: `collapses`.
+
+The only weakened combination is the most aggressive relative-count threshold:
+
+- Combination: `min_count_rate = 1e-4`.
+- `hsi_score_min = 0.6102`.
+- `null_score_max = 0.0700`.
+- `score_margin = 0.5402`.
+- `hsi_retention_min = 0.6181`.
+- `null_retention_max = 0.0703`.
+- `retention_margin = 0.5478`.
+
+The CV-axis result is decisive for the hostile-review objection:
+
+- `cv_max = 1.0`: `survives`.
+- `cv_max = 2.0`: `survives`.
+- `cv_max = 2.5`: `survives`.
+- `cv_max = 3.0`: `survives`.
+- `cv_max = inf`: `survives`.
+
+Thus the compact-selective Gate 1 readout does not depend on the canonical `cv_max = 1.5` filter. It also survives removal of the relative count floor (`min_count_rate = 0`), tightening/loosening of `min_count_floor` across `4,8,32,64`, and both tested alternatives to the segment-support rule (`1` and `3`).
+
+### Grace Audit
+
+Grace's post-execution audit verdict is `ACCEPTED`. The audit accepts:
+
+- the SHA-anchored pre-registration discipline,
+- the OAT grid as sufficient for the specific hostile-review criticism,
+- the multiplicative score as a hard, not generous, score because it penalizes either retention or directional survival loss,
+- paper-facing integration as a short contained robustness sentence or footnote rather than a new section/table.
+
+The audit explicitly rejects the need for a full factorial grid at this stage. A factorial extension is therefore not required unless a future reviewer specifically challenges nonlinear parameter interactions.
+
+### Wording Boundary
+
+Allowed wording:
+
+- `robustesa de la signatura projectiva davant variacions dels llindars d'estabilitat`
+- `insensibilitat al fine-tuning dels llindars de retenció local`
+- `supervivència sense filtre CV`
+- `la signatura es debilita sota un llindar relatiu extrem, però no col·lapsa`
+
+Forbidden or discouraged wording:
+
+- `absolute invariance`
+- `global threshold invariance`
+- `topology recovered`
+- `topology discovered`
+- `Gate 1 immune to all hyperparameters`
+- any wording that hides the `min_count_rate = 1e-4` weakening.
+
+The phrase `robustesa topològica` should be avoided in the manuscript because it can over-activate the topology/geometry vocabulary relative to what the Phase 1 sensitivity run actually proves.
+
+### Practical Impact
+
+- The p-hacking objection against the canonical `cv_max = 1.5` and related Phase 1 stability thresholds is empirically weakened by a preregistered sensitivity run.
+- The manuscript may include a single contained robustness sentence or footnote in the Gate 1 robustness discussion.
+- No new experimental default is changed.
+- No manuscript table is required.
+- No Phase 1 claim is strengthened into a universal threshold-invariance claim.
+
+### Validation Traces
+
+- Ariadna rerun note (2026-05-08): an initial completed run exposed a reporting-only issue where `active_seed_count` was displayed as `2` for all combinations. The launcher was patched to compute `active_seed_count` from the actual null seeds present per combination, and the full canonical run was repeated.
+- Canonical clean run (2026-05-08): `.\venv\Scripts\python.exe hsi_v2_phase1_threshold_sensitivity.py --workers 10 --quiet` completed successfully in `118.894` seconds.
+- Grace audit: `docs/HSI-audit-Phase1-Sensitivity.md`, verdict `ACCEPTED`.
+
+---
+
+## D-0102
+
+- Date: 2026-05-08
+- Status: `accepted-diagnostic-closure`
+- Cycle: Phase 4 / P4-06 boundary feature-shift
+- Trigger: after D-0097 closed P4-05 as finite-horizon boundary / null-envelope catch-up, Ariadna proposed a read-only diagnostic comparing the last P4-04 supported band (`786M-795M`) with the first P4-05 boundary band (`795M-804M`) to test whether the loss of predictive differential came from B-retention loss or from hard-null envelope rise.
+
+### Decision
+
+D-0102 accepts P4-06 as a diagnostic closure of the current Phase 4 predictive subarc. P4-06 is read-only over already accepted P4-04/P4-05 artifacts:
+
+- P4-04 source: `hsi_agents_project/results/hsi_v2/phase4/p4_04_forward_regime_forecast/phase4-p4-04-forward-regime-forecast__bands-3__lags-6__20260507T200920/`.
+- P4-05 source: `hsi_agents_project/results/hsi_v2/phase4/p4_05_horizon_bracket_forecast/phase4-p4-05-horizon-bracket-forecast__bands-4__lags-6__20260507T225929/`.
+- P4-06 script: `hsi_v2_phase4_p4_06_boundary_feature_shift.py`.
+- P4-06 canonical artifact: `hsi_agents_project/results/hsi_v2/phase4/p4_06_boundary_feature_shift/phase4-p4-06-boundary-feature-shift__786M-795M_to_795M-804M__20260508T142409/`.
+- Grace audit: `docs/HSI-audit-Phase4-P4-06-Boundary-Feature-Shift.md`.
+
+P4-06 does not extend the forecast horizon, does not scan later bands, does not introduce new nulls, and does not recompute the accepted P4-04/P4-05 runs. It only decomposes the already discovered boundary.
+
+### Empirical Readout
+
+Best-row boundary shift:
+
+| Metric | Last supported band `786M-795M` | First boundary band `795M-804M` | Delta |
+|---|---:|---:|---:|
+| B retention | `1.0000` | `1.0000` | `+0.0000` |
+| phase-matched-LZ max | `0.2953` | `1.0000` | `+0.7047` |
+| block-entropy max | `0.3789` | `0.8824` | `+0.5034` |
+| hard null max | `0.3789` | `1.0000` | `+0.6211` |
+| hard margin | `0.6211` | `0.0000` | `-0.6211` |
+
+Lag-aligned aggregate shift over the four shared negative lags:
+
+- Mean B-retention shift: `+0.1313`.
+- Mean phase-matched-LZ max shift: `+0.6745`.
+- Mean block-entropy max shift: `+0.5208`.
+- Mean hard-null max shift: `+0.6147`.
+- Mean hard-margin shift: `-0.4834`.
+
+The diagnostic verdict is:
+
+- `status = null-envelope-catch-up`.
+- `primary_driver = hard-null-envelope-dominated-by-phase-matched-LZ`.
+
+### Interpretation
+
+The P4-04/P4-05 boundary is not explained by disappearance of B retention. In the best-row comparison B remains at `1.0000`, and in the lag-aligned aggregate B retention increases on average. The collapse of the predictive margin is driven by a surge in the hard-null envelope, dominated by phase-matched-LZ but also materially supported by block-entropy.
+
+This supports the D-0097 wording `convergència de l'embolcall nul` and sharpens its mechanism: the hard null envelope catches up to B at the finite-horizon boundary.
+
+### Grace Audit
+
+Grace's verdict is `ACCEPTED`. The audit accepts:
+
+- P4-06 as a legitimate read-only derivation, not signal chasing.
+- The best-row plus lag-aligned aggregate decomposition as sufficient to support the null-envelope catch-up reading.
+- D-0102 as warranted diagnostic closure.
+- Paper-facing use only as a short integrated prose clarification, with zero new tables.
+
+Grace's wording amendment is accepted: do not attribute the whole boundary to a single null. Use `hard-null envelope surge, dominated by phase-matched-LZ`, because block-entropy also rises substantially.
+
+### Wording Boundary
+
+Allowed wording:
+
+- `convergència de l'embolcall nul`.
+- `hard-null envelope catch-up`.
+- `the predictive-margin collapse is driven by a hard-null envelope surge, dominated by phase-matched-LZ`.
+- `B retention does not disappear at the boundary`.
+- `P4-06 diagnoses the P4-04/P4-05 boundary; it does not extend the forecast horizon`.
+
+Forbidden wording:
+
+- `channel death`.
+- `B dies at the boundary`.
+- `phase-matched-LZ alone explains the boundary`.
+- `global law`.
+- `universal phase law`.
+- `forecast horizon reopened`.
+- `renewed signal found`.
+
+### Practical Impact
+
+- P4-06 closes the current Phase 4 predictive subarc diagnostically:
+  - P4-04: finite forward prediction supported through `786M-795M`;
+  - P4-05: horizon bracket rejected immediately after, beginning at `795M-804M`;
+  - P4-06: the boundary mechanism is hard-null envelope catch-up, not B-retention loss.
+- No new manuscript table is authorized.
+- If integrated into the manuscript, the result should appear only as one contained prose clarification in the Phase 4 finite-subarc paragraph.
+- No further forward signal chasing is authorized by this entry.
+
+### Validation Traces
+
+- Ariadna implementation validation (2026-05-08): `.\venv\Scripts\python.exe -m py_compile hsi_v2_phase4_p4_06_boundary_feature_shift.py` completed successfully.
+- Initial P4-06 run (2026-05-08): `phase4-p4-06-boundary-feature-shift__786M-795M_to_795M-804M__20260508T134115/` produced the same numeric readout but used the overly sharp driver label `phase-matched-lz`.
+- Grace audit (2026-05-08): verdict `ACCEPTED`, with wording amendment requiring the driver to be described as the hard-null envelope, dominated by phase-matched-LZ.
+- Canonical P4-06 rerun after wording patch (2026-05-08): `phase4-p4-06-boundary-feature-shift__786M-795M_to_795M-804M__20260508T142409/`.
+
+---
+
