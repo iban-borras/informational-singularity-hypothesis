@@ -22,6 +22,635 @@ Its job is to keep a compact, chronological record of:
 
 ---
 
+## D-0114
+
+- Date: 2026-05-10
+- Status: `accepted-editorial-integration`
+- Cycle: Q2 / boundary characterization integration into manuscript
+- Trigger: D-0112 (Q2 hard negative `null-internally-lower-entropy`) and D-0113 (descriptive readout `boundary-null-concentration-advantage`) closed the Q2 cycle as repo-facing artifacts. Editorial review (Sofia) and Ariadna's recommendation converged on integrating a single short paragraph into §15.6 of `Paper_Latex/main_v2.01_cat.tex` as boundary characterization, without tables, figures, or expansion of the claim.
+
+### Decision
+
+D-0114 authorizes one paragraph in §15.6 of `Paper_Latex/main_v2.01_cat.tex`, inserted between the D-0102 paragraph and the D-0106 coda, tagged inline as `% [D114-T1]`.
+
+The paragraph:
+
+- reports Q2 v0.2 as a hard internal-entropy negative across all six catch-up bands;
+- reports D-0113 mechanism as concentration of routing mass into fewer effective components with higher principal-component shares;
+- explicitly preserves the P4-04 forward persistence ($3/3$) by stating it is not reproducible by `block-entropy` over the bands preceding the frontier;
+- frames the frontier as a multi-metric regime where different strong nulls dominate under different objects, complementing rather than contradicting D-0102;
+- does not open Door 2, does not introduce $\delta_m$, $G_B$ spectrum, or scaling law claims;
+- does not authorize new experiments.
+
+Editorial choice (Option B over Options A and C):
+
+- Option A (Decision Log only) was rejected because the manuscript would otherwise carry no internal-entropy reading of the boundary, leaving the natural reviewer question "what stops B at the frontier?" answerable only at the surface (D-0102) level.
+- Option C (full paragraph with mechanism breakdown numbers) was rejected because it would crowd §15.6 with three coda paragraphs and exceed the boundary-characterization scope.
+- Option B was selected because it delivers the internal-entropy delimitation in a single paragraph, with explicit cross-reference to the canonical Decision Log for traceability.
+
+### Wording Integrated
+
+The integrated paragraph reads:
+
+> Un diagnòstic posterior d'entropia interna sobre les sis bandes de `null-envelope catch-up` (Q2 v0.2, traçat al *Decision Log* canònic) no va trobar eficiència interna amagada de B sota l'entropia de components del routing: al contrari, el nul `block-entropy` va assolir menor entropia local en totes sis bandes de frontera, amb signe estable. El mecanisme reportat va ser concentració local de la massa de routing en menys components efectius i major pes als components principals. Aquesta lectura no refuta el subarc predictiu ---la persistència forward $3/3$ a P4-04 no és reproduïble per `block-entropy` sobre les bandes anteriors a la frontera---; complementa la lectura superficial del cicle P4-06 (on `phase-matched-lz` dominava la convergència de retenció) caracteritzant la frontera com un règim multi-mètric on nuls forts diferents guanyen segons l'objecte mesurat, no com una pèrdua de retenció de B.
+
+### Wording Boundary
+
+Allowed:
+
+- `boundary characterization`
+- `internal-entropy diagnostic`
+- `multi-metric frontier regime`
+- `concentration advantage of strong null at boundary`
+- `complements surface-level reading of D-0102`
+
+Forbidden:
+
+- `Phase 4 weakened`
+- `B refuted at boundary`
+- `Q2 rescued`
+- `internal opacity overturned`
+- `geometry recovered`
+- `cross-arc law authorized`
+- `new experimental cycle authorized by D-0114`
+
+### Practical Impact
+
+- `Paper_Latex/main_v2.01_cat.tex` §15.6 acquires one new paragraph (`% [D114-T1]`) between the D-0102 paragraph and the D-0106 coda.
+- D-0112 and D-0113 remain the empirical and mechanistic anchors; D-0114 is purely editorial integration.
+- No figure, table, abstract, or §0 change is authorized by D-0114.
+- A third brief-blind review pass over v2.02 may be considered after D-0114 integration but is not required by this decision.
+- Any further paper-facing use of Q2/D-0113 material requires a new D entry.
+
+### Validation Traces
+
+- Inserted paragraph: `Paper_Latex/main_v2.01_cat.tex` §15.6, tagged `% [D114-T1]`.
+- Underlying empirical anchors: D-0112 (Q2 Stage 1 hard negative) and D-0113 (boundary mechanism readout).
+- Source contract: `hsi_agents_project/Documentation/HSI_v2_Q2_InternalRoutingEntropy_Preregistration_v0_2.md` (SHA256 `8DAD57F54BB70687AB2B4FBC85398BF543CC5A639D55E487EC9879B96521F011`).
+
+---
+
+## D-0113
+
+- Date: 2026-05-10
+- Status: `accepted-diagnostic-readout`
+- Cycle: Q2 / boundary mechanism decomposition
+- Trigger: D-0112 closed Q2 as a hard negative (`null-internally-lower-entropy`). To avoid leaving the negative as an abstract scalar result, Ariadna executed a descriptive readout over the sealed Q2 Stage 1 outputs to decompose how the winning hard null beats observed `B` locally.
+
+### Decision
+
+D-0113 records a descriptive mechanism readout subordinate to D-0112.
+
+Canonical run:
+
+`results/hsi_v2/q2_internal_routing_entropy/boundary_mechanism_readout/q2-boundary-mechanism-readout__src-q2-internal-routing-entropy-stage1__20260509T171750__20260510T080824/`
+
+This readout:
+
+- reads only Q2 Stage 1 outputs;
+- does not rerun routing;
+- does not introduce a new entropy metric;
+- does not change the D-0112 category;
+- does not authorize manuscript edits by itself.
+
+### Result
+
+Final diagnostic category:
+
+`boundary-null-concentration-advantage`
+
+Catch-up mechanism:
+
+`fewer-effective-components-and-higher-top3-share`
+
+Catch-up role summary:
+
+- mean entropy gap: `-0.0655`
+- mean effective-component delta, winning null minus observed `B`: `-1.3204`
+- mean top1-share delta, winning null minus observed `B`: `+0.1125`
+- mean top3-share delta, winning null minus observed `B`: `+0.2272`
+- mean top5-share delta, winning null minus observed `B`: `+0.1306`
+
+Interpretation: the winning hard null is lower-entropy primarily by concentrating routing mass into fewer effective components with higher top-k component shares. The negative Q2 result is therefore not just a scalar entropy inversion; it is a local concentration advantage of the `block-entropy` null at the catch-up boundary.
+
+### Wording Boundary
+
+Allowed:
+
+- `boundary-null-concentration-advantage`
+- `fewer effective components`
+- `higher top-k component share`
+- `local concentration advantage`
+- `descriptive decomposition of D-0112`
+
+Forbidden:
+
+- `new Q2 metric`
+- `rescued channel`
+- `post-hoc win`
+- `Level 2 proof`
+- `geometry recovered`
+- `manuscript-facing claim authorized`
+
+### Practical Impact
+
+- D-0112 remains the empirical closure of Q2.
+- D-0113 clarifies the mechanism of the hard negative: at catch-up, the strongest hard null wins by local component concentration.
+- Any paper-facing use requires Sofia/Iban editorial review and, if needed, Grace audit of wording.
+
+### Validation Traces
+
+- Diagnostic run report: `results/hsi_v2/q2_internal_routing_entropy/boundary_mechanism_readout/q2-boundary-mechanism-readout__src-q2-internal-routing-entropy-stage1__20260509T171750__20260510T080824/report.md`.
+- Source run: D-0112 canonical Stage 1 output `q2-internal-routing-entropy-stage1__20260509T171750`.
+
+---
+
+## D-0112
+
+- Date: 2026-05-09
+- Status: `accepted-hard-negative`
+- Cycle: Q2 / internal routing entropy at null-envelope catch-up
+- Trigger: D-0111 Stage 1 executed the accepted Q2 v0.2 contract over frozen catch-up and strong-context cells. Grace audited the results and accepted the execution as clean, with the category `null-internally-lower-entropy` validated as the mandatory readout.
+
+### Decision
+
+D-0112 records the empirical closure of Q2 Stage 1.
+
+Canonical run:
+
+`results/hsi_v2/q2_internal_routing_entropy/stage1_entropy/q2-internal-routing-entropy-stage1__20260509T171750/`
+
+The run respected D-0111:
+
+- per-cell adapters were used;
+- N3-05b/N3-05c definitions were not changed;
+- no new entropy metric was introduced;
+- `markov1` remained excluded from the hard-null entropy envelope;
+- no figure was emitted;
+- no manuscript edit was made.
+
+### Result
+
+Final category:
+
+`null-internally-lower-entropy`
+
+Catch-up band signs:
+
+- positive bands: `0/6`
+- negative bands: `6/6`
+- zero bands: `0/6`
+
+Catch-up median `entropy_gap` values:
+
+| band | median entropy_gap | sign |
+|---|---:|---|
+| `624M-633M` | `-0.0706` | `null-lower-entropy` |
+| `633M-642M` | `-0.1401` | `null-lower-entropy` |
+| `795M-804M` | `-0.0481` | `null-lower-entropy` |
+| `804M-813M` | `-0.0288` | `null-lower-entropy` |
+| `813M-822M` | `-0.0378` | `null-lower-entropy` |
+| `822M-831M` | `-0.0377` | `null-lower-entropy` |
+
+The hard-null minimum was attained by `block-entropy` in every selected cell, including strong-context cells.
+
+### Interpretation
+
+Q2 refutes the specific hypothesis that observed `B` remains internally lower-entropy than the best hard null at surface catch-up.
+
+The accepted reading is stricter:
+
+- `null-envelope catch-up` is not merely surface opacity under retention;
+- under the local N3-05c component-weight entropy object, the strongest hard null (`block-entropy`) also becomes internally lower-entropy than observed `B`;
+- the horizon boundary is therefore a thermodynamic transition where local statistical approximations outperform the canonical structural rule in internal routing concentration.
+
+This is a hard negative for hidden B-efficiency at catch-up, not a failure of the program. It sharpens the boundary conditions that any Level 2 theory must explain.
+
+### Wording Boundary
+
+Allowed:
+
+- `hard negative`
+- `null-internally-lower-entropy`
+- `internal routing entropy boundary`
+- `thermodynamic catch-up boundary`
+- `local statistical null advantage`
+- `surface and internal catch-up under the tested entropy object`
+
+Forbidden:
+
+- `B still wins internally`
+- `hidden efficiency confirmed`
+- `catch-up defeated`
+- `null refuted`
+- `Gate 2 solved`
+- `Level 2 proven`
+- `geometry recovered`
+- `predictive channel rescued`
+- `final thermodynamic proof`
+
+### Practical Impact
+
+- Q2 is empirically closed under the accepted v0.2 contract.
+- No additional metric search is authorized from this negative result.
+- No manuscript edit is authorized automatically by this entry.
+- Any paper-facing integration requires a separate editorial decision by Sofia/Iban after reviewing Grace's audit.
+- The next scientific movement should treat Q1 and Q2 together as a boundary-conditioning pair: projective-density alignment is weak/mixed, and local internal entropy at catch-up favors the strongest hard null.
+
+### Validation Traces
+
+- Stage 1 run: `results/hsi_v2/q2_internal_routing_entropy/stage1_entropy/q2-internal-routing-entropy-stage1__20260509T171750/report.md`.
+- Grace audit: `docs/HSI-audit-Q2-Stage1-Results.md`, verdict `HARD NEGATIVE ACEPTADO`.
+
+---
+
+## D-0111
+
+- Date: 2026-05-09
+- Status: `accepted-preregistration-stage1`
+- Cycle: Q2 / internal routing entropy at null-envelope catch-up
+- Trigger: D-0110 Stage 0 completed with all frozen catch-up and strong-context cells having observed `B`, `phase-matched-lz`, and `block-entropy` routing rows available. Stage 0 also showed that the existing N3-05b/N3-05c route requires a transition-shaped adapter before any entropy contrast can be computed. Ariadna drafted a v0.2 Stage 1 contract, Grace audited it as accepted, and Sofia signed it with non-blocking report-level notes about local-adapter semantics.
+
+### Decision
+
+D-0111 accepts the Q2 Stage 1 preregistration:
+
+`hsi_agents_project/Documentation/HSI_v2_Q2_InternalRoutingEntropy_Preregistration_v0_2.md`
+
+Accepted SHA256:
+
+`8DAD57F54BB70687AB2B4FBC85398BF543CC5A639D55E487EC9879B96521F011`
+
+Stage 1 is authorized to:
+
+- verify the sealed D-0110 Stage 0 input hashes;
+- build per-cell Q2 adapters for the 20 frozen catch-up cells and 14 strong-context cells;
+- run the existing N3-05b weighted quotient child-routing graph and N3-05c component-wise quotient normalization once per selected cell;
+- extract `component_weight_entropy_norm` as the primary entropy object;
+- compute `entropy_gap = hard_null_entropy_min - observed_B_entropy`;
+- aggregate catch-up results by band-level median sign;
+- report strong-context cells as descriptive calibration only.
+
+Stage 1 is not authorized to:
+
+- add, remove, or replace bands, lags, cells, null families, or seeds;
+- change N3-05b/N3-05c graph definitions, edge weighting, component definitions, or entropy formulas;
+- include `markov1` in the hard-null minimum;
+- emit figures;
+- modify the manuscript.
+
+### Adapter Contract
+
+The accepted adapter unit is one selected cell, not the full Q2 domain.
+
+Rationale: a single global adapter would produce one N3-05c entropy for the whole transition domain and erase the pre-registered cell-level and band-level sign readouts. The per-cell adapter preserves the frozen N3 metric while making the Q2 contrast mechanically auditable.
+
+For each selected cell, Stage 1 must emit:
+
+- `transition_run/nodes.csv` with exactly one node;
+- `transition_run/edges.csv` as an empty header-only compatibility artifact;
+- a minimal `child_routing_run/<band>/<lag>/routing_rows.csv` copied verbatim from existing routing rows;
+- N3-05b and N3-05c artifacts derived from that adapter.
+
+The report must explicitly state that under the one-cell adapter, `component_weight_entropy_norm` is a local version of the N3 component-weight entropy object. It measures internal routing entropy at a specific surface-tied cell, not entropy of the original full transition domain.
+
+### Primary Readout
+
+For every catch-up selected cell:
+
+`entropy_gap = hard_null_entropy_min - observed_B_entropy`
+
+where:
+
+`hard_null_entropy_min = min(phase_matched_lz_family_entropy_min, block_entropy_family_entropy_min)`
+
+Positive `entropy_gap` means observed `B` is internally lower-entropy than the best hard null for that cell.
+
+The primary decision layer is a two-sided binomial sign-test style readout over the six catch-up bands, using the median `entropy_gap` sign per band. Cell-level summaries are descriptive because cells within a band are not independent.
+
+### Outcome Categories
+
+The accepted categories are:
+
+- `internal-asymmetry-supported`
+- `mixed-internal-asymmetry`
+- `no-internal-separation`
+- `null-internally-lower-entropy`
+- `incomplete-inputs-stop`
+
+These labels are Q2 readout labels only and do not authorize manuscript changes by themselves.
+
+### Sofia Report Notes
+
+The Stage 1 report must include:
+
+- the semantic note that the per-cell adapter changes granularity from full transition-domain N3 entropy to local cell entropy without changing the formula;
+- `std(observed_B_entropy across catchup cells)` as a diagnostic of whether the per-cell adapter preserves non-trivial cell-level variation;
+- a support warning that `813M-822M` has only one selected catch-up cell;
+- a statement that no figure is authorized.
+
+### Wording Boundary
+
+Allowed:
+
+- `internal routing entropy at catch-up`
+- `surface retention equality`
+- `internal thermodynamic asymmetry`
+- `component-weight entropy`
+- `hard-null entropy envelope`
+- `Q2 diagnostic bridge`
+- `null-envelope opacity`
+
+Forbidden:
+
+- `Gate 2 solved`
+- `Level 2 proven`
+- `geometry recovered`
+- `topology discovered`
+- `catch-up defeated`
+- `null refuted`
+- `predictive channel rescued`
+- `final thermodynamic proof`
+- `hidden geometry measured`
+
+### Practical Impact
+
+- Q2 Stage 1 implementation is authorized.
+- No manuscript edit is authorized by this entry.
+- Any paper-facing integration requires a later D-XXXX after execution and audit.
+
+### Validation Traces
+
+- Grace audit: `docs/HSI-audit-Q2-Stage1-Preregistration-v02.md`, verdict `ACCEPTED`.
+- Sofia review: signed v0.2; report-level observations only, no contract-blocking change requested.
+
+---
+
+## D-0110
+
+- Date: 2026-05-09
+- Status: `accepted-preregistration-stage0`
+- Cycle: Q2 / internal routing entropy at null-envelope catch-up
+- Trigger: after D-0109 closed the simple Phase 1 / Phase 4-5 alignment bridge as negative/mixed, Grace validated her second proposed bridge question: whether observed `B` and the hard-null envelope remain internally thermodynamically asymmetric at surface catch-up. Ariadna drafted a v0.1 feasibility-only contract; Grace accepted it and Sofia approved it with report-level refinements.
+
+### Decision
+
+D-0110 accepts the Q2 Stage 0 preregistration:
+
+`hsi_agents_project/Documentation/HSI_v2_Q2_InternalRoutingEntropy_Preregistration_v0_1.md`
+
+Accepted SHA256:
+
+`48FAD8D5B420FB961D945D105AD183C7D1B20F57F150B09AF7EEF97D5466380B`
+
+Only Stage 0 feasibility is authorized. Stage 0 may:
+
+- derive catch-up cells mechanically from frozen strict P4-grid readouts;
+- flag frozen catch-up bands that yield zero qualifying cells as `not-catch-up-under-cell-rule`;
+- verify that observed `B`, `phase-matched-lz`, and `block-entropy` routing rows exist for each qualifying cell;
+- report hard-null family coverage separately before any min-envelope contrast;
+- determine whether the N3-05b/N3-05c/N3-07 route can be applied without changing definitions;
+- report exact commands or adapter requirements for a future v0.2.
+
+Stage 0 may not:
+
+- compute `entropy_gap`;
+- compare observed `B` entropy against hard-null entropy;
+- search for new bands or cells;
+- change the N3-05b/N3-05c/N3-07 definitions;
+- modify the manuscript.
+
+### Frozen Domain
+
+Primary catch-up bands:
+
+- `P4`: `795M-804M`, `804M-813M`, `813M-822M`, `822M-831M`
+- `ARC-B`: `624M-633M`, `633M-642M`
+
+Secondary context bands:
+
+- `P4 strong`: `768M-777M`, `777M-786M`, `786M-795M`
+- `ARC-B strong`: `597M-606M`, `606M-615M`, `615M-624M`
+
+### Sofia Report Refinements
+
+The Stage 0 report must:
+
+- flag any frozen catch-up band with zero qualifying cells and state the cause;
+- include per-band positive-cell fraction as a descriptive placeholder for v0.2, without computing entropy gaps in Stage 0;
+- report hard-null family coverage separately for `phase-matched-lz` and `block-entropy`;
+- note that the natural v0.2 contrast is a sign-test style readout, not Spearman/Pearson.
+
+### Wording Boundary
+
+Allowed:
+
+- `internal routing entropy at catch-up`
+- `surface retention equality`
+- `internal thermodynamic asymmetry`
+- `null-envelope opacity`
+- `low-entropy routing flow`
+- `catch-up boundary diagnostic`
+
+Forbidden:
+
+- `geometry recovered`
+- `topology discovered`
+- `Level 2 solved`
+- `B still wins at catch-up`
+- `null defeated`
+- `surface tie broken conclusively`
+- `hidden proof of mechanism`
+- `universal catch-up law`
+
+### Practical Impact
+
+- Q2 Stage 0 implementation is authorized.
+- Q2 Stage 1 is not authorized.
+- No manuscript edit is authorized by this entry.
+
+### Validation Traces
+
+- Grace audit: `docs/HSI-audit-Q2-InternalRoutingEntropy-v01.md`, verdict `ACCEPTED`.
+- Sofia review: accepted v0.1 and requested report-level refinements only.
+
+---
+
+## D-0108
+
+- Date: 2026-05-09
+- Status: `accepted-preregistration-stage1`
+- Cycle: bridge to Level 2 / projective-density vs predictive-channel alignment
+- Trigger: D-0107 Stage 0 completed with all 22 frozen bands available and mechanically selected `transport_active_mean_tail` as the primary Phase 1 local metric. Ariadna drafted a v0.2 Stage 1 contract, Grace audited it as accepted, and Sofia accepted it with non-blocking report-level refinements.
+
+### Decision
+
+D-0108 accepts the Stage 1 preregistration:
+
+`hsi_agents_project/Documentation/HSI_v2_Bridge_ProjectiveDensity_PredictiveAlignment_Preregistration_v0_2.md`
+
+Accepted SHA256:
+
+`0AC4895814D88F7D16949C953F96B0548340A9CF11F96F3CA6D007ECF271AC91`
+
+Authorized sealed inputs:
+
+- `phase1_local_metrics_raw.csv`
+  - SHA256: `7C4E27580D3C526C82AA9CB09BDCC915B71F41BBD7B19C2F2B689A00CB0EF43D`
+- `predictive_scores.csv`
+  - SHA256: `20534DB529DB130C9D7C3709EE4AC215945E4389F3DE8AA0C92DDAFF4D2155D7`
+
+Traceability input:
+
+- `summary.json`
+  - SHA256: `7A53ABD1B7F5EE9392338B4C760BAD814665F5F0329BF57AC615D8BC7E8D1E83`
+
+Stage 1 is now authorized to compute the v0.2 readout:
+
+- band-level Spearman correlation between `transport_active_mean_tail` and `hard_margin_max`;
+- band-level Pearson correlation as secondary descriptive readout;
+- ordinal class summary by `strict_band_class`;
+- arc-level summary;
+- arc-level exact permutation calibration over the four arc labels (`4! = 24` permutations).
+
+### Sofia Report Refinements
+
+The Stage 1 report must include:
+
+- explicit `p_floor = 1/24 ~= 0.0417` next to the exact permutation fraction;
+- a complete `permutation_table.csv` containing all 24 arc-label permutations and Spearman values;
+- a visible reminder that interpretive categories do not authorize manuscript changes by themselves.
+
+### Wording Boundary
+
+Allowed:
+
+- `projective-density / predictive-channel alignment`
+- `bridge-to-Level-2 alignment readout`
+- `local alignment probe`
+- `same-structure hypothesis`
+- `parallel-emergence outcome`
+- `structured descriptive alignment`
+
+Forbidden:
+
+- `unified theory confirmed`
+- `Level 2 solved`
+- `geometry recovered`
+- `predictive channel explained`
+- `boundary law`
+- `universal horizon`
+- `global phase law`
+- `Phase 5 rescued`
+- `ARC-A/ARC-C failure explained`
+- `statistically proven alignment`
+
+### Practical Impact
+
+- Stage 1 execution is authorized.
+- No figure is authorized.
+- No manuscript edit is authorized by this entry.
+- Any interpretation must preserve the band-level `N=22` non-independence warning and the arc-level `N=4` low-power warning.
+
+### Validation Traces
+
+- Grace audit: `docs/HSI-audit-Bridge-Level2-Preregistration-v02.md`, verdict `ACCEPTED`.
+- Sofia review: accepted v0.2 and requested report-level refinements only.
+- Stage 0 canonical run: `results/hsi_v2/bridge_projective_predictive_alignment/stage0_feasibility/bridge-projective-predictive-stage0__bands-22__20260509T160812/`.
+
+---
+
+## D-0107
+
+- Date: 2026-05-09
+- Status: `accepted-preregistration-stage0`
+- Cycle: bridge to Level 2 / projective-density vs predictive-channel alignment
+- Trigger: after D-0105 closed Phase 5 B-mini as `ambiguous-stop-and-review`, Grace proposed a more fundamental bridge question: whether the local density of the Phase 1 projective hierarchy aligns spatially with Phase 4/5 predictive-channel activation. Ariadna reframed the question as a two-stage, anti-rescue bridge-to-Level-2 contract, and both Grace and Sofia accepted the v0.1 scope with non-blocking hardening notes incorporated.
+
+### Decision
+
+D-0107 accepts the Stage 0 preregistration:
+
+`hsi_agents_project/Documentation/HSI_v2_Bridge_ProjectiveDensity_PredictiveAlignment_Preregistration_v0_1.md`
+
+Accepted SHA256:
+
+`0E11E4E35F7297EEA862E6999413844C75AFCAD66D6EEE9CE5E132A55764F9F9`
+
+The accepted question is not a continuation or rescue of Phase 5. It is a bridge-to-Level-2 feasibility probe:
+
+`Can a local Phase 1 projective-density metric be computed for the frozen Phase 4/5 bands under a blind, pre-declared protocol, before any alignment statistic is computed?`
+
+Only Stage 0 is authorized by this entry. Stage 0 may:
+
+- enumerate the frozen predictive bands from Phase 4 and Phase 5 B-mini;
+- verify source and artifact availability;
+- determine whether candidate Phase 1 local metrics are executable under canonical Phase 1 definitions;
+- report raw Phase 1 local metric values if computed under the accepted metric rule;
+- report cost estimates overall and per arc (`P4`, `ARC-A`, `ARC-B`, `ARC-C`);
+- write `summary.json`, `report.md`, `frozen_bands.csv`, `metric_feasibility.csv`, and `manifest.json`.
+
+Stage 0 may not:
+
+- compute correlations, regressions, scatter plots, heatmap overlays, rank comparisons, or qualitative alignment verdicts between Phase 1 and Phase 4/5;
+- select a Phase 1 metric by apparent agreement with predictive scores;
+- add or replace bands;
+- modify accepted Phase 4/5 artifacts;
+- modify the manuscript.
+
+Any Stage 1 alignment test requires a new v0.2 contract, a new SHA256 anchor, renewed Sofia/Iban/Grace acceptance, and a new Decision Log entry.
+
+### Frozen Bands
+
+Phase 4 reference bands:
+
+`768M-777M`, `777M-786M`, `786M-795M`, `795M-804M`, `804M-813M`, `813M-822M`, `822M-831M`
+
+Phase 5 B-mini bands:
+
+- `ARC-A`: `300M-309M`, `309M-318M`, `318M-327M`, `327M-336M`, `336M-345M`
+- `ARC-B`: `597M-606M`, `606M-615M`, `615M-624M`, `624M-633M`, `633M-642M`
+- `ARC-C`: `1110M-1119M`, `1119M-1128M`, `1128M-1137M`, `1137M-1146M`, `1146M-1155M`
+
+No band may be added, removed, or replaced by Stage 0.
+
+### Wording Boundary
+
+Allowed:
+
+- `projective-density / predictive-channel alignment`
+- `bridge-to-Level-2 feasibility`
+- `local alignment probe`
+- `same-structure hypothesis`
+- `parallel-emergence outcome`
+
+Forbidden:
+
+- `unified theory confirmed`
+- `Level 2 solved`
+- `geometry recovered`
+- `predictive channel explained`
+- `boundary law`
+- `universal horizon`
+- `global phase law`
+- `Phase 5 rescued`
+- `ARC-A/ARC-C failure explained`
+
+### Practical Impact
+
+- Stage 0 implementation is authorized.
+- Stage 1 is explicitly not authorized.
+- The result is repo-facing only until a future v0.2 contract exists.
+- Any raw Phase 1 local values produced by Stage 0 must be sealed before any alignment statistic is written.
+
+### Validation Traces
+
+- Grace audit: `docs/HSI-audit-Bridge-Level2-Preregistration.md`, verdict `ACCEPTED`, with a hard requirement that Stage 0 remain blind to alignment.
+- Sofia review: accepted v0.1 and requested three non-blocking hardening edits: exhaustive Phase 4 band list, per-arc cost reporting, and v0.2 statistical-power caution.
+- Ariadna incorporated the three Sofia edits and Grace's blindness requirement into the accepted v0.1 document before this entry was recorded.
+
+---
+
 ## D-0001
 
 - Date: 2026-04-14
@@ -6968,6 +7597,387 @@ Forbidden wording:
 - Initial P4-06 run (2026-05-08): `phase4-p4-06-boundary-feature-shift__786M-795M_to_795M-804M__20260508T134115/` produced the same numeric readout but used the overly sharp driver label `phase-matched-lz`.
 - Grace audit (2026-05-08): verdict `ACCEPTED`, with wording amendment requiring the driver to be described as the hard-null envelope, dominated by phase-matched-LZ.
 - Canonical P4-06 rerun after wording patch (2026-05-08): `phase4-p4-06-boundary-feature-shift__786M-795M_to_795M-804M__20260508T142409/`.
+
+---
+
+## D-0103
+
+- Date: 2026-05-08
+- Status: `accepted-editorial-closure`
+- Cycle: v2.02 second-pass brief-blind iterative-hostile-review response + D-0102 paper-facing integration
+- Trigger: a second brief-blind hostile review of manuscript v2.01 (post D-0100/D-0101 edits) returned with four substantive flanks: (1) ontological-computational "bait and switch" on the 0/1 alphabet, perceived as injection of binary logic into metaphysics because the notational clarification at `subsec:alfabet` (§3.2) arrived too late narratively; (2) Texas-Sharpshooter accusation against the metric selection of the projective tower (`retention@last`, `active_mean_tail`); (3) recurrent lexical critique despite the three protective layers already in place (lexical note at §11, Beck/Schlögl bibliographic anchoring, Conclusions anchoring); (4) "empty promise of Level 2" structural critique. In parallel, D-0102 (P4-06 boundary feature-shift diagnostic) was made available for paper-facing integration as a short prose precision.
+
+### Decision
+
+D-0103 closes the v2.02 editorial branch with five integrated manuscript interventions and one accepted non-action. The interventions respond to flanks (1)-(3) of the second brief-blind pass plus the paper-facing precision of D-0102. Flank (4) is accepted as structurally valid and not addressable by text; the response is empirical continuation toward Phase 5, not editorial.
+
+The interventions are:
+
+1. **Notational bridge sentence at `subsec:paradoxa` (§3.1).** A new sentence is inserted between the two-pole bullet list and the Primordial Tension paragraph, stating explicitly that `0` and `1` are notational representations of two opposed ontological poles, not numeric values, boolean truth poles, or physical charges. This anticipates the hostile reading at the earliest possible point in the manuscript, before the reader has formed a "binary logic injected into metaphysics" judgment.
+2. **Simplification of `subsec:alfabet` (§3.2)** to avoid literal duplication of the bridge sentence. The notational clause is now a back-reference to §3.1, while the bivalence justification (P1-P3 + Russell/Tarski) is preserved as the original content of §3.2.
+3. **Informative anti-Sharpshooter paragraph at `subsec:sintesi_porta1` (§11.x).** A new paragraph immediately after the definition of the two synthesis observables and before the Gate-Plane figure clarifies that `retention@last` and `active_mean_tail` are not isolated metrics designed to separate B, but the projections onto the tail plane of the quintuple signature operating simultaneously across five mathematically independent registers (LZ, branching, TE, fractal, DET), plus the projective tower as a sixth and seventh independent reading. The framing is constructive, not defensive: an accidental signature would have to coincide by chance across all these axes simultaneously, which is the burden-of-proof inversion against the Sharpshooter accusation.
+4. **Lexical substitution of "massa de transport / ramificació".** Nine occurrences of `massa de transport activa` and related forms are replaced by `fracció activa de transport` (mathematically more accurate: $\mu_{\text{act}}$ is a fraction in $[0,1]$, not a mass) and by `activitat de ramificació`. The mathematical symbol $\mu_{\text{act}}$ is preserved unchanged. The term "transport" itself is preserved (covered by the lexical note and Beck/Schlögl anchoring).
+5. **Lexical-note relocation from §11 to end of §2 (`sec:premisses`).** The full lexical note on physical-resonance vocabulary, originally at the head of `sec:defectes` (§11), is moved to the end of `sec:premisses` (§2), so it precedes any first occurrence of `transport`, `flux`, `routing`, etc. The opening clause is adapted from "A partir d'aquesta secció" to "Al llarg del manuscrit". A short cross-reference paragraph is left at the original position in §11 pointing back to the relocated note, preserving traceability without prose duplication.
+6. **D-0102 paper-facing integration at `subsec:phase4_finite_subarc` (§15.6).** A single precision sentence is inserted into the existing P4-04/P4-05 reading paragraph, decomposing the `convergència de l'embolcall nul` into its mechanism: catch-up dominated by `phase-matched-LZ` with substantial `block-entropy` contribution, not attributable to a single null statistic nor to B-retention loss. No new table, no new subsection, no reopened forecast horizon, fully respecting the D-0102 wording boundary.
+
+The non-action is:
+
+7. **No edit on flank (4) "empty promise of Level 2".** The critique is accepted as structurally valid: presenting a manuscript whose true structural test is Gate 2 (defects + spectrum), still explicitly open, leaves Gate 2 as future work. This cannot be closed by text and should not be. The response is empirical continuation toward Phase 5 (cross-arc scaling of finite predictive horizons, see Phase 5 Candidate B preregistration), not editorial expansion of Gate 2 claims.
+
+### Manuscript Status After D-0103
+
+The current manuscript is `Paper_Latex/main_v2.01_cat.tex` (1130 lines, no LaTeX diagnostics, Overleaf compilation validated by Iban on 2026-05-08).
+
+Human-level decision recorded in this entry: the v2.02 manuscript is treated as a `temporally closed version`, mature enough for first preprint round but explicitly open to substantive revision if Phase 5 produces results that modify the empirical baseline. This unblocks Phase 5 from any implicit constraint of "do not disturb the closed manuscript" and authorizes Phase 5 to operate with full editorial freedom over its own results, conditional on a new hostile-review cycle if those results enter the manuscript.
+
+### Wording Boundary
+
+Allowed wording (specific to interventions in this entry):
+
+- `representacions notacionals d'aquests dos pols ontològics` (intervention 1).
+- `cribratge multi-axial` (intervention 3).
+- `fracció activa de transport`, `activitat de ramificació` (intervention 4).
+- `convergència de l'embolcall nul, dominada per phase-matched-LZ amb contribució clara de block-entropy` (intervention 6).
+
+Forbidden wording (carried forward from D-0102 and reinforced by D-0103):
+
+- `channel death`, `B dies at the boundary`, `phase-matched-LZ alone explains the boundary`.
+- `boundary law`, `universal horizon`, `scaling law derived`, `Gate 2 advanced`, `Gate 2 partially closed`.
+- `the metric selection is robust` (defensive register; D-0103 explicitly avoided this tone in intervention 3).
+
+### Practical Impact
+
+- Closes the v2.02 hostile-review iterative branch.
+- No new claims introduced; only narrative repositioning, lexical neutralization, and one mechanistic precision derived from accepted D-0102.
+- D-0102 is now both repo-facing (full closure) and paper-facing (one-sentence precision).
+- Phase 5 Candidate B preregistration is unblocked and proceeds independently.
+- A third brief-blind hostile-review pass is not required to close this branch; it is left open as an optional future action depending on Phase 5 outcome.
+
+### Validation Traces
+
+- Manuscript edits (2026-05-08): six `str-replace-editor` patches over `Paper_Latex/main_v2.01_cat.tex`, IDE diagnostics zero on each pass.
+- Final regex audit: zero remaining occurrences of `massa de transport` or `massa de ramificació` in the manuscript.
+- Overleaf compilation (2026-05-08): validated by Iban after intervention 6.
+- Cross-reference integrity: `sec:premisses` relocation preserves the forward reference to `eq:defecte` (resolved by LaTeX in second compilation pass, no broken refs).
+- Per-intervention LaTeX trace tags inline in the manuscript: `[D101-T1]` (intervention 6 family, inherited), `[G2-T2]` (intervention 3), `[G3-T1]` (interventions 5 and its cross-reference stub at §11), `[D102-T1]` (intervention 6).
+
+---
+
+## D-0104
+
+- Date: 2026-05-08
+- Status: `accepted-pre-execution-contract`
+- Cycle: Phase 5 / Candidate B-mini cross-arc finite-horizon replication
+- Trigger: after Phase 4 closed the finite out-of-sample predictive subarc (D-0095/D-0097/D-0102), Grace and Sofia rejected Candidate A as premature because it attempted to infer a boundary rule from a single observed frontier. Candidate B-mini was selected as the next falsifiable step: test whether the Phase 4 finite-horizon object has analogues across independent arcs before any boundary-law or scaling-law program can be considered.
+
+### Decision
+
+D-0104 records acceptance of the Phase 5 Candidate B-mini v0.2 pre-execution contract.
+
+Canonical contract:
+
+`hsi_agents_project/Documentation/HSI_v2_Phase5_CandidateB_CrossArc_Preregistration_v0_2.md`
+
+Accepted SHA256:
+
+`08E8190FC19A2F42FD9F7C541857A6ECF1B488C00647A6A063DE741F675DE681`
+
+The contract uses a dual readout:
+
+1. **Strict P4-object check.** The frozen P4 lag grid is applied to the three frozen arcs. This is the only readout that controls the B-mini continue/stop decision.
+2. **Local analogue check.** A broad arc-local scout (`-60M..+60M`, step `2.5M`) may identify a local lag core for diagnostic bracket testing. Local-analogue success cannot rescue a strict P4-object failure.
+
+Frozen arcs:
+
+| arc_id | scout_start | scout_band | bracket_bands |
+|---|---:|---|---|
+| `ARC-A` | `300000000` | `300M-309M` | `309M-318M`; `318M-327M`; `327M-336M`; `336M-345M` |
+| `ARC-B` | `597000000` | `597M-606M` | `606M-615M`; `615M-624M`; `624M-633M`; `633M-642M` |
+| `ARC-C` | `1110000000` | `1110M-1119M` | `1119M-1128M`; `1128M-1137M`; `1137M-1146M`; `1146M-1155M` |
+
+The arc list is derived mechanically from the five-band Stage 0 budget audit:
+
+`results/hsi_v2/phase5_cross_arc_horizon/observability_budget/phase5-cross-arc-observability-budget__20260508T151357/`
+
+Selection rule:
+
+1. keep only `executable = Y`;
+2. drop rows with any `overlaps_reference_ranges` value other than `-`;
+3. require `available_margin_bits >= 250000000`;
+4. choose `K=3` starts maximizing minimum pairwise distance;
+5. tie-break by maximum total span and then lexicographically earliest tuple.
+
+### Wording Boundary
+
+Forbidden:
+
+- `boundary law`
+- `universal horizon`
+- `scaling law derived`
+- `horizon predicted`
+- `frontier formula`
+- `general predictive principle`
+- `Phase 5 confirms Phase 4`
+- `Phase 5 generalizes Phase 4`
+- `rescue of the positive channel`
+
+Allowed:
+
+- `cross-arc finite-horizon test`
+- `finite-horizon replication attempt`
+- `hard-null envelope catch-up`
+- `arc-local predictive horizon`
+- `pilot evidence for or against horizon recurrence`
+- `failure as a valid outcome`
+
+### Practical Impact
+
+- B-mini execution is now authorized exactly under the v0.2 contract.
+- No arc replacement is allowed after execution starts.
+- Failure, inactive scouts, local-analogue-only outcomes, and strict replication outcomes must all be reported with equal visibility.
+- A local-analogue-only result may motivate a future lag-drift question, but it does not support moving to full Candidate B.
+- No manuscript edit is authorized by this entry.
+
+### Validation Traces
+
+- Grace audit v0.1: `docs/HSI-audit-Phase5-CandidateB-v01.md` accepted Stage 0 and required avoiding a narrow P4-only lag grid for distant arcs.
+- Sofia review v0.1: accepted Stage 0 and required explicit scout range, mechanical lag-core selection, anti-rescue separation, and mechanical arc selection.
+- Grace audit v0.2: `docs/HSI-audit-Phase5-CandidateB-v02.md` issued a must-patch warning against `9M` scout spacing as undersampled for a Phase-4-width channel.
+- Final v0.2 patch: broad scout changed to `-60M..+60M` with `2.5M` resolution; tie-break reporting and full eligible-arc traceability added.
+- Sofia and Grace both signed the final v0.2 contract after the `2.5M` patch, authorizing execution under this entry.
+
+---
+
+## D-0105
+
+- Date: 2026-05-09
+- Status: `accepted-empirical-closure`
+- Cycle: Phase 5 / B-mini cross-arc finite-horizon execution
+- Trigger: execution of the D-0104 Phase 5 Candidate B-mini contract returned a mechanically ambiguous result: one frozen arc (`ARC-B`, 597M) strictly replicated the Phase 4 finite-horizon object, while two frozen arcs (`ARC-A`, 300M; `ARC-C`, 1110M) did not. Grace audited the execution and accepted the contract outcome.
+
+### Decision
+
+D-0105 records closure of the Phase 5 B-mini execution.
+
+Canonical run:
+
+`results/hsi_v2/phase5_cross_arc_horizon/bmini_v0_2/phase5-bmini-cross-arc-horizon__arcs-3__20260508T153520/`
+
+Contract:
+
+`hsi_agents_project/Documentation/HSI_v2_Phase5_CandidateB_CrossArc_Preregistration_v0_2.md`
+
+Contract SHA256:
+
+`08E8190FC19A2F42FD9F7C541857A6ECF1B488C00647A6A063DE741F675DE681`
+
+Run verdict:
+
+`ambiguous-stop-and-review`
+
+Arc-level outcomes:
+
+| arc_id | arc | category | strict strong bands | strict shadow bands | scout |
+|---|---|---|---|---|---|
+| `ARC-A` | `300M` | `scout-inactive` | `-` | `300M-309M`; `309M-318M`; `318M-327M`; `327M-336M`; `336M-345M` | inactive |
+| `ARC-B` | `597M` | `strict-replication` | `597M-606M`; `606M-615M`; `615M-624M` | `624M-633M`; `633M-642M` | inactive |
+| `ARC-C` | `1110M` | `scout-inactive` | `-` | `-` | inactive |
+
+The strict replication count is `1/3`. Under the D-0104 outcome rule this does not authorize a full Candidate B run and does not authorize Candidate A. The correct action is stop-and-review.
+
+### Scientific Reading
+
+The Phase 4 finite-horizon object is not a one-off artifact: `ARC-B` provides an independent second occurrence of strict P4-grid finite-horizon behavior, with strong bands followed by null-envelope catch-up.
+
+However, the phenomenon is not broad or ubiquitous under the frozen B-mini arc selection: `ARC-A` is already null-shadowed under the strict readout, and `ARC-C` is inactive. The correct reading is:
+
+`finite-horizon recurrence exists at least locally, but not as a broad cross-arc pattern under B-mini`.
+
+Grace's audit further interprets the scout inactivity in `ARC-B` as a meaningful diagnostic rather than a conceptual bug: the strict P4-grid detects the channel, but the broad scout fails to form a three-lag cluster, implying an extremely narrow or fragmented lag channel in that arc.
+
+### Wording Boundary
+
+Allowed:
+
+- `local finite-horizon recurrence`
+- `intermittent cross-arc recurrence`
+- `strict P4-object replication in ARC-B`
+- `ambiguous-stop-and-review`
+- `narrow or fragmented lag channel`
+- `hard-null envelope catch-up`
+
+Forbidden:
+
+- `Phase 5 confirms Phase 4`
+- `Phase 5 generalizes Phase 4`
+- `cross-arc law`
+- `boundary law`
+- `universal horizon`
+- `scaling law`
+- `B-mini validates Candidate B`
+- `Candidate A is now authorized`
+- `ARC-A/ARC-C failure is missing data`
+
+### Practical Impact
+
+- Full Candidate B is not authorized.
+- Candidate A remains deferred.
+- No new Phase 5 execution is authorized by this entry.
+- The result may be summarized as a predictive coda: Phase 4's finite-horizon behavior recurs at least once in an independent arc, but its occurrence is local/intermittent rather than universal under the B-mini contract.
+- Any manuscript integration must preserve the stop-and-review status and must report ARC-A/ARC-C failures with the same visibility as ARC-B.
+
+### Validation Traces
+
+- B-mini run completed with manifest: `results/hsi_v2/phase5_cross_arc_horizon/bmini_v0_2/phase5-bmini-cross-arc-horizon__arcs-3__20260508T153520/manifest.json`.
+- Machine verdict in `summary.json`: `ambiguous-stop-and-review`, `strict_replication_count = 1`, `local_analogue_only_count = 0`.
+- Arc table: `arc_verdicts.csv`.
+- Grace audit: `docs/HSI-audit-Phase5-BMini-Execution.md`, verdict `ACCEPTED`.
+
+---
+
+## D-0106
+
+- Date: 2026-05-09
+- Status: `accepted-editorial-integration`
+- Cycle: post-D-0105 editorial decision on whether to integrate B-mini results into the manuscript v2.02
+- Trigger: D-0105 closed B-mini empirically (`ambiguous-stop-and-review`, `1/3 strict-replication`) and explicitly required that any manuscript integration preserve the stop-and-review status and report ARC-A/ARC-C failures with the same visibility as ARC-B. The manuscript v2.02 had been previously marked at D-0103 as a temporarily closed version, explicitly open to Phase 5 results. The empirical closure of Phase 5 B-mini therefore reopened the editorial decision.
+
+### Decision
+
+D-0106 records the editorial decision to integrate B-mini results into `Paper_Latex/main_v2.01_cat.tex` as a single short coda at the end of §15.6 (`subsec:phase4_finite_subarc`), immediately after the D-0102 paragraph, with strict equal visibility for all three pre-registered arcs.
+
+Three options were evaluated by Sofia:
+
+1. Option A: do not modify the manuscript; keep B-mini repo-facing only.
+2. Option B: add a single-sentence coda at §15.6 with equal visibility for the three arcs, infirmative wording, no scope expansion.
+3. Option C: add a longer paragraph or a reduced per-arc table.
+
+Sofia's recommendation and Iban's acceptance: Option B. Justification: the same infirmative discipline already applied at D-0101 (multi-axial sensitivity sweep) requires that results which limit the scope of the claim be reported with the same visibility as those that support it. Suppressing B-mini in the manuscript would be asymmetric. Expanding to a full paragraph would be disproportionate to a stop-and-review outcome. A single sentence naming all three arcs explicitly satisfies both principles.
+
+### Intervention
+
+A single insertion at §15.6 of `Paper_Latex/main_v2.01_cat.tex`, immediately after the existing D-0102 sentence about the P4-06 boundary decomposition. Tag `[D106-T1]` inline.
+
+Final wording (Catalan, as per manuscript convention):
+
+> Una validació creuada posterior (B-mini, tres arcs independents pre-registrats sobre la mateixa graella estricta P4) ha trobat una segona ocurrència neta del patró d'horitzó finit amb saturació d'embolcall nul a un dels arcs (597M); els altres dos arcs (300M, 1110M) no han replicat el patró sota la mateixa graella. La persistència és, doncs, local i intermitent: el resultat no autoritza cap llei d'horitzó ni generalització cross-arc, i deixa oberta la qüestió de si el canal de lag drifta entre arcs o si la replicació observada és pròpiament fenomenològica de la regió 597M--642M.
+
+Wording compliance with D-0105 constraints:
+
+- Three arcs explicitly named (300M, 597M, 1110M): equal visibility satisfied.
+- "No autoritza cap llei d'horitzó ni generalització cross-arc" ↔ stop-and-review status preserved.
+- "Local i intermitent" ↔ canonical phrasing aligned with Ariadna's proposed canonical phrase ("Finite-horizon recurrence exists at least locally, but not as a broad cross-arc pattern under B-mini").
+- No claim of universality, no boundary law, no scaling law, no Porta 2 reopening.
+- Open question on lag drift vs regional phenomenology declared as such, not resolved.
+
+### Scope Boundaries
+
+D-0106 does not authorize:
+
+- a new Phase 5 execution;
+- a Candidate B full contract;
+- a boundary-law derivation or any scaling-law program;
+- modifications to the §16 Conclusions section (the existing wording about a bounded horizon at 795M--804M without reopening Porta 2 remains accurate and is not affected by the coda);
+- modifications to the abstract or the §1 framing;
+- any change to thresholds, lag grids, or pre-registered contracts.
+
+D-0106 authorizes:
+
+- the single coda insertion at §15.6 documented above;
+- a follow-up Overleaf compilation cycle by Iban for visual validation;
+- an optional third brief-blind hostile-review pass on the post-coda manuscript, at Iban's discretion.
+
+### Validation Traces
+
+- Source D-0105: `hsi_agents_project/Documentation/HSI_v2_Decision_Log.md` lines 7122-7205.
+- Manuscript pre-coda state: 1130 lines, validated post-D-0103.
+- Post-coda intervention: insertion of one tagged paragraph at §15.6 after L909.
+- Inline LaTeX trace tag: `[D106-T1]`.
+- Equal-visibility check: regex audit confirms ARC-A (300M), ARC-B (597M), and ARC-C (1110M) are all named in the inserted sentence.
+- The coda does not introduce any new figure, table, equation, or external reference.
+
+---
+
+## D-0109
+
+- Date: 2026-05-09
+- Status: `accepted-empirical-closure`
+- Cycle: bridge to Level 2 / projective-density vs predictive-channel alignment
+- Trigger: execution of the D-0108 Stage 1 bridge alignment contract returned `weak-or-mixed-alignment`, with near-zero band-level correlation and no arc-level support. Grace audited the execution and accepted both the negative reading and the prohibition against searching for another Phase 1 metric.
+
+### Decision
+
+D-0109 closes the projective-density / predictive-channel alignment bridge.
+
+Canonical Stage 1 run:
+
+`results/hsi_v2/bridge_projective_predictive_alignment/stage1_alignment/bridge-projective-predictive-stage1__bands-22__20260509T162859/`
+
+Contract:
+
+`hsi_agents_project/Documentation/HSI_v2_Bridge_ProjectiveDensity_PredictiveAlignment_Preregistration_v0_2.md`
+
+Contract SHA256:
+
+`0AC4895814D88F7D16949C953F96B0548340A9CF11F96F3CA6D007ECF271AC91`
+
+Readout:
+
+- band-level Spearman: `0.13816589918454694`
+- band-level Pearson: `0.03366729314476827`
+- arc-level Spearman: `-0.19999999999999996`
+- arc-level permutation fraction: `22/24 = 0.9166666666666666`
+- p-floor: `1/24 = 0.041666666666666664`
+- category: `weak-or-mixed-alignment`
+
+The bridge does not support a simple direct alignment between local Phase 1 projective/transport density (`transport_active_mean_tail`) and Phase 4/5 predictive-channel activation (`hard_margin_max`). The result is not a failure of Phase 1 or Phase 4/5. It closes the simple unification route.
+
+### Scientific Reading
+
+The negative/mixed bridge readout means:
+
+- the Phase 4/5 predictive channel cannot be reduced to the local Phase 1 transport-density metric tested here;
+- ARC-B's predictive activation is not explained by unusually high `transport_active_mean_tail`;
+- ARC-A and ARC-C must not be reinterpreted through a newly selected Phase 1 metric after the fact;
+- Level 2 must explain either a finer coupling between the two structures or a partial decoupling between projective density and predictive-channel activation.
+
+Grace's audit explicitly states that trying another Phase 1 metric now would be alignment hacking. This door is closed unless a future independent contract introduces a mathematically new object before seeing any alignment result.
+
+### Wording Boundary
+
+Allowed:
+
+- `weak-or-mixed bridge alignment`
+- `no simple local alignment`
+- `projective-density / predictive-channel decoupling under the tested metric`
+- `bridge closed as negative/mixed`
+- `Level 2 must explain a finer relation or partial decoupling`
+
+Forbidden:
+
+- `unified theory confirmed`
+- `Level 2 solved`
+- `geometry recovered`
+- `predictive channel explained`
+- `boundary law`
+- `universal horizon`
+- `global phase law`
+- `Phase 5 rescued`
+- `ARC-A/ARC-C failure explained`
+- `try another Phase 1 metric`
+
+### Practical Impact
+
+- No additional Phase 1 alignment metric is authorized.
+- No manuscript edit is authorized by this entry.
+- The next permissible empirical bridge, if pursued, is Grace Question 2: internal routing entropy at null-envelope catch-up.
+- Any Q2 execution requires a new preregistration defining the internal routing entropy object before inspecting the catch-up readout.
+
+### Validation Traces
+
+- Stage 1 run completed with manifest: `results/hsi_v2/bridge_projective_predictive_alignment/stage1_alignment/bridge-projective-predictive-stage1__bands-22__20260509T162859/manifest.json`.
+- Stage 1 report: `results/hsi_v2/bridge_projective_predictive_alignment/stage1_alignment/bridge-projective-predictive-stage1__bands-22__20260509T162859/report.md`.
+- Grace audit: `docs/HSI-audit-Bridge-Stage1-and-Q2.md`, verdict `ACCEPTED`.
 
 ---
 
