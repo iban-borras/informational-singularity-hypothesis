@@ -22,6 +22,891 @@ Its job is to keep a compact, chronological record of:
 
 ---
 
+## D-0126
+
+- Date: 2026-05-12
+- Status: `manuscript-edit-cycle-closed`
+- Cycle: HSI v2 minor-revision closure on v2.02 CAT_4 (Gemini brief-blind, second pass)
+- Trigger: After D-0125 closed the Abstract compression, Iban submitted CAT_4 to the same brief-blind Gemini conversation that had previously saturated under D-0123. Gemini returned a "Minor Revision" verdict listing four substantive flanks: (i) Abstract redundancy at the closing sentence, (ii) missing canonical citations for several controls (Wolfram for Rule 30, Lindenmayer for L-systems, Lind-Marcus for sofic shifts already in `.bib` but never cited in body), (iii) terminological soup mixing "Bloc" (structural), "Nivell" (ontological 0/1/2), and "Phase" (experimental pipeline), and (iv) repetitive defensive tone via `més modestament` (5 occurrences in §11-§15). Empirical pre-edit verification (string counts on `Paper_Latex/main_v2.02_cat.tex`) confirmed the four claims; Iban authorized the full response (Options A+B complete + C2 radical + D2 aggressive) in one cycle, then authorized a second batch of four canonical citations during refinement.
+
+### Edits applied
+
+The cycle was executed in two passes against `Paper_Latex/main_v2.02_cat.tex` and `Paper_Latex/references.bib`, producing PDFs CAT_5 and CAT_6.
+
+#### Pass 1 (CAT_4 → CAT_5): 17 atomic patches
+
+| # | Pass | File | Edit | Resolves |
+|---|---|---|---|---|
+| 1 | A | `.tex` Abstract L55-59 | Removed redundant final sentence repeating the radical-vs-restricted claim | Gemini A (Abstract redundancy) |
+| 2 | B1 | `.bib` | Added `Lindenmayer1968` entry | Gemini B (missing canonical) |
+| 3 | B2 | `.tex` L301 | Added `\cite{Wolfram2002}` to Rule 30 row in §6 table | Gemini B |
+| 4 | B2 | `.tex` L995 | Added `\cite{Wolfram2002}` to Rule 30 row in appendix table | Gemini B |
+| 5 | B3 | `.tex` L306 | Added `\cite{Lindenmayer1968}` to L-system row in §6 table | Gemini B |
+| 6 | B3 | `.tex` L946 | Added `\cite{Lindenmayer1968}` to §obj_controls_externs prose | Gemini B |
+| 7 | B3 | `.tex` L1000 | Added `\cite{Lindenmayer1968}` to L-system row in appendix table | Gemini B |
+| 8 | B4 | `.tex` L476 | Promoted `LindMarcus1995` from footnote to body cite in §subsec:pm | Gemini B |
+| 9-15 | C2 | `.tex` (various) | Replaced visible "Bloc" with "Nivell" or "Secció" across body text; LaTeX comments `% BLOC II/III` preserved | Gemini C (terminology) |
+| 16 | D2 | `.tex` L782 | Removed one of the duplicated `més modestament` occurrences | Gemini D (defensive tone) |
+| 17 | D2 | `.tex` L847, L853 | Removed two further `més modestament` occurrences, leaving exactly 2 (L784, L886) | Gemini D |
+
+#### Pass 2 (CAT_5 → CAT_6): 5 atomic patches (canonical citation reinforcement)
+
+After CAT_5 a conceptual sweep of the manuscript flagged that DET/RQA at L384 had no canonical anchor, and three further controls (MT19937, logistic map, box-counting) had no method-level citation despite being formally defined in the table. All four citations were verified against primary sources (DOI cross-checked) before insertion.
+
+| # | File | Edit |
+|---|---|---|
+| 1 | `.bib` | Added 4 entries grouped after `Lindenmayer1968`: `Marwan2007` (Phys. Rep. 438:237-329, doi:10.1016/j.physrep.2006.11.001), `Falconer1990` (Wiley, ISBN 0471922870), `MatsumotoNishimura1998` (ACM TOMACS 8:3-30, doi:10.1145/272991.272995), `May1976` (Nature 261:459-467, doi:10.1038/261459a0) |
+| 2 | `.tex` L299 | Added `\cite{MatsumotoNishimura1998}` to MT19937 row (control A) |
+| 3 | `.tex` L302 | Added `\cite{May1976}` to logistic map row (control L) |
+| 4 | `.tex` L380 | Added `\cite{Falconer1990}` to box-counting prose in §subsec:df |
+| 5 | `.tex` L384 | Added `\cite{Marwan2007}` to RQA prose in §subsec:det |
+
+### Conceptual mapping: Bloc → Nivell
+
+The replacement is not a synonym swap but a precision gain. The `.tex` previously used "Bloc" both for ontological levels (Bloc 0 = ontology, Bloc 1 = signature, Bloc 2 = geometry) and as structural division markers in LaTeX comments. Mixing the two in body text invited the reading that the manuscript was poorly structured or that "Bloc" and "Nivell" were distinct ontological commitments. The cycle preserves the LaTeX comment markers (`% BLOC II`, `% BLOC III`) as authoring scaffolding while standardizing the body text on "Nivell" for the ontological/empirical hierarchy and "Secció" where pure structural reference is needed. Post-edit verification confirmed zero "Bloc" occurrences in visible body text.
+
+### Verification
+
+- All `\ref{}` labels touched by the cycle (`sec:signatura`, `sec:torre`, `subsec:obj_controls_externs`, `app:variants`, `subsec:pm`) remain valid.
+- All new `\cite{}` keys (`Wolfram2002`, `Lindenmayer1968`, `LindMarcus1995`, `Marwan2007`, `Falconer1990`, `MatsumotoNishimura1998`, `May1976`) resolve to entries in `references.bib` verified against primary sources.
+- `més modestament` count: 5 → 2 (L784, L886), as authorized under D2.
+- No scientific claim, gate, signature value, or Level-2 boundary characterization was modified by this cycle. The closure is editorial-bibliographic, not substantive.
+
+### Artefactes finals
+
+| Artifact | SHA256 |
+|---|---|
+| `Paper_Latex/main_v2.02_cat.tex` | `9151D4142A4E27CD4051764D2746FBB20400CFE0B82FF20131C36066BDFB784B` |
+| `Paper_Latex/references.bib` | `E95CBF5708FAD50056938C1A9328FCF09982E2248576C603E83449195DC44A83` |
+| `Drafts/La_Hipòtesi_de_la_Singularitat_Informacional_version_2.02_CAT_6.pdf` | `E59D1C248B912983C368B1A85DD86BA20099E4AD7E60EAE02856B972D213D1F2` |
+
+### Methodological note
+
+The brief-blind modality (D-0122) saturated on framing under D-0123 and on Abstract length under D-0125. Under D-0126 it surfaced a new class of finding (canonical-citation hygiene + terminological soup) that the previous iterative-hostile passes had not produced, suggesting the two modalities probe genuinely orthogonal failure modes: iterative-hostile concentrates on falsifiable scientific claims, brief-blind concentrates on first-read narrative and bibliographic conventions. The cycle is logged as `manuscript-edit-cycle-closed`; no claim is made that it terminates the entire refinement phase, since the parallel Option-A independent reads by Ariadna (GPT-5.5 in Codex) and Grace (Gemini 3.1 Pro in Antigravity) on CAT_5/CAT_6 may surface further deltas before publication freeze.
+
+---
+
+## D-0125
+
+- Date: 2026-05-12
+- Status: `manuscript-edit-cycle-closed`
+- Cycle: HSI v2 Abstract compression (closure of D-0124)
+- Trigger: D-0124 was opened as `open-issue-deferred` after Iban observed that the post-D-0123 three-paragraph Abstract (470 words) was longer than the Introduction itself (~290 words), inverting the natural narrative proportion. Iban authorized this cycle the next day with three explicit constraints: (i) target ~70% of original length in two paragraphs, (ii) preserve the most relevant messages and offload the rest to the Introduction only if necessary, and during the iteration added two further constraints: (iii) remove all em dashes (`---`) from the Abstract because the marker has fallen out of style and is now read by external reviewers as a signature of unattributed AI generation, and (iv) replace the acronym `HSI` in the second paragraph with a non-acronym alternative.
+
+### Decision
+
+D-0125 closes D-0124 with a single edit on the `\begin{abstract}...\end{abstract}` block of `Paper_Latex/main_v2.02_cat.tex`. The three previous paragraphs (D-0123 baseline) are replaced by two new paragraphs that compress to 75% of the original length, eliminate all four em dashes, open with a contextual question that disambiguates the paper's subject within the first sentence, and preserve every substantive function of the previous Abstract. No edit is propagated to the Introduction: the Introduction at L67-75 already contains the content removed from the Abstract (Wheeler/holographic/Lloyd citations, contributions list, public-code statement) and would only be duplicated.
+
+### Edits applied
+
+| Dimension | Before (D-0123 Abstract) | After (D-0125 Abstract) |
+|---|---|---|
+| Paragraph count | 3 | 2 |
+| Word count | 470 | 352 (75% of original) |
+| Em dashes (`---`) | 4 | 0 |
+| Opening sentence | Direct claim about existing proposals | Contextual question (`Què constitueix el fonament últim de la realitat?`) followed by the existing-proposals statement as the answer being critiqued |
+| `HSI` acronym in P2 | `a la família HSI` | `a la família derivada` |
+| Detailed P1-P3 enumeration `(P1)... (P2)... (P3)...` | Present in long form | Compacted to `Tres principis lògics restringeixen l'origen radical a aquest candidat únic: la no-composició, l'anterioritat de l'explicació i l'absència de propietats`. Full P1-P3 specification preserved at §2 |
+| Strong-nulls list `(shuffled, same-density, markov-1, matched-lz)` | Present | Removed; full list lives at §subsec:nulls_forts |
+| `six independent seeds` detail of the pre-diagnostic | Present | Removed; full detail lives at §subsec:primera_obertura |
+| Public-code-and-data closing sentence | Present | Removed; already at Introduction L75 |
+| New material at P2 closing | --- | Single sentence pointing to D-0123 §subsec:fronteres_nivell2: `Dues sondes pre-registrades n'han delimitat ja fronteres empíriques observades.` |
+
+### Em dashes removed (verbatim audit)
+
+| # | D-0123 fragment | D-0125 replacement |
+|---|---|---|
+| 1 | `---\emph{it from bit}, principi hologràfic, univers computacional---` | `, com l'\emph{it from bit} de Wheeler, el principi hologràfic o l'univers computacional de Lloyd,` (em dash → integrated comma list) |
+| 2 | `---no-composició, anterioritat de l'explicació i absència de propietats---` | `: la no-composició, l'anterioritat de l'explicació i l'absència de propietats` (em dash → colon enumeration) |
+| 3 | `---no podria ser-ho per disseny---` | `per disseny` (em dash apposition → adverbial collapsed into the main clause) |
+| 4 | `---àlgebra de defectes, graf multiescala, espectre---` | Split into two sentences: `... programa falsable: àlgebra de defectes, graf multiescala i espectre. Dues sondes pre-registrades n'han delimitat ja fronteres empíriques observades.` (em dash → colon enumeration + new sentence) |
+
+The acronym `HSI` is preserved at its definition site in P1 (`Hipòtesi de la Singularitat Informacional (HSI)`) for coherence with the rest of the manuscript; only the second-occurrence in P2 (`a la família HSI`) is replaced.
+
+### Frozen artifacts (post-edit)
+
+| Artifact | Path | SHA256 |
+|---|---|---|
+| LaTeX source | `Paper_Latex/main_v2.02_cat.tex` | `42A9B7CFF1C40986C366DA63A848AB0E4A84FB4E9503160639B62F1C4B11C04A` |
+| Compiled PDF (Overleaf) | `Drafts/La_Hipòtesi_de_la_Singularitat_Informacional_version_2.02_CAT_4.pdf` | `BAF2A841B64F4B44631A0F10A11146E14CAC093BE66838A2527EB6340630C944` |
+
+### Wording Boundary
+
+Forbidden inside `\begin{abstract}...\end{abstract}` from this cycle onward (in addition to the inherited fence from D-0121): em dashes (`---`); the second-occurrence of `HSI` (the definition site at first occurrence is still required). Preserved as still-allowed: parenthetical enumerations of the form `(a, b, c)` for natural list separators, since they do not carry the AI-stylistic signal that motivated the em dash removal.
+
+### Open Questions
+
+The new D-0125 Abstract has not been audited yet under any hostile-review modality. The dual-modality protocol (D-0122) is available; whether to invoke it on this short delta or accept the closure on the strength of the editorial constraints met by Iban directly is left as the next operational decision (not blocking under D-0125 itself).
+
+---
+
+## D-0124
+
+- Date: 2026-05-11
+- Status: `superseded` by D-0125 (closed 2026-05-12)
+- Cycle: HSI v2 manuscript polishing backlog
+- Trigger: post-D-0123 reading of the new three-paragraph Abstract by Iban surfaced a length concern: the inserted ontological-vs-empirical separation paragraph (D-0123 edit #4) reads as substantively necessary but stretches the Abstract beyond a typical journal limit, suggesting that paragraphs 1 and 2 (or 2 and 3) admit compression without loss of content.
+
+### Decision
+
+D-0124 records this as an `open-issue` for a future polishing cycle, not as a freeze blocker. The current freeze (D-0123 PDF SHA `6479228D...`) stands; no edit is authorized under this entry. The issue is queued for Iban's next editorial pass with the following scope:
+
+- target: condense the Abstract to two paragraphs while preserving the ontological-vs-empirical separation introduced by D-0123;
+- non-goals: introducing new content, removing the radical-ontology framing, or weakening the empirical-restraint declaration;
+- success criterion: total Abstract length within the typical journal-Abstract envelope (~250-300 words) without losing any of the four functions currently performed (origin claim, axiomatic restriction, ontological/empirical separation, three-level validation summary).
+
+### Open Questions
+
+Whether the compression is best achieved by merging paragraphs 1 and 2 (collapsing the ontological build-up) or paragraphs 2 and 3 (folding the empirical-restraint paragraph into the validation summary). Both directions are admissible under the success criterion; the choice is editorial.
+
+---
+
+## D-0123
+
+- Date: 2026-05-11
+- Status: `manuscript-edit-cycle-closed`
+- Cycle: HSI v2 manuscript reviewer-driven edit cycle 2 (Gemini brief-blind pass 2 framing recommendations + Gemini brief-blind pass 3 saturation check)
+- Trigger: a second brief-blind external pass on the D-0121 post-edit artifact (PDF SHA `D171543D...`) returned four framing recommendations grouped as `Strawman controls`, `Vaporware Level 2`, `Ontological-Algorithmic leap`, and `Toy-model framing`. Iban authorized a `B3` strategy: reinforce the radical ontological proposal in the Abstract while strictly separating it from the restricted empirical evaluation, and document the existing Level 2 hard-negative results in-paper to close the vaporware flank.
+
+### Decision
+
+D-0123 closes the second reviewer-driven edit cycle as four framing edits over `Paper_Latex/main_v2.02_cat.tex`. The version label `v2.02` is preserved (changes are framing, not science); the on-disk artifact is `_CAT_3.pdf`. No content was removed; no claim was strengthened beyond what the manuscript already supports.
+
+### Edits applied
+
+| # | Location | Origin | Action |
+|---|----------|--------|--------|
+| 1 | Abstract (between paragraphs 1 and 2) | Gemini-2 Rec. 1 (rephrased per Iban: preserve grandiloquence, reject toy-model framing) | Inserted a new intermediate paragraph that explicitly separates the radical ontological proposal from the deliberately restricted empirical evaluation; functions as a reading contract for the rest of the manuscript |
+| 2 | §2.3 `Nota axiomàtica` (L107 → extended) | Gemini-2 Rec. 2 (rephrased per Iban: not defensive) | Extended the existing axiomatic note with a positive-framing closing sentence: the fertility of the axiomatic choice is judged by the internal coherence and empirical non-triviality of the derived dynamics, not by the metaphysical status of the postulates |
+| 3 | §15 title `\section{...}` | Gemini-2 Rec. 3a | Renamed `Programa cap al Nivell 2: defectes i geometria` to `Nivell 2: programa formal i fronteres observades` |
+| 4 | §15 final subsection `\label{subsec:fronteres_nivell2}` | Gemini-2 Rec. 3b (rephrased: no `L2-0X` labels, no contradiction with subsec:porta2) | Inserted a new closing subsection `Fronteres empíriques observades dins del programa` documenting the two pre-registered hard-negative probes (spectral property of $G_B$; weighted prefix/suffix quotient contraction) without contradicting the still-open status of the three formal Gate-2 conditions |
+
+No new equations, tables, figures, references, or section reorderings were introduced. Section count and label graph unchanged except for the new `subsec:fronteres_nivell2` label, which is referenced only from inside its own section.
+
+### Frozen artifacts (post-edit)
+
+| Artifact | Path | SHA256 |
+|---|---|---|
+| LaTeX source | `Paper_Latex/main_v2.02_cat.tex` | `C62D2B1A5315CC6A2B829E98EBA43120E6A8764CC4D967886DAE49D47B01E64C` |
+| Compiled PDF (Overleaf) | `Drafts/La_Hipòtesi_de_la_Singularitat_Informacional_version_2.02_CAT_3.pdf` | `6479228DA159765DE553F55F74CDEF0B7648D7A959B9D5858E3A343151A30F7C` |
+
+### Saturation check (Gemini brief-blind pass 3)
+
+A third brief-blind pass was performed on the D-0123 post-edit PDF immediately after compilation. Verdict: zero killables. The seven objections returned by this third pass are either (i) verbatim attacks on paragraphs that already defend against them (Obj. 1 alphabet/P2 violation answered at §subsec:alfabet L142 + §obj-alphabet L944; Obj. 2 parser/stack memory answered at L205; Obj. 3 physics-washing answered at lexical note L118 + reminder L793; Obj. 4 p-hacking on `retention@last`/`active_mean_tail` answered at L703 + L746-748 + D101-T1 anchor at L877; Obj. 7 IA echo-chamber answered at L936), (ii) categorical confusion (Obj. 6 reads control variant F as a defended HSI variant when it is explicitly a validation-by-absurd control, §sec:absurd), or (iii) universally-valid `you could do more` complaints not killable by any finite expansion (Obj. 5 `only two L-systems`).
+
+### Open Questions
+
+D-0124 records the Abstract-length open issue surfaced by Iban after the recompile.
+
+---
+
+## D-0122
+
+- Date: 2026-05-11
+- Status: `accepted-methodology-observation`
+- Cycle: HSI v2 hostile-review protocol meta-observation
+- Trigger: across D-0120, D-0121 and D-0123, the project executed three brief-blind external passes (Gemini-1, Gemini-2, Gemini-3) interleaved with one full-memory iterative-hostile pass (Grace) on the same frozen manuscript. The detection profiles of the two modalities are not interchangeable, and three brief-blind passes on increasingly defended artifacts make the asymmetry empirically measurable.
+
+### Decision
+
+D-0122 records the brief-blind ↔ iterative-hostile asymmetry as a methodology observation that justifies keeping the dual-modality audit protocol of `App. A` (`co-creació simbiòtica`) operationally in place, while documenting that brief-blind detection saturates as the manuscript hardens.
+
+### Empirical record (this manuscript)
+
+| Pass | Modality | Artifact | Returns |
+|---|---|---|---|
+| Gemini-1 | brief-blind, no memory | v2.02 frozen (D-0120 SHA `CE072CFF...`) | 5 structural objections, 1 of them a true killable (`algebraicament exacte` at L346) |
+| Grace | iterative-hostile, full memory | same v2.02 frozen | 1 orthogonal narrative-continuity patch (`sis bandes` at L912); did not detect Gemini-1 Obj. 3 because the wording had survived multiple authored passes |
+| Gemini-2 | brief-blind, no memory | v2.02 post-D-0121 (PDF SHA `D171543D...`) | 4 framing recommendations adopted as D-0123 (`Strawman controls`, `Vaporware Level 2`, `Ontological-Algorithmic leap`, `Toy-model framing`); no killables |
+| Gemini-3 | brief-blind, no memory | v2.02 post-D-0123 (PDF SHA `6479228D...`) | 7 objections; zero killables; 5/7 are attacks on paragraphs that already defend against them verbatim |
+
+### Operational implications
+
+- The dual modality is not redundant: brief-blind detected the only true killable of the cycle (Gemini-1 Obj. 3), iterative-hostile detected the only narrative-continuity patch of the cycle (Grace `sis bandes`). Each modality covered a class of flaw the other missed on the same artifact.
+- Brief-blind detection saturates as the manuscript hardens: pass-3 returned zero killables on the post-edit, and 5/7 of its objections targeted paragraphs that explicitly answer them. Continued sparring with the same external modality on the same baseline is not informative beyond saturation.
+- Iterative-hostile review with full project memory is vulnerable to local minima of familiarity: text that has survived prior authored passes inherits implicit endorsement and is harder to flag as overclaim in subsequent reviews by the same auditor. The brief-blind modality is the operational counter to this drift.
+
+### Application to future cycles
+
+Dual-modality remains the default audit protocol for every freeze candidate. After two consecutive brief-blind passes return zero killables on the same baseline (current state of v2.02 post-D-0123), the protocol is considered to have reached its saturation point on that baseline; further hostile passes require either a different modality (e.g. domain-expert human auditor on dynamic symbolic systems, per Gemini-3 Obj. 7 narrowed) or a substantively new manuscript baseline.
+
+---
+
+## D-0121
+
+- Date: 2026-05-11
+- Status: `manuscript-edit-cycle-closed`
+- Cycle: HSI v2 manuscript reviewer-driven edit cycle (Gemini brief-blind pass 1 + Grace iterative-hostile)
+- Trigger: a brief-blind external pass on the v2.02 frozen snapshot (D-0120 PDF SHA `CE072CFF...`) returned five structural objections. Grace iterative-hostile audit on the same artifact, performed with full project memory, returned one orthogonal narrative-continuity patch and confirmed one of the five brief-blind objections as a true killable that her own pass had missed.
+
+### Decision
+
+D-0121 closes the reviewer-driven edit cycle as a minimum-surface patch over `Paper_Latex/main_v2.02_cat.tex`. Only the single killable wording (Obj. 3, `algebraicament exacte`) and the single narrative-continuity flaw (Grace, orphan numeric `sis bandes`) are applied to the manuscript. The four remaining brief-blind objections (Obj. 1, 2, 4, 5) are accepted as defended in place by existing manuscript text and do not motivate further edits in this cycle. No external response letter is generated, since the reviewers operated as sparring partners and not as a real review committee.
+
+### Edits applied
+
+| # | Line | Origin | Action |
+|---|------|--------|--------|
+| 1 | L346 | brief-blind Obj. 3 (confirmed by Grace) | Replaced `algebraicament exacte, no estadístic` with `una convergència numèrica estricta, no una tendència estadística`; the FP64-precision qualifier and the empirical claim are preserved without the unsupported algebraic-theorem implication |
+| 2 | L912 (first occurrence) | Grace patchable | Replaced `sobre les sis bandes de` with `sobre les bandes de`; removes orphan numeric reference whose source (Q2 v0.2 multi-origin band collection) is not visible to the linear reader |
+| 3 | L912 (second occurrence) | Coherence with edit #2 | Replaced `en totes sis bandes de frontera` with `en totes les bandes de frontera`; required to keep both halves of the same sentence consistent after edit #2 |
+
+No new equations, tables, figures, sections, references, or section reorderings introduced.
+
+### Defenses confirmed in place (no edit required this cycle)
+
+| Brief-blind objection | Defense location in v2.02 (post-patch) | Why no edit |
+|---|---|---|
+| Obj. 1: P1-P3 → Variant B as axiomatic injection | §3.5 L178-180 (family-not-axiom framing); §3.7 L203-208 (parser objection answered structurally); §4 closing L258 (`entre els considerats`) | The minimum-mechanism qualifier and the structural (not executive) reading of nesting are already explicit. |
+| Obj. 2: Phase 4 null catch-up = asymptotic artifact | §11.4 L908 (`no es generalitza a un horitzó asimptòtic`); §11.4 L915 (`no autoritza cap llei d'horitzó`) | The text already declares the signature as finite-horizon. A null catching up at one boundary documents where the discriminant ends, not that the discriminant is artifactual at the protocol scale ($3\times 10^6$ bits, §10.1 L526). |
+| Obj. 4: Tower architecture circular by design | §obj_circular L925-927 (matched-LZ + phase-matched-LZ double-null defense); §obj_circular L927 closing (Phase 4 out-of-sample falsifier); L760 (sliding window operates on $\Phi$ only) | If the tower were a tautology of the generator, any null preserving $\Phi_B$'s coarse properties would reproduce the signal by construction; the empirical fact that they do not is the falsifier of the design-bias reading. |
+| Obj. 5: Physics terminology = metanarrative abuse | §15 L793 (lexical convention restricting all physics-resonant terms to algorithmic/informational sense); standard graph-Laplacian definition $L = D - A$ at §15.3 L817; thermodynamic-routing reading anchored to Beck-Schlögl 1993 at §11.3 L884 | Symbols are explicitly defined within standard mathematical objects, not borrowed from physics as homologies. The `Programa cap al Nivell 2` framing already presents §15 as a candidate test contract, not a measured-physics claim. |
+
+### Frozen artifacts (post-edit)
+
+| Artifact | Path | Size | SHA256 |
+|---|---|---:|---|
+| LaTeX source | `Paper_Latex/main_v2.02_cat.tex` | (post-edit) | `158F720E282AF10745E595FD2ABF0DEAE421F9011605D032AED34B5B20E4560E` |
+| Compiled PDF (Overleaf) | `Drafts/La_Hipòtesi_de_la_Singularitat_Informacional_version_2.02_CAT_2.pdf` | `2615743` (approx., to verify on disk) | `D171543D977BE40BB7F8116432A70598A5AF0FB8EE79A5621945F61D78F43B9B` |
+
+The version label `v2.02` is preserved by editorial decision (the patches are micro-edits and do not warrant a version bump); the PDF filename suffix `_CAT_2.pdf` distinguishes the post-patch artifact on disk.
+
+### Wording Boundary
+
+Forbidden after this cycle (in addition to inherited fences): `algebraicament exacte`, `algebraically exact`. Allowed and explicit: `convergència numèrica estricta`, `conjectura numèrica forta`, `dins de la precisió de punt flotant`, `FP64`.
+
+### Open Questions
+
+None opened by this cycle. The D-0120 freeze regime is now operationally completed: the post-edit artifact above is the new freeze candidate. Subsequent reviewer-driven cycles, if any, require a new D entry per the same protocol; a separate cycle for the brief-blind pass 2 verdict (vaporware on §15, strawman on classical controls) is queued and will be opened as D-0123 with explicit framing decisions, not micro-patches.
+
+---
+
+## D-0120
+
+- Date: 2026-05-11
+- Status: `accepted`
+- Cycle: HSI v2 manuscript snapshot for hostile review
+- Trigger: closure of the empirical Level 2 cycle (D-0117, D-0118, D-0119) leaves the manuscript at a stable state with no pending paper-facing edits. Grace, Ariadna and Sofia agree (Editorial Closure Addendum of D-0119) that the next coordinated step is final external/hostile review on a frozen candidate snapshot, not additional internal experimentation.
+
+### Decision
+
+D-0120 freezes the v2.02 candidate manuscript as the artifact submitted to hostile review. No manuscript edits are authorized while the hostile review is in progress; reviewer-driven edits are processed as a new D entry per cycle (see D-0121).
+
+### Frozen artifacts
+
+| Artifact | Path | Size | SHA256 |
+|---|---|---:|---|
+| LaTeX source | `Paper_Latex/main_v2.02_cat.tex` | `158431` | `64FD2A339AA0284DCF2F1C84CAF5FB6C9C92CA57FDF78B8BF64A0C1F779CB3FE` |
+| Compiled PDF (Overleaf) | `Drafts/La_Hipòtesi_de_la_Singularitat_Informacional_version_2.02_CAT_1.pdf` | `2615743` | `CE072CFF483A0A11E7DEFE05B86153A2D765C53955194ED8AA6231BBB3726B7B` |
+
+### Pre-Snapshot Verification (Sofia)
+
+Performed before freezing:
+
+- no occurrence in `main_v2.02_cat.tex` of `L2-0`, `hairball`, `quotient[ -]contraction`, `spectral[ -]percolation`, `cycle-rank`, `pou gravitatori`, `substrat topològic`, `D-0116`, `D-0118`, `D-0119`;
+- D-0102 / D-0114 / D-0106 boundary characterizations preserved verbatim with conservative wording (`no obre Porta 2`, `local i intermitent`, `no autoritza cap llei d'horitzó ni generalització cross-arc`);
+- §13 Conclusions preserves the bounded reading of the Phase 4 finite subarc (`acota la persistència forward del règim sense reobrir Porta 2`);
+- pre-commitments D-0116 and D-0118 (no manuscript edit for L2-01 / L2-02 hard-negative outcomes) honored without exception;
+- file rename `main_v2.01_cat.tex` → `main_v2.02_cat.tex` was byte-preserving (same `LastWriteTime`).
+
+### Hostile Review Outcome (recorded after the fact)
+
+The frozen artifact above was submitted to two independent hostile-review modalities:
+
+- a brief-blind external pass (no project memory, PDF only) returned five structural objections covering the P1-P3→B derivation, the Phase 4 null catch-up reading, the `algebraicament exacte` claim at L346, the tower-circularity defense, and the lexical convention for physics-resonant terms;
+- a Grace iterative-hostile pass (with full cycle memory) on the same PDF returned one orthogonal narrative-continuity patch (`sis bandes` orphan numeric at L912) and confirmed that the brief-blind Obj. 3 was a true killable her own pass had missed.
+
+The triage and operationalization of these returns is handled in D-0121.
+
+### Authorized Use (terminated by D-0121)
+
+The freeze regime forbade manuscript edits while the hostile review was in progress. That regime is operationally completed: D-0121 anchors the next freeze on the post-edit artifact.
+
+---
+
+## D-0119
+
+- Date: 2026-05-11
+- Status: `accepted-hard-negative`
+- Cycle: Level 2 / L2-02 quotient-contraction mimicry closure
+- Trigger: L2-02 executed under the frozen D-0118/v0.2 contract and returned `non-B-specific contraction`. Grace audited the execution and accepted the hard negative: the quotient-contraction pattern observed in `B` is mimicked by hard nulls and therefore cannot be claimed as B-specific under this graph object.
+
+### Decision
+
+D-0119 closes L2-02 as a repo-facing hard negative for B-specific quotient contraction.
+
+Canonical run:
+
+`hsi_agents_project/results/hsi_v2/level2/l2_02_quotient_contraction/mimicry_probe/l2-02-quotient-contraction-mimicry__20260511T073130/`
+
+Contract:
+
+`hsi_agents_project/Documentation/HSI_v2_Level2_L2_02_QuotientContraction_Preregistration_v0_2.md`
+
+Contract SHA256:
+
+`3F201C6CD66955721C262AF74CCEE806773A129ECC9DB0B09ADCD42FF432BB9A`
+
+Readout:
+
+- overall verdict: `non-B-specific contraction`
+- observed-B category: `B-contraction-descriptively-present`
+- complete hard-null seed count: `12`
+- complete hard-null families: `block-entropy`, `phase-matched-lz`
+- `phase-matched-lz`: `6/6` seeds returned `null-contraction-mimicry`
+- `block-entropy`: `3/6` seeds returned `null-contraction-mimicry`, `1/6` returned `partial-null-contraction-mimicry`, `2/6` returned `no-null-contraction-mimicry`
+
+The observed-B quotient contraction is real as a descriptive re-read of the L2-01 windows:
+
+- ARC-B pair: `5/5` contraction indicators, node ratio `0.4000`
+- P4 pair: `5/5` contraction indicators, node ratio `0.5000`
+
+However, because hard-null mimicry is present, the D-0118 pre-committed editorial response applies: no manuscript edit, repo-facing closure only.
+
+### Scientific Reading
+
+L2-02 blocks the candidate reading that the quotient-contraction / cycle-rank-loss pattern is B-specific under the N3-05b weighted quotient child-routing graph object.
+
+The result does not mean that the boundary is empty or behaviorless. It means the contraction pattern belongs to a broader boundary response that hard nulls can also reproduce under this object. Grace's audit describes this as a topological substrate effect at the thermodynamic boundary. D-0119 records the bounded version of that reading:
+
+- quotient contraction appears at the boundary in observed `B`;
+- the same contraction is reproduced by `phase-matched-lz` across all complete seeds;
+- therefore, quotient contraction is not accepted as a B-specific Level 2 invariant;
+- the pattern becomes an additional delimiter of the predictive/Level-2 subarc rather than a positive geometry claim.
+
+This is not a claim of literal universality across all possible routing algorithms or null ensembles. It is a strong non-specificity result under the hard null families available in the frozen L2-01/L2-02 artifact chain.
+
+### Artifact Hashes
+
+| Artifact | SHA256 |
+|---|---|
+| `summary.json` | `1122391D3C1890DAF52DA7F223D2B147213BB7A45CF2A91C6342052765CC3DBC` |
+| `report.md` | `9B34310A3E7871C8ABFDC530BFED82943458BFAE93EE961F48F114D0002A44CB` |
+| `observed_b_contraction.csv` | `5BBB81E89C5E99B6AECE45DA99D53FD54A1406F639651B826EC47AA9D648F382` |
+| `hard_null_contraction_mimicry.csv` | `61FDD123EFB6F2E1075623036E844D29328711E92E52C777B074511482A05AAF` |
+| `hard_null_pair_contrasts.csv` | `19956425E27785B130DCC283A01AD7758599A9527B985E7D097BE40C3786CF22` |
+| `cross_arc_context.csv` | `601BCCBF75A5B54EC6B5C89A04C33E5818B5AE2F867C508B2D473CE8D5C2AE0D` |
+| `manifest.json` | `9F8423C710E4783496D279840D6C269CD69B8E626FCFAB4379AFDC00AF2A7FA5` |
+
+### Wording Boundary
+
+Allowed:
+
+- `non-B-specific contraction`
+- `hard-null mimicry`
+- `quotient-contraction delimiter`
+- `boundary contraction reproduced by hard nulls`
+- `not a B-specific Level 2 invariant`
+- `repo-facing hard negative`
+
+Forbidden:
+
+- `geometry recovered`
+- `topology discovered`
+- `Level 2 confirmed`
+- `B-specific contraction established`
+- `Topological Hairball Transition established`
+- `universal topological law`
+- `any routing algorithm collapses`
+- `L2-01 was positive after all`
+
+### Practical Impact
+
+- L2-02 is closed as a hard negative for B-specific quotient contraction.
+- No manuscript edit is authorized.
+- No figure is authorized.
+- The L2-02 result is a sixth delimiter of the predictive/Level-2 subarc, not a positive paper-facing claim.
+- Further pursuit of Level 2 geometry would require a mathematically new object or genuinely independent windows/null ensembles, not a re-labeling of this quotient-contraction readout.
+
+### Validation Traces
+
+- L2-02 run: `hsi_agents_project/results/hsi_v2/level2/l2_02_quotient_contraction/mimicry_probe/l2-02-quotient-contraction-mimicry__20260511T073130/`
+- Grace audit: `docs/HSI-audit-Level2-L2-02-Stage1-Results.md`, verdict `HARD NEGATIVE ACEPTADO`.
+- D-0118 pre-committed editorial response for `non-B-specific contraction`: no manuscript edit, repo-facing D entry as delimiter.
+
+### Open Questions
+
+1. Is there any mathematically new Level 2 object worth testing, or is the current empirical frontier exhausted for this manuscript cycle?
+   - Resolution: no additional Level 2 object is pursued within the current manuscript cycle. A genuinely new Level 2 test would require at least one material change outside the current cycle budget: a different graph object, temporal/dynamical invariants rather than static graph invariants, or fundamentally different null ensembles. Further tests under N3-05b-like objects or the same null families have low marginal value after Q1, Q2, D-0113, L2-01 and L2-02.
+2. Should Sofia record a paper-facing no-op note, or is D-0119 sufficient as repo-facing closure?
+   - Resolution: D-0119 is sufficient. No paper-facing no-op note is recorded. D-0118 pre-committed the editorial response for `non-B-specific contraction` as no manuscript edit, and the current manuscript does not contain stale L2-01/L2-02 claims that require correction.
+3. Should the next coordinated step be final manuscript hostile-review rather than additional experimentation?
+   - Resolution: yes. The next coordinated step is final hostile review / external review of the candidate manuscript snapshot, not additional internal experimentation.
+
+### Editorial Closure Addendum
+
+Sofia verified D-0119 against disk and confirmed:
+
+- D-0119 status `accepted-hard-negative`;
+- v0.2 contract SHA256 `3F201C6CD66955721C262AF74CCEE806773A129ECC9DB0B09ADCD42FF432BB9A`;
+- declared artifact hashes match disk;
+- Grace audit `docs/HSI-audit-Level2-L2-02-Stage1-Results.md` exists and confirms `HARD NEGATIVE ACEPTADO`;
+- report/verdict consistency: `12` complete hard-null seeds, with `9/12` showing full or partial mimicry;
+- D-0118 pre-commitment honored: no manuscript edit;
+- D-0119 correctly bounds Grace's stronger language by forbidding `universal topological law` and `any routing algorithm collapses`.
+
+Minor implementation note for future contracts: D-0119 records `hard_null_pair_contrasts.csv` as an auxiliary detail artifact, although it was not listed in the v0.2 contract's primary output list. This does not affect the verdict because it is derived from the same frozen `window_graph_summary.csv` and Grace accepted the execution. Future contracts with this pattern should distinguish primary verdict artifacts from auxiliary detail artifacts in the output list or manifest.
+
+---
+
+## D-0118
+
+- Date: 2026-05-11
+- Status: `accepted-preregistration-execution-authorized`
+- Cycle: Level 2 / L2-02 quotient-contraction mimicry probe
+- Trigger: L2-01 closed as a hard negative for the preregistered spectral-percolation direction while leaving a descriptive inverse pattern on observed `B` windows. Grace flagged the first L2-02 draft as circular/double-dipping unless the observed-B component was explicitly degraded to post-hoc formalization and the hard-null mimicry component became the primary test. Sofia refused to sign v0.1 for the same reason and requested a mimicry-as-primary v0.2.
+
+### Decision
+
+D-0118 accepts the L2-02 v0.2 contract and authorizes execution under its frozen scope:
+
+`hsi_agents_project/Documentation/HSI_v2_Level2_L2_02_QuotientContraction_Preregistration_v0_2.md`
+
+Accepted SHA256:
+
+`3F201C6CD66955721C262AF74CCEE806773A129ECC9DB0B09ADCD42FF432BB9A`
+
+The final file was renamed from the signed `_DRAFT` filename without changing its bytes, preserving the signed SHA256 exactly. This D entry is the operative status authority: v0.2 is now accepted and execution is authorized even if the document body still contains historical draft-status wording.
+
+L2-02 tests whether hard nulls reproduce the quotient-contraction pattern descriptively observed in L2-01 under the same N3-05b weighted quotient child-routing graph object and the same frozen within-arc windows.
+
+The observed-`B` component is not independent evidence:
+
+- the within-arc windows are reused from L2-01 because that is where the inverse pattern was noticed;
+- no virgin holdout windows are used for observed `B`;
+- observed-`B` pair classification is a post-hoc consistency check on already-inspected L2-01 numerics;
+- the hard-null mimicry verdict is the deciding component of L2-02 whenever observed-`B` contraction is present.
+
+### Authorized Execution Scope
+
+Execution may compute only the v0.2 quotient-contraction mimicry readout:
+
+- graph object: same N3-05b weighted quotient child-routing graph as L2-01;
+- edge-weight mode: `pooled-retained-mass`;
+- parent scale: `40`;
+- top patterns: `128`;
+- frozen within-arc windows: ARC-B interior/boundary and P4 interior/boundary exactly as specified in v0.2 section 6;
+- observed-B indicators: `node_count_contraction`, `beta1_cycle_loss`, `total_edge_weight_loss`, `relative_density_rise`, `largest_component_nonincrease`;
+- hard-null families: `phase-matched-lz`, `block-entropy`, and `matched-lz` only if complete rows are present;
+- output artifacts: `summary.json`, `report.md`, `observed_b_contraction.csv`, `hard_null_contraction_mimicry.csv`, `cross_arc_context.csv`, `manifest.json`.
+
+Execution may not:
+
+- replace windows;
+- add virgin/alternate windows after seeing results;
+- change the graph object or solver semantics;
+- create figures;
+- use cross-arc context to change the overall verdict;
+- edit the manuscript;
+- interpret observed-`B` contraction as independent evidence.
+
+### Readout Priority
+
+The execution must emit exactly one overall category according to the v0.2 priority rule:
+
+1. If no hard-null seed is complete, emit `hard-null-inputs-not-derivable`.
+2. Else, if observed-`B` is not `B-contraction-descriptively-present`, emit `no contraction`.
+3. Else, use the complete hard-null seeds to distinguish `B-specific contraction candidate` from `non-B-specific contraction`.
+
+For report clarity, `hard-null-inputs-not-derivable` means no complete hard-null seed is available in any hard-null family; it must not be interpreted as absence of mimicry.
+
+The `B-specific contraction candidate` bar is intentionally strict: any complete hard-null seed returning either `null-contraction-mimicry` or `partial-null-contraction-mimicry` blocks the B-specific candidate verdict. This strictness is accepted because the observed-B component has HARK/post-hoc origin.
+
+### Pre-Committed Editorial Response
+
+This table is an editorial pre-commitment. It constrains manuscript-facing response before L2-02 results are known.
+
+| Outcome L2-02 | Editorial response |
+|---|---|
+| `B-specific contraction candidate` | Open a reinforced editorial integration cycle because of the HARK origin: new D entry, mandatory post-execution Grace audit, Sofia review, and only if accepted, a short paragraph in section 15.6 as `candidate B-specific contraction signature pending independent replication on virgin windows`. No established Level 2 claim. Wording fence remains binding. |
+| `non-B-specific contraction` | No manuscript edit. Repo-facing D entry records a sixth delimiter of the predictive subarc and closes this Level 2 line jointly with Q1 / Q2 / D-0113 / L2-01. |
+| `no contraction` | No manuscript edit. Repo-facing D entry records an anomaly because observed-B contraction was expected to reappear under the post-hoc re-description; execution/window-definition issues must be checked before interpretation. |
+| `hard-null-inputs-not-derivable` | No editorial action. Stop without interpretation; a new cycle is required to complete hard-null coverage. |
+
+### Wording Boundary
+
+Allowed:
+
+- `quotient contraction`
+- `cycle-rank loss`
+- `loss of sparse parallelism`
+- `relative density rise`
+- `boundary contraction candidate`
+- `mimicry-as-primary`
+- `post-hoc observed-B re-description`
+
+Forbidden:
+
+- `geometry recovered`
+- `topology discovered`
+- `Level 2 confirmed`
+- `Topological Hairball Transition established`
+- `Gate 2 solved`
+- `Phase 5 rescued`
+- `L2-01 was positive after all`
+- `L2-02 independently validates L2-01 inverse pattern`
+- `L2-02 confirms B-specific contraction`, unless the overall verdict is exactly `B-specific contraction candidate`
+
+### Practical Impact
+
+- L2-02 execution is authorized under the frozen v0.2 contract.
+- No manuscript edit is authorized.
+- No figure is authorized.
+- A post-execution Grace audit is required before any closure entry.
+- Sofia editorial review is required before any future manuscript-facing use.
+
+### Validation Traces
+
+- Grace audit of v0.2: `docs/HSI-audit-Level2-L2-02-v02-Draft.md`, verdict `ACCEPTED`, SHA256 `3F201C6CD66955721C262AF74CCEE806773A129ECC9DB0B09ADCD42FF432BB9A`.
+- Sofia signature: SHA256 `3F201C6CD66955721C262AF74CCEE806773A129ECC9DB0B09ADCD42FF432BB9A` verified; six requested v0.1 -> v0.2 changes verified; no manuscript edit authorized.
+- Source closure: D-0117 accepted L2-01 as hard negative and recorded quotient contraction / loss of sparse parallelism as exploratory only.
+
+### Open Questions
+
+1. Which hard-null families have complete rows across all four frozen within-arc windows?
+2. Do hard nulls reproduce the same contraction-positive pattern as observed `B`?
+3. If hard-null mimicry blocks B-specificity, does this become the sixth delimiter of the predictive subarc?
+
+---
+
+## D-0117
+
+- Date: 2026-05-11
+- Status: `accepted-hard-negative`
+- Cycle: Level 2 / L2-01 spectral-percolation Stage 1 closure
+- Trigger: L2-01 Stage 1 executed under the frozen D-0116/v0.3 contract and returned `no-level2-support`. Grace audited the execution and accepted the hard negative, while proposing an exploratory inverse-transition interpretation.
+
+### Decision
+
+D-0117 closes L2-01 as a valid hard negative for the preregistered spectral/percolation object.
+
+Stage 1 run:
+
+`hsi_agents_project/results/hsi_v2/level2/l2_01_spectral_percolation/stage1/l2-01-spectral-percolation-stage1__20260510T101433/`
+
+Stage 1 contract:
+
+`hsi_agents_project/Documentation/HSI_v2_Level2_L2_01_SpectralPercolation_Preregistration_v0_3.md`
+
+Contract SHA256:
+
+`CE903E412CD0AD9CFB6E9F5D4B2B599D2EC70AEB2EE05E8A1CB2E11F93DA836C`
+
+Stage 1 result:
+
+- overall: `no-level2-support`
+- Tier 1: `within-arc-no-support`
+- Tier 2: `cross-arc-no-support`
+- Tier 3: `no-hard-null-mimicry`
+- coverage flag: none
+
+This result means:
+
+- the preregistered fragmentation/percolation direction is not supported;
+- the N3-05b weighted quotient graph, under the frozen windows and invariants, is not accepted as a Level 2 bridge object;
+- no manuscript edit is authorized by L2-01.
+
+### Stage 1 Artifact Hashes
+
+| Artifact | SHA256 |
+|---|---|
+| `summary.json` | `97220A946D55F9979827B2F68DAEE441A47F47816B393681C2E2AA23FFB89622` |
+| `report.md` | `69105F3128A78AC0445268907C2708C93007F3741BBFEF67EE82C54E622C4CBA` |
+| `window_graph_summary.csv` | `9DC815C3A80BEF180043C8726CEC402C514BF9CC27902F34A21547913BC2EFE2` |
+| `tier1_within_arc_contrasts.csv` | `AB522DD692BB90660491C3BBF823727FC46A9B723D8526FF63A123BF867F7A51` |
+| `tier2_cross_arc_medians.csv` | `327DC68F7133CDDE8F66BC9F140EAED90E6515686472410012E493972C1F96E9` |
+| `tier3_hard_null_mimicry.csv` | `0FF509BF29A7BFC1BDB861073D1F3C88A954D0DC90F3B3994A2E19A8630DEB2E` |
+| `manifest.json` | `4EB0F82E26B46A0C4CC64AAF02EBCAAD87E941C4D2EE291BC5891A091F06CF74` |
+
+### Observed Descriptive Pattern
+
+Although L2-01 is negative under its contract, the observed `B` rows show a descriptive inverse pattern:
+
+- Tier 1 ARC-B: interior `node_count=150`, `edge_count=162`, `beta0=16`, `beta1=28`, `edge_density=0.01450`; boundary `node_count=60`, `edge_count=44`, `beta0=16`, `beta1=0`, `edge_density=0.02486`.
+- Tier 1 P4: interior `node_count=120`, `edge_count=140`, `beta0=8`, `beta1=28`, `edge_density=0.01961`; boundary `node_count=60`, `edge_count=59`, `beta0=8`, `beta1=7`, `edge_density=0.03333`.
+- Tier 2 medians: interior `beta0=20`, `edge_density=0.01044`; boundary `beta0=16`, `edge_density=0.02035`; inactive `beta0=120`, `edge_density=0.00273`.
+
+This suggests a possible `quotient contraction / loss of sparse parallelism` reading:
+
+- boundary does not fragment in the preregistered direction;
+- boundary tends to reduce graph size and cycle rank while increasing relative density;
+- the result may be closer to contraction and cycle-loss than to destructive percolation.
+
+Grace's audit names a stronger exploratory interpretation (`Topological Hairball Transition` / `Loss of Sparse Parallelism`). D-0117 records this as exploratory only. It is not accepted as a paper-facing claim and is not authorized by the L2-01 contract.
+
+### Practical Impact
+
+- L2-01 is closed as a hard negative.
+- The manuscript remains unchanged.
+- No Level 2 claim is added.
+- A future L2-02 may be designed around quotient contraction, cycle-loss, and density-normalized boundary behavior, but must be preregistered before execution.
+
+### Validation Traces
+
+- Stage 1 run: `hsi_agents_project/results/hsi_v2/level2/l2_01_spectral_percolation/stage1/l2-01-spectral-percolation-stage1__20260510T101433/`
+- Grace audit: `docs/HSI-audit-Level2-L2-01-Stage1-Results.md`, verdict `HARD NEGATIVE ACEPTADO`.
+- D-0116 pre-committed editorial response for `no-level2-support`: no manuscript edit, repo-facing D entry only.
+
+### Open Questions
+
+1. Is the inverse descriptive pattern robust after controlling for `node_count` and window size?
+2. Does cycle-rank loss (`beta1`) provide a cleaner readout than edge density?
+3. Do hard nulls show the same quotient contraction, or is it B-specific?
+
+---
+
+## D-0116
+
+- Date: 2026-05-10
+- Status: `accepted-preregistration-stage1-authorized`
+- Cycle: Level 2 / L2-01 spectral-percolation Stage 1
+- Trigger: Stage 0 observability returned `stage1-executable`; Grace accepted the Stage 0 report and the v0.3 Stage 1 contract; Sofia signed the same v0.3 contract and requested a pre-committed editorial response table before execution.
+
+### Decision
+
+D-0116 accepts the L2-01 Stage 0 observability result and authorizes Stage 1 execution under the frozen v0.3 contract:
+
+`hsi_agents_project/Documentation/HSI_v2_Level2_L2_01_SpectralPercolation_Preregistration_v0_3.md`
+
+Accepted SHA256:
+
+`CE903E412CD0AD9CFB6E9F5D4B2B599D2EC70AEB2EE05E8A1CB2E11F93DA836C`
+
+The final file was renamed from the signed `DRAFT` filename without changing its bytes, preserving the signed SHA256 exactly. This D entry is the operative status authority: v0.3 is now accepted and Stage 1 is authorized even if the document body still contains historical draft-status wording.
+
+Accepted Stage 0 run:
+
+`hsi_agents_project/results/hsi_v2/level2/l2_01_spectral_percolation/stage0_observability/l2-01-spectral-percolation-stage0__20260510T091237/`
+
+Stage 0 verdict:
+
+`stage1-executable`
+
+Stage 0 artifact hashes:
+
+| Artifact | SHA256 |
+|---|---|
+| `summary.json` | `BDEB00CE4962038E7131736D529CC623C2FE374C329A176B358339950EC6924C` |
+| `band_inventory.csv` | `4ECD7EBB2C75570D04D2B57AA900E1799B233924C1015FA70D086C4600805E2F` |
+| `window_inventory.csv` | `929C756A56693541B9B44F85CB2B7D7AB5AFB71319D52485ADE334DB5D24165A` |
+| `stage1_candidate_windows.csv` | `42E2C13DC7EB4F2492C50834DF2D1FEA25CE1858B95942E2501A4EAB20B28638` |
+| `manifest.json` | `7C7D8DC15F8710A77999847745F488F12845EECCDC2AFA95F935D26CCDA87D07` |
+
+### Authorized Stage 1 Scope
+
+Stage 1 may compute the frozen v0.3 spectral-percolation readout only:
+
+- primary graph object: observed-`B` weighted quotient child-routing graph;
+- graph construction: existing N3-05b construction, edge-weight mode `pooled-retained-mass`, parent scale `40`, top patterns `128`;
+- spectrum convention: `v2/phase3/defect_spectrum.py::compute_graph_spectrum`, normalized Laplacian, edge weights included, zero tolerance `1e-9`;
+- frozen tiers: within-arc transition control, cross-arc regime readout, hard-null mimicry control;
+- frozen primary invariants: `beta0`, `zero_eigenvalue_count`, `lambda2_norm_laplacian`, `largest_component_fraction`, `edge_density`;
+- structural context only: `beta1`, `spectral_radius_adjacency`, `node_count`, `edge_count`, `total_edge_weight`.
+
+Stage 1 may not:
+
+- use per-cell or one-band fallback;
+- replace frozen windows after seeing invariants;
+- use top-k component shares, entropy, retention, hard-margin, or null-envelope scores as primary Level 2 invariants;
+- create figures;
+- edit the manuscript;
+- change solver semantics without a new Decision Log entry.
+
+### Frozen Stage 1 Windows
+
+Tier 1 within-arc transition control:
+
+| Pair | Role | Arc | Bands |
+|---|---|---|---|
+| `T1-ARC-B` | interior | `ARC-B` | `606M-615M;615M-624M` |
+| `T1-ARC-B` | boundary | `ARC-B` | `624M-633M;633M-642M` |
+| `T1-P4` | interior | `P4` | `777M-786M;786M-795M` |
+| `T1-P4` | boundary | `P4` | `795M-804M;804M-813M` |
+
+Tier 2 cross-arc regime readout:
+
+| Role | Arc | Bands | Holdout |
+|---|---|---|---|
+| interior | `ARC-B` | `597M-606M;606M-615M;615M-624M` | `q2-overlap` |
+| interior | `P4` | `768M-777M;777M-786M;786M-795M` | `q2-overlap` |
+| boundary | `ARC-A` | `300M-309M;309M-318M;318M-327M` | `non-q2` |
+| boundary | `ARC-A` | `309M-318M;318M-327M;327M-336M` | `non-q2` |
+| inactive | `ARC-C` | `1110M-1119M;1119M-1128M;1128M-1137M` | `non-q2` |
+| inactive | `ARC-C` | `1119M-1128M;1128M-1137M;1137M-1146M` | `non-q2` |
+
+Tier 3 hard-null mimicry:
+
+- evaluate complete hard-null families among `phase-matched-lz`, `block-entropy`, and `matched-lz` if present in the frozen source rows;
+- report partial hard-null coverage explicitly;
+- if no hard-null family is complete, return `hard-null-inputs-not-derivable`.
+
+### Pre-Committed Editorial Response
+
+This table is an editorial pre-commitment. It constrains manuscript-facing response before Stage 1 results are known.
+
+| Outcome Stage 1 | Editorial response |
+|---|---|
+| `spectral-percolation-candidate` | Open a future editorial integration cycle: new D entry, short paragraph in section 15.6 as a `candidate Level 2 invariant`, never as established Level 2. Wording fence remains binding. |
+| `within-arc-only-support` | No manuscript edit. Repo-facing D entry documents that the transition exists within arc but does not generalize. |
+| `cross-arc-only-support` | No manuscript edit. Repo-facing D entry records `confounded by regime/arc design`; this line closes without paper-facing cost. |
+| `hard-null-mimicry` | No manuscript edit. Repo-facing D entry records that the spectral/percolation object is not B-specific under this contract. |
+| `mixed-or-low-power` | No manuscript edit. Repo-facing D entry reports the Stage 1 result as written. |
+| `no-level2-support` | No manuscript edit. Repo-facing D entry reports no support under the frozen object. |
+| `inputs-not-derivable` | No editorial action. Stage 1 returns feasibility stop; a new cycle is required to continue. |
+| `hard-null-inputs-not-derivable` | No editorial action. Hard-null coverage is insufficient for interpretation; a new cycle is required to continue. |
+
+### Practical Impact
+
+- L2-01 Stage 1 execution is authorized.
+- No manuscript edit is authorized.
+- No figure is authorized.
+- Post-execution Grace audit is required before any scientific closure entry.
+- Sofia editorial review is required before any future manuscript-facing use.
+
+### Validation Traces
+
+- Grace audit of v0.3 final: `docs/HSI-audit-Level2-L2-01-v03-Final.md`, verdict `ACCEPTED`.
+- Sofia signature: SHA256 `CE903E412CD0AD9CFB6E9F5D4B2B599D2EC70AEB2EE05E8A1CB2E11F93DA836C` verified, source chain verified, Stage 0 windows verified, no manuscript edit authorized.
+
+### Open Questions
+
+1. Can the existing N3-05b implementation construct the frozen window-specific graphs without semantic changes?
+2. Which hard-null families have complete routing coverage across all frozen windows?
+3. Does Stage 1 return `spectral-percolation-candidate`, a weaker tier-specific result, mimicry, or no support?
+
+---
+
+## D-0115
+
+- Date: 2026-05-10
+- Status: `accepted-preregistration-stage0`
+- Cycle: Level 2 / L2-01 spectral-percolation boundary probe
+- Trigger: Grace audited the first L2-01 v0.1 preregistration as methodologically clean but epistemologically too close to graph-feature data science. Ariadna replaced it with a v0.2 spectral/percolation preregistration centered on algebraic/topological graph transitions. Grace accepted the v0.2 as a genuine pre-geometric Level 2 contract; Sofia accepted it editorially with report-level refinements.
+
+### Decision
+
+D-0115 accepts the L2-01 Stage 0 preregistration:
+
+`hsi_agents_project/Documentation/HSI_v2_Level2_L2_01_SpectralPercolation_Preregistration_v0_2.md`
+
+Accepted SHA256:
+
+`A548C01770DAD757151D62D8ED15575D85E811074922AFC57C062E21A8D003CC`
+
+The previous v0.1 document:
+
+`hsi_agents_project/Documentation/HSI_v2_Level2_L2_01_QuotientShape_RegimeSeparation_Preregistration_v0_1.md`
+
+is not accepted as a Level 2 execution contract. It remains historical context only.
+
+### Authorized Stage 0 Scope
+
+Stage 0 may:
+
+- inventory candidate multi-band windows labelled `interior`, `boundary`, or `inactive` from already accepted Phase 4/5 readouts;
+- report whether each window can be built from existing or derivable child-routing rows;
+- report whether each window can preserve cross-band continuity edges in the N3-05b weighted quotient object;
+- report holdout dependence on Q2/D-0112-D0113 and Phase 5 B-mini;
+- estimate compute cost;
+- propose a sealed Stage 1 input table and hashes;
+- return a discrete feasibility verdict.
+
+Stage 0 may not:
+
+- compute spectral invariants;
+- compute graph distances;
+- compare regimes;
+- create figures;
+- tune window sizes after seeing graph readouts;
+- change regime labels;
+- modify the manuscript.
+
+### Required Stage 0 Verdicts
+
+Stage 0 must return exactly one of:
+
+- `stage1-executable`
+- `insufficient-level2-window-budget`
+- `insufficient-level2-holdout`
+- `inputs-not-derivable`
+
+If no non-Q2 boundary-adjacent window is available, Stage 0 must return `insufficient-level2-holdout` rather than proceed with Q2-overlap evidence only.
+
+Any downgrade to single-band or per-cell local diagnostics requires a separate future Decision Log entry before execution.
+
+### Level 2 Object
+
+The accepted primary object is:
+
+`observed-B weighted quotient child-routing graph`
+
+with:
+
+- N3-05b construction;
+- edge-weight mode `pooled-retained-mass`;
+- parent scale `40`;
+- top patterns `128`;
+- multi-band windows, not per-cell adapters.
+
+Per-cell adapters are forbidden for the primary L2-01 graph because they erase cross-band topology and continuity edges.
+
+### Candidate Future Invariants
+
+Stage 1 is not authorized by this entry. If Stage 0 succeeds, a future v0.3 must freeze the invariant list before execution.
+
+Candidate primary invariants for future Stage 1:
+
+- `beta0`
+- `zero_eigenvalue_count`
+- `lambda2_norm_laplacian`
+- `largest_component_fraction`
+- `beta1 = edge_count - node_count + beta0`
+- `edge_density`
+
+Forbidden as primary Level 2 invariants:
+
+- `top1_component_weight_share`
+- `top3_component_weight_share`
+- `top5_component_weight_share`
+- `component_weight_entropy_norm`
+- `effective_weight_components`
+
+### Wording Boundary
+
+Allowed:
+
+- `spectral-percolation probe`
+- `algebraic connectivity`
+- `component transition`
+- `cycle-rank readout`
+- `pre-geometric graph-state transition`
+- `candidate Level 2 invariant`
+
+Forbidden:
+
+- `geometry recovered`
+- `topology discovered`
+- `curvature measured`
+- `Gate 2 solved`
+- `Level 2 confirmed`
+- `boundary law`
+- `universal horizon`
+- `graph statistics prove geometry`
+- `retention-independent geometry established`
+
+### Practical Impact
+
+- L2-01 Stage 0 implementation is authorized.
+- L2-01 Stage 1 is not authorized.
+- No manuscript edit is authorized.
+
+### Validation Traces
+
+- Grace audit: `docs/HSI-audit-Level2-L2-01-SpectralPercolation.md`, verdict `ACCEPTED`.
+- Sofia review: accepted v0.2, with report-level refinements around discrete verdict categories, holdout strictness, and downgrade requiring separate D entry.
+
+---
+
 ## D-0114
 
 - Date: 2026-05-10
