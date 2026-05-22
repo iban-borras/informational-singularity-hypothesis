@@ -14,7 +14,7 @@ from v2.phase1.report import (
 from v2.phase1.transport import build_transport_rows
 
 
-DEFAULT_OBSERVED_VARIANTS = ["B", "E", "I", "F", "M", "N", "A", "J", "K", "L"]
+DEFAULT_OBSERVED_VARIANTS = ["B", "E", "I", "F", "M", "N", "A", "J", "K", "L", "O", "P"]
 DEFAULT_NULL_VARIANTS = [
     "B-shuffled",
     "B-same-density",
@@ -29,6 +29,7 @@ PLOT_STYLE = {
     "Rigid / crystalline control": {"fill": "#b7791f", "stroke": "#7c4f14"},
     "Collapsed control": {"fill": "#c2410c", "stroke": "#8a2d08"},
     "Trivial control": {"fill": "#6b7280", "stroke": "#4b5563"},
+    "Recursive external control": {"fill": "#7c3aed", "stroke": "#5b21b6"},
     "Randomized null": {"fill": "#dc6b19", "stroke": "#9a4a11"},
     "Markov-1 null": {"fill": "#2563eb", "stroke": "#1d4ed8"},
     "Matched-LZ null": {"fill": "#64748b", "stroke": "#475569"},
@@ -41,12 +42,15 @@ def load_gate_map_rows(
     *,
     observed_variants: list[str] | None = None,
     null_variants: list[str] | None = None,
+    extra_observed_dirs: list[Path] | None = None,
     tail_edges: int = 2,
 ) -> tuple[list[dict], dict]:
     observed_variants = observed_variants or list(DEFAULT_OBSERVED_VARIANTS)
     null_variants = null_variants or list(DEFAULT_NULL_VARIANTS)
 
     observed_runs = discover_phase1_runs(observed_dir)
+    for extra_dir in extra_observed_dirs or []:
+        observed_runs.extend(discover_phase1_runs(extra_dir))
     null_runs = discover_phase1_runs(null_dir)
     if not observed_runs:
         raise ValueError(f"No valid observed Phase 1 runs found in {observed_dir}")
@@ -109,6 +113,7 @@ def load_gate_map_rows(
         "null_variants": [row["variant"] for row in rows if row["source_kind"] != "observed"],
         "observed_family": observed_family,
         "null_family": null_family,
+        "extra_observed_dirs": [str(path) for path in extra_observed_dirs or []],
     }
     return rows, selection
 
@@ -155,7 +160,7 @@ def render_markdown_report(rows: list[dict], selection: dict, *, svg_filename: s
         "- `retention@last` asks how selective the last scale remains relative to its candidate space.",
         "- `surv_last` asks whether the top edge is still alive.",
         "- `SPI_simple = retention@last * surv_last` is the minimal selective-persistence index.",
-        "- `active_mean_tail` asks whether mass arriving at the top still reaches children that keep branching.",
+        "- `active_mean_tail` asks whether top-edge activity still reaches children that keep branching.",
         "",
         "## Complete Table",
         "",
@@ -186,7 +191,7 @@ def render_markdown_report(rows: list[dict], selection: dict, *, svg_filename: s
             "## Notes",
             "",
             "- `regime` is a descriptive synthesis for the Phase 1 gate map, not a new canonical classifier.",
-            "- `B/E/I` represent compact-selective HSI persistence in the current batch.",
+            "- `B/E/I` represent compact-selective HSI persistence in this batch.",
             "- `Markov-1` and `matched-LZ` can keep the top of the tower alive, but do so with much weaker selectivity.",
             "- `shuffled` and `same-density` collapse completely at the top of the tower.",
         ]
@@ -252,7 +257,7 @@ def render_gate_svg(rows: list[dict], *, width: int = 1180, height: int = 760) -
         "</defs>",
         f'<rect x="0" y="0" width="{width}" height="{height}" fill="url(#bg)" />',
         '<title id="title">HSI v2 Phase 1 Gate Plane</title>',
-        '<desc id="desc">Retention at the top scale versus mean transported tail activity for observed variants and strong nulls.</desc>',
+        '<desc id="desc">Retention at the top scale versus mean tail activity for observed variants and strong nulls.</desc>',
         f'<text x="{margin_left}" y="34" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#1f2937">Phase 1 Gate Plane</text>',
         f'<text x="{margin_left}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#475569">x = retention@last | y = active_mean_tail</text>',
         f'<rect x="{margin_left}" y="{margin_top}" width="{plot_width}" height="{plot_height}" fill="#fffdf8" stroke="#cbd5e1" stroke-width="1.2" />',
@@ -497,6 +502,8 @@ def _regime_bucket(variant: str) -> str:
         return "Collapsed control"
     if variant == "K":
         return "Trivial control"
+    if variant in {"O", "P"}:
+        return "Recursive external control"
     if variant.endswith("shuffled") or variant.endswith("same-density"):
         return "Randomized null"
     if variant.endswith("markov1"):
@@ -516,6 +523,8 @@ def _plot_group(variant: str) -> str:
         return "Collapsed control"
     if regime == "Trivial control":
         return "Trivial control"
+    if regime == "Recursive external control":
+        return "Recursive external control"
     if regime == "Randomized null":
         return "Randomized null"
     if regime == "Markov-1 null":
@@ -601,7 +610,9 @@ def _label_offset(
         "L": (-14, 26, "end"),
         "K": (-12, -18, "end"),
         "F": (12, -2, "start"),
-        "M/N": (-18, 20, "end"),
+        "M/N": (0, 28, "start"),
+        "O": (-24, -18, "end"),
+        "P": (-14, -24, "end"),
     }
     if row["plot_label"] in manual:
         return manual[row["plot_label"]]
