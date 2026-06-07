@@ -9936,3 +9936,210 @@ The pre-registered falsifiers `local-subshift-like-support` and the intermediate
 - **Propagation to `main_eng.tex`**: queued under section A.5 of `docs/HSI_v2_Pending_Closures_and_v3_Agenda.md`; frozen until the hostile-review cycle is fully closed.
 
 ---
+
+## D-0150 — Hostile-review CAT_22 audit: Table 1 `\bar{c}` for O,P read-only derivation (legacy `timeout/N.A.` policy supersession)
+
+- Date: 2026-05-24
+- Cycle: Closure of one of the four major/minor flanks raised by hostile-review CAT_22 (Gemini 3.1 Pro) on `main_v2.02_cat.tex` post-CAT_21. CAT_22 raised three majors (residual geometric lexicon, B_XOR underdetermination of Level 0, Phase 4 horizon at high scales) and three minors (Table 1 `timeout/N.A.` inconsistency for O/P, boolean alphabet bias, F.2 condensation). This entry records the empirical/editorial closure of Minor 1 (Table 1 inconsistency). Majors 1-3 and Minor 3 were closed editorially within the same cycle without new empirical work (governed by D-0139); Minor 2 was declined as content-free.
+- Trigger: CAT_22 reviewer pointed out that Table 1 (§6.6) reports `timeout/N.A.` for `\bar{c}` on external recursive controls O and P, while Table 2 (§7.x) shows the full pattern count `|P_m|` up to `m=32` for both controls on the Q4-authorized snapshots, and §6.2 documents that the Dyck parser is `O(N)` and structurally neutral. The reviewer correctly identified that the `timeout/N.A.` cells were not technically justified given the available evidence. Sofia handed off to Ariadna a read-only derivation request: compute `\bar{c}` for O and P on the same Q4-authorized snapshots (D-0087), no regeneration, audited parser only, returning either values or a documented reason why the metric is undefined.
+
+### Empirical finding
+
+Ariadna executed `level1_nesting_tree.py` in read-only mode on the D-0087 Q4 snapshots for O and P, tail-trimming the decoded stream exactly at `structural_length` from the metadata to avoid 2-bit format padding. Parser completed without timeout, without node limit, without failure.
+
+- O: `\bar{c} = 3.429812370`, branching nodes 2,878, total nodes 9,872, max depth 11, elapsed 1.35s.
+- P: `\bar{c} = 2.999796789`, branching nodes 9,842, total nodes 29,525, max depth 10, elapsed 1.44s.
+- Reference B@20: `\bar{c} = 2.618033834809` (`= \varphi + 1`).
+
+Neither O nor P converges to `\varphi + 1`. The legacy `timeout/N.A.` policy inherited from Q5/D-0089 was a methodological holdover from a time when the audited read-only path was not yet available; it is not a technical timeout and was empirically misleading.
+
+### Methodological reading (Ariadna + Sofia, no Grace audit required for this scope)
+
+External recursive controls O and P possess parenthesis syntax (CFG and L-system over `\Sigma = {0,1,(,)}`), so `\bar{c}` is well-defined on their Q4 snapshots. The fact that they yield definite values that do not converge to `\varphi + 1` reinforces the architectural-class anchor established in D-0146 and D-0147: the convergence `\bar{c} = \varphi + 1` is a property of the architectural class of stratified-collapse generators, not of the mere presence of parenthesis syntax. The Q3 cycle empirically anchored this against pre-registered Dyck-randomized controls; the CAT_22 derivation extends the empirical evidence to the pre-existing external recursive controls of the master signature table, closing a residual editorial inconsistency that an external reviewer correctly flagged.
+
+### Change to claims
+
+No primary empirical claim is reverted. Table 1 of `Paper_Latex/main_v2.02_cat.tex` is modified in two surgical edits (marked `[CAT_22-T4]` in the source):
+
+1. Rows O and P, column `\bar{c}`: `timeout/N.A.` → `$3.4298^{\ddagger}$` and `$2.9998^{\ddagger}$` respectively (rounded to 4 decimals for consistency with the rest of the table).
+2. Caption: added documentation of the new footnote symbol `\ddagger`, clarifying that the values are read-only derivations on the Q4 pre-registered snapshots, that the Dyck parser completes the analysis, that the values are well-defined but do not converge to `\varphi + 1`, and that this constitutes complementary evidence (alongside the §6.2 Dyck-randomized controls of D-0146/D-0147) that the `\bar{c} = \varphi + 1` signature is not an artefact of the mere presence of parenthesized external syntax.
+
+No other section of the manuscript was modified by this entry. Internal coherence was verified: lines 388 and 391 (§6.2) already framed only A, M, L as `N.A.` (no parenthesis syntax) and already anchored the architectural-class claim against pre-registered Dyck controls; no contradiction with the new Table 1 cells.
+
+### Falsification frontier
+
+The pre-registered architectural-class claim of D-0146/D-0147 (`\bar{c} = \varphi + 1` requires stratified collapse, not merely parenthesized syntax) gains a third empirical anchor from this derivation. The contract is unchanged; the evidence base is broader by two additional non-HSI controls that share parenthesis syntax and yield non-`\varphi` convergence.
+
+### Anchors
+
+- Run directory: `hsi_agents_project/results/hsi_v2/table1_op_cbar_derivation/table1-op-cbar-derivation__var-O-P__iter-20__20260524T120714/`
+- Artifact SHA-256 (verified by Ariadna):
+  - `summary.json`: `7BED9767716835D64020C49BBC8DD7A470221A142BBD0E517ABE191E5E6A1B50`
+  - `manifest.json`: `E172A1AD77B58A7635D7F13348984E0B84C2E11340C4CA041049EB4371FBE5F4`
+  - `report.md`: `0DB99816567449A0B256CAFBB422C39E0004B3DEC297AF82070F5ADD912A5C3F`
+- Source snapshots (Q4 D-0087):
+  - O: `results/level0/phi_snapshots/var_O/phi_iter20.struct.gz`, SHA-256 `850F447BD02841DD0FD49FC2A4362460BEB16E441537D48A45411AB7DF88ED2E`
+  - P: `results/level0/phi_snapshots/var_P/phi_iter20.struct.gz`, SHA-256 `8F2F495A37FBA301C4D9B5A72C4FD1C62732E22E81E4F1822C38D754BEBA1FA7`
+- Audited parser: `level1_nesting_tree.py` (Q3 audit chain, D-0146 anchor).
+- Companion entries: D-0087 (Q4 snapshot freeze), D-0089 (Q5 superseded policy), D-0146/D-0147 (Q3 architectural-class anchors).
+
+### Pending Operational Closure
+
+- **CAT_22 cycle closure**: this entry closes Minor 1 of CAT_22. Majors 1, 2, 3 and Minor 3 of CAT_22 are closed editorially in the same .tex source via `[CAT_22-T1]`, `[CAT_22-T2]`, `[CAT_22-T3]`, `[CAT_22-T5]` (governed by D-0139). Minor 2 (boolean alphabet bias) is declined: lexical note at §2 and §3.1 already declare `0`/`1` as ontological symbols; the proposed admission would be redundant without adding technical content.
+- **Recompilation**: pending Iban authorization. Single recompile will ship the full CAT_22 closure (one empirical entry plus four editorial patches).
+- **Propagation to `main_eng.tex`**: queued under the existing freeze on the English version until the hostile-review cycle is fully closed.
+
+---
+
+## D-0151 — CAT_24 iteration-depth extension readout: B@24 projective tower survives through m=35 (empirical ceiling extension)
+
+- Date: 2026-06-04
+- Cycle: Closure of CAT_24-T4 (one of the empirical flanks raised by hostile-review CAT_24 on `main_v2.02_cat.tex` post-CAT_23). CAT_24 raised the "finite horizon" vulnerability: the empirical ceiling at $m \leq 32$ could be read as the boundary of a finite phenomenon rather than as a computational ceiling on an ongoing signature. T4 is the empirical move that decouples the two readings by extending the projective tower of variant B beyond the original ceiling without regenerating the source.
+- Trigger: Sofia handed off to Ariadna a pre-registered read-only derivation contract (`prereg_CAT24_B24_projective_tower_v1.0.md`, SHA-256 `4F4D5F518EE7F3E2205A75D0C6967FAA19E875130B3E6E9A627937B2E49E61D7`) over the frozen `phi_iter24` snapshot of B (~687 Gbits). The contract pre-declared three outcomes (`b24-tower-survives-through-m35`, `b24-tower-degrades-at-m={33,34,35}`, `b24-tower-collapses-early`) with explicit ambiguity bands on cardinality ratios ([0.45, 0.55]) and survival fractions ([0.25, 0.35]), and a closure clause stating that a clear readout outside the ambiguity bands does not authorize the coverage-extension cycle (no 30M follow-up within CAT_24 scope).
+
+### Empirical finding
+
+Ariadna executed the projective tower derivation on the B@24 snapshot for $m \in \{33, 34, 35\}$, with prefix/suffix projections and protocol-canonical $3 \times 10^6$ observable bits per window. Outcome: `b24-tower-survives-through-m35`.
+
+- Cardinality ratios (all well above the 0.5 degradation threshold, all above 1.0):
+  - $|P_{33}|/|P_{32}| = 1.0637$
+  - $|P_{34}|/|P_{33}| = 1.0607$
+  - $|P_{35}|/|P_{34}| = 1.0558$
+- Survival fractions at $m=35$ (all well above the 0.3 collapse threshold):
+  - prefix $35 \to 34$: 0.9978
+  - suffix $35 \to 34$: 0.9963
+- Active support at $m=35$: 1,439 patterns (×90 the floor of 16).
+- Pattern counts: $|P_{33}| = 1{,}285$; $|P_{34}| = 1{,}363$; $|P_{35}| = 1{,}439$.
+
+The signature is stronger than mere survival: ratios above 1.0 indicate that prefix coverage continues to discover new structure at each scale jump within the high-$m$ band.
+
+### Decisions
+
+1. **Integration of CAT_24-T4** (this entry): the empirical ceiling is extended from $m \leq 32$ to $m \leq 35$ for the projective tower of variant B at iter=24, under read-only pre-registered contract. Other variants remain documented up to $m \leq 32$ on the main batch (E@24 not generated). Five surgical edits applied to `Paper_Latex/main_v2.02_cat.tex`: contributions paragraph (line 76), operational ceiling paragraph (line 271), reproducibility paragraph (line 274), experimental protocol paragraph (line 578), Table 3 with new $m=33,34,35$ rows and updated caption (lines 589-604), and §12.2 asymptotic-ceiling paragraph (line 1061). Internal traceability marker `% [CAT_24-T4]` added at the contributions paragraph as the anchor for the coordinated batch.
+2. **Deferral of CAT_24-T5** (Phase 4 extension): per Grace's audit and Ariadna's technical assessment, Phase 4 extension to higher bands is deferred. The deferral has three independent justifications: (a) E@24 has not been generated, so any new Phase 4 reading would lack the canonical B/E contrast that anchors the existing Phase 4 result; (b) the streaming extractor for the 795M--804M bands is not designed for 100G/500G bands and would require new I/O architecture (local-window or streaming); (c) extending Phase 4 to qualitatively different bands risks changing the scientific object under measurement rather than extending the existing one. A separate pre-registered contract is required before any Phase 4 extension touches the manuscript.
+3. **Scope discipline (closure clause honoured)**: the readout falls clearly outside the ambiguity bands, so the contract's closure clause is honoured: no 30M coverage-extension cycle is opened within CAT_24. Any future investigation of coverage effects on the projective tower would open a new pre-registered cycle (hypothetical CAT_25 or successor) with its own contract and scope.
+4. **No Phase 4 wording change in the manuscript**: per Ariadna's recommendation and Grace's audit, §12.2 is not extended with new Phase 4 bands. The §12.2 update is limited to acknowledging the extended ceiling for the B@24 projective tower; the Phase 4 deferral is internal-operational and does not warrant manuscript text.
+
+### Artefacts and hashes
+
+- Contract: `prereg_CAT24_B24_projective_tower_v1.0.md` — SHA-256 `4F4D5F518EE7F3E2205A75D0C6967FAA19E875130B3E6E9A627937B2E49E61D7`.
+- Audit: `docs/HSI_v2_Audit_CAT_24_B24_Readout.md` (Grace, methodological auditor).
+- Snapshot: B@24 (`phi_iter24`, ~687 Gbits), reused without regeneration.
+- Output artefacts: `manifest.json`, `projection_prefix_m{33,34,35}.json`, `projection_suffix_m{33,34,35}.json`, `fibers_m{33,34,35}.json`, `moments_m{33,34,35}.json` under the run directory pre-declared in §3 of the contract. SHA-256 set delivered by Ariadna in the readout handoff (full set in the run manifest; not duplicated here per D-0139).
+
+### Pending Operational Closure
+
+- **CAT_24-T4 closure**: this entry closes the empirical flank T4 of CAT_24. T1--T3 were closed editorially in the same .tex source in the preceding integration pass (markers `[CAT_24-T1]`, `[CAT_24-T2]`, `[CAT_24-T3]` at lines 274, 392 and 845, addressing hostile-review CAT_24 points 7, 2 and 5 respectively; governed by D-0139). T5 (Phase 4 extension) is explicitly deferred (see decision 2 above).
+- **Recompilation**: pending Iban authorization. Single recompile will ship the CAT_24-T4 integration (the coordinated edits anchored by the marker at line 76).
+- **Propagation to `main_eng.tex`**: queued under the existing freeze on the English version until the hostile-review cycle is fully closed.
+
+---
+
+## D-0152 — Q6-A multi-stage opening: peer-review-driven P4@24 symmetric extension (Stage 0 = E@24 infrastructure)
+
+- Date: 2026-06-07
+- Status: `accepted`
+- Scope: scientific cycle opening (Q6-A) + operational pre-commit
+- Cycle: Opening of Q6-A in response to external peer-review flank B (asymptotic wall at 795M--804M, Phase 4 P4-05 readout of $0/4$ under `phase-matched-lz` convergence) on `Paper_Latex/main_v2.03_cat.tex`. The peer review (Gemini 3.x, brief-blind modality, no project context) reads the P4-05 readout as asymptotic falsification rather than as a bounded finite-horizon frontier. The defense currently in §11.3 (`convergence of null envelope at the band frontier`, multi-mechanism decomposition per P4-06) is internally consistent but cannot answer the asymptotic reading without empirical extension beyond 804M.
+- Trigger:
+  - External: peer-review flank B.
+  - Internal: Ariadna's methodological objection from D-0151 (Phase 4 extension on B@24 alone would lack the canonical B/E contrast). The opening of Q6-A is contingent on first removing that objection by generating E@24 as symmetric infrastructure.
+
+### Decision
+
+Open Q6-A as a multi-stage cycle with a hard pre-registration gate between data generation and readout. Structure:
+
+1. **Stage 0 — Infrastructure**: generate `phi_iter24` snapshot for variant E (E@24), under the same generator contract as B@24. No readout, no interpretation. Freeze the command, manifest, SHA-256 of the snapshot and storage path. Authorized and started by Iban on 2026-06-07 with: `python .\level0_generate.py --variant E --iterations 24 --no-plots --no-resume --force-compress`.
+
+2. **Stage 1 — High-scales symmetric**: Phase 1 high-scales derivation for B@24 and E@24, including the scale ladder to be declared by Ariadna in a Stage 1 contract (reference target: $m \in \{40, 48\}$), with canonical segmentation $3 \times 10^6$ observable bits per window, prefix/suffix projections, and the canonical stability-filter thresholds of §8.1. Output: frozen prefix/suffix datasets with command + manifest + SHA-256.
+
+3. **Stage 2 — P4@24 pre-registration**: with Stages 0 and 1 frozen, Ariadna drafts a P4@24 pre-registration declaring bands, lag grid, seeds, null family and binary outcomes. The pre-registration is frozen by SHA-256 BEFORE any data of the new bands is observed by any agent (human or AI). This is the hard gate of the cycle: any violation collapses the predictive value of the readout and removes its standing as defense against peer-review flank B.
+
+4. **Stage 3 — Q6-A readout**: execution of the pre-registered Stage 2 contract. Outcome is binary at the level of each declared band and inhibits post-hoc reformulation.
+
+A separate cycle, **Q6-B**, addresses peer-review flank D (OAT vs Sobol/Saltelli on the §8.1 stability filter). Q6-B runs in parallel to Stage 0 if computational budget allows; it does not gate any Q6-A stage and is not gated by any Q6-A stage.
+
+### Rationale
+
+Peer-review flank B attacks the persistence of the discriminant at scale. The current defense lives at §11.3 (P4-06 multi-mechanism decomposition) and at §13 (Open Item on asymptotic ceiling). Both are internally consistent under finite-horizon framing but cannot defend without empirical extension beyond 804M.
+
+Ariadna's revised assessment (2026-06-07) re-frames the problem: the methodologically correct extension preserves Phase 4's original scientific object (E→B comparison), which requires E@24 as symmetric infrastructure. Extending Phase 4 with B@24 only would expose a strictly worse flank: a reviewer could legitimately object that the experimenter changed the comparative architecture under empirical pressure. The peer-review B flank cannot be answered by changing the object under measurement.
+
+Therefore Q6-A is not `extend the bands`; it is `rebuild the comparative infrastructure at iter=24, freeze a pre-registered prediction, and only then read out`. The cycle accepts a multi-week to multi-month timeline in exchange for methodological cleanliness. The operational data that authorizes the timeline is Iban's explicit statement (2026-06-07) that there is no editorial deadline.
+
+### Operational consequences
+
+- **Editorial work on flanks A (XOR / architectural-class framing) and C (physical lexicon primary vs secondary) is paused** until Q6-A Stage 3 readout. Reason: both flanks require coordinated rewriting that depends on the Q6-A outcome (recovered margin vs confirmed collapse imply incompatible rewrites of §11.3, Abstract and §13).
+- **No observation of any Phase 4 data above 804M by any agent** until the Stage 2 pre-registration is SHA-256 frozen. This includes informal exploratory peeks. Violation collapses the cycle.
+- **Two-agent freeze certification**: Stage 0 and Stage 1 closures require both Ariadna's manifest emission and Sofia's cross-reference at this Decision Log entry, validated by Iban before the next stage opens.
+- **Q6-B parallel track**: scoped separately, not blocking. Output independent of Q6-A.
+
+### Pending Operational Closure
+
+- **Stage 0 closure**: pending E@24 generation completion. Closure artefact: Ariadna emits manifest + SHA-256, Sofia references here, Iban validates before Stage 1 opens.
+- **Stage 1 contract**: Ariadna drafts the scale-ladder, segmentation and threshold contract before execution; logged here on SHA-256 freeze.
+- **Stage 2 contract**: Ariadna drafts the P4@24 pre-registration; logged here on SHA-256 freeze. The freeze is the hard gate of Q6-A.
+- **Q6-B planning**: Ariadna provides scope and cost estimate; logged separately when opened.
+- **Manuscript freeze on flanks A and C**: Sofia commits no edits to §3.4, §11.2, §11.3, §13 or Abstract on flanks A/C until Stage 3 closes.
+
+### Source documents
+
+- Peer review (external, brief-blind Gemini, 2026-06-07).
+- Ariadna's revised recommendation (internal coordination, 2026-06-07).
+- D-0151 (CAT_24 iteration-depth readout, with the original deferral of T5 that this entry supersedes).
+
+### Supersession note
+
+This entry supersedes the deferral clause of D-0151 (decision 2). The deferral remains historically valid; Q6-A is the conditions-met opening that the deferral anticipated.
+
+### Amendment 2026-06-07 (see D-0153)
+
+The Stage 0 command recorded above (Iban's authorization on 2026-06-07, pre-patch `level0_generate.py` invocation) was issued before discovery of the Level 0 generator bug documented in D-0153 and is presumed pre-patch. Output of that run is to be discarded as Stage 0 artefact. Stage 0 effective start is paused pending Grace's audit closure of the patch; the post-patch fresh-from-scratch command will replace this anchor when issued by Iban under D-0153.
+
+---
+
+## D-0153 — Level 0 generator bug discovery + minimal patch (audit pending Grace)
+
+- Date: 2026-06-07
+- Status: `provisional` (pending Grace's audit closure)
+- Scope: Level 0 generator infrastructure correctness
+- Cycle: Discovered during preparation of Q6-A Stage 0 (see D-0152) by Ariadna while validating whether E@24 could be resumed from the legacy E@23 checkpoint.
+
+### Findings
+
+1. **Checkpoint scientific safety**: the legacy Level 0 checkpoint format stored the accumulated $\Phi$ but did not store `current_state`. This prevents exact resumption: a run interrupted at iteration $k$ cannot be continued at iteration $k+1$ with byte-exact equivalence to a single-shot run. Resumption from the legacy E@23 checkpoint into E@24 was therefore not scientifically clean.
+
+2. **Control-flow bug in variant branches**: when `state_len > 100MB`, variants E, I, D, G, H, N could fail to enter their collapse branch under specific path conditions. Variant B is not affected by the same path. The bug manifests only at large state sizes, which is precisely the high-iteration regime relevant to E@24, I@24, D@24, etc.
+
+### Minimal patch applied by Ariadna
+
+- Control-flow correction at the variant dispatch block.
+- Checkpoint format extended to persist both accumulated $\Phi$ and `current_state` (exact resumption now possible).
+- Restore path moved to streaming I/O to handle the larger checkpoint payload.
+- Progress logs added at iteration boundaries.
+
+### Audit status
+
+Grace is auditing the patch as a code-correctness audit (not a scientific-claim audit) before any long-running E@24 generation is authorized. Pending Grace's verdict, **no Q6-A Stage 0 long run is to be executed under the patched generator**.
+
+### Operational consequences
+
+1. **D-0152 Stage 0 anchor is invalidated**: the command recorded in D-0152 ("`python .\level0_generate.py --variant E --iterations 24 ...`" executed by Iban on 2026-06-07) was issued before the patch was applied and is presumed pre-patch. Any output of that run is to be discarded as Stage 0 artefact. The actual Stage 0 command will be re-issued by Iban after Grace's audit closes, with the post-patch binary and a fresh-from-scratch generation contract (no resumption from legacy E@23).
+
+2. **Open question on prior reported results**: the bug affects variants E/I/D/G/H/N at `state_len > 100MB`. The manuscript currently reports these variants at various iteration depths (notably E and I in the main signature batch and D, G, H at iter=20 in §9.10 HSI-family closure). Whether any prior reported run produced state sizes above the 100MB threshold, and whether the bug actually triggered along the specific execution paths of those runs, is an open scientific question. Determination falls to Ariadna (execution-path analysis) and Grace (validation), not to this entry. Conservative reading: no prior result for the affected variants is to be silently re-asserted until Ariadna confirms that the affected branches did not execute under the bug at the reported iter/state combinations.
+
+3. **Editorial freeze (already in place per D-0152) holds and widens**: no §9 / §9.10 / §11 / §13 / Abstract edits are made until BOTH Q6-A Stage 3 readout AND the bug-impact assessment of point 2 close. The widening is scoped to §9 and §9.10 (HSI-family closure), which D-0152 did not explicitly freeze but which the bug now puts in scope.
+
+### Pending Operational Closure
+
+- Grace's audit verdict on the patch (code-correctness scope).
+- Ariadna's execution-path analysis of the bug against prior reported variants (scope-of-impact assessment).
+- Iban's authorization of the post-patch fresh E@24 generation command (Stage 0 effective restart).
+- D-0152 amendment recording the post-patch Stage 0 command and discarding the pre-patch anchor.
+
+### Source documents
+
+- Ariadna's bug-discovery handoff (internal coordination, 2026-06-07).
+- D-0152 (Q6-A multi-stage opening, whose Stage 0 anchor this entry supersedes operationally).
+
+---

@@ -104,6 +104,21 @@ To recover the current HSI v2 state quickly, start here:
 - `Documentation/HSI_v2_Phase3_Reproducibility_Freeze.md`
 - `Documentation/HSI_v2_Decision_Log.md`
 
+## Results Root Override
+
+Large Level 0 and HSI v2 runs can redirect the canonical `results/` tree to an
+external drive through `.env`:
+
+```text
+HSI_RESULTS_BASE_DIR=D:\Iban\Projectes\HSI\results
+```
+
+When set, scripts that receive relative `results/...` paths preserve the same
+internal layout under that external root, for example
+`<HSI_RESULTS_BASE_DIR>/level0/phi_snapshots/var_B/` and
+`<HSI_RESULTS_BASE_DIR>/hsi_v2/phase1/`. Existing local results should be copied
+to the external root before resuming a long generation run.
+
 ## Project Structure
 
 ```

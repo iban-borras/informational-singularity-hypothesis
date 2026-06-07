@@ -31,12 +31,61 @@ DEFAULT_MAX_DISK_TB = 1.0  # 1 TB default
 
 # Base path for outputs (anchored to project root)
 BASE_PATH = Path(__file__).resolve().parent.parent  # hsi_agents_project/
-RESULTS_DIR = BASE_PATH / "results"
+
+
+def _load_dotenv_for_paths() -> None:
+    env_path = BASE_PATH / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        print(f"[WARN] Failed to load .env for results path: {exc}")
+
+
+def _results_root() -> Path:
+    results_base = os.environ.get("HSI_RESULTS_BASE_DIR") or os.environ.get("HSI_V1_RESULTS_BASE_DIR")
+    if results_base:
+        return Path(results_base).expanduser().resolve()
+    return BASE_PATH / "results"
+
+
+_load_dotenv_for_paths()
+RESULTS_DIR = _results_root()
+
+
+def _display_path(path: Path | str) -> Path:
+    resolved = Path(path).resolve()
+    for base in (BASE_PATH, RESULTS_DIR):
+        try:
+            return resolved.relative_to(base)
+        except ValueError:
+            pass
+    return resolved
+
+
+def _read_text_maybe_gzip(path: Path | str) -> str:
+    path = Path(path)
+    if str(path).endswith(".gz"):
+        import gzip
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            return f.read()
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
 
 # Use unified structure: level0/ subdirectory
-REPORTS_DIR = BASE_PATH / "results" / "level0" / "reports"
-VISUALIZATIONS_DIR = BASE_PATH / "results" / "level0" / "visualizations"
-SNAPSHOT_DATA_DIR = BASE_PATH / "results" / "level0" / "phi_snapshots"
+REPORTS_DIR = RESULTS_DIR / "level0" / "reports"
+VISUALIZATIONS_DIR = RESULTS_DIR / "level0" / "visualizations"
+SNAPSHOT_DATA_DIR = RESULTS_DIR / "level0" / "phi_snapshots"
 
 # No fallbacks - always use new structure
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -95,20 +144,26 @@ def find_last_completed_iteration(output_dir: str, variant: str) -> int:
     if not snapshot_dir.exists():
         return 0
 
-    # Find all metadata files
-    metadata_files = sorted(snapshot_dir.glob("phi_iter*.json"))
+    # Find all metadata files in numeric order. Lexicographic order would place
+    # phi_iter10 before phi_iter2 and can hide non-monotonic corrupt tails.
+    metadata_files = []
+    for meta_file in snapshot_dir.glob("phi_iter*.json"):
+        try:
+            iter_num = int(meta_file.stem.replace("phi_iter", ""))
+        except ValueError:
+            continue
+        metadata_files.append((iter_num, meta_file))
+    metadata_files.sort()
 
     if not metadata_files:
         return 0
 
     # Check each metadata file to find the last complete one
     last_complete = 0
+    last_sequence_length = 0
 
-    for meta_file in metadata_files:
+    for iter_num, meta_file in metadata_files:
         try:
-            # Extract iteration number from filename
-            iter_num = int(meta_file.stem.replace("phi_iter", ""))
-
             # Check if corresponding data file exists
             with open(meta_file, 'r') as f:
                 meta = json.load(f)
@@ -123,7 +178,16 @@ def find_last_completed_iteration(output_dir: str, variant: str) -> int:
 
             # If both metadata and data exist, this iteration is complete
             if data_file.exists():
+                sequence_length = int(meta.get("sequence_length") or meta.get("total_bits") or 0)
+                if last_sequence_length and sequence_length and sequence_length < last_sequence_length:
+                    print(
+                        f"   [checkpoint] Ignoring non-monotonic iteration {iter_num}: "
+                        f"{sequence_length:,} < previous {last_sequence_length:,}"
+                    )
+                    continue
                 last_complete = max(last_complete, iter_num)
+                if sequence_length:
+                    last_sequence_length = sequence_length
         except (ValueError, json.JSONDecodeError, KeyError):
             continue
 
@@ -148,7 +212,8 @@ def cleanup_incomplete_iteration(output_dir: str, variant: str, iteration: int):
     patterns = [
         f"phi_iter{iteration}.json",
         f"phi_iter{iteration}.struct.gz",
-        f"phi_iter{iteration}.bin.gz"
+        f"phi_iter{iteration}.bin.gz",
+        f"phi_iter{iteration}.state.txt.gz"
     ]
 
     for pattern in patterns:
@@ -156,6 +221,72 @@ def cleanup_incomplete_iteration(output_dir: str, variant: str, iteration: int):
         if file_path.exists():
             file_path.unlink()
             print(f"   [cleanup] Removed incomplete file: {file_path.name}")
+
+
+def _load_current_state_checkpoint(output_dir: str, variant: str, iteration: int) -> Optional[str]:
+    """Load the per-iteration collapsed state checkpoint, if available."""
+    import gzip
+
+    snapshot_dir = _resolve_snapshot_dir(output_dir, variant)
+    json_path = snapshot_dir / f"phi_iter{iteration}.json"
+    if not json_path.exists():
+        return None
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    state_name = metadata.get("current_state_file") or f"phi_iter{iteration}.state.txt.gz"
+    state_path = snapshot_dir / Path(state_name).name
+    if not state_path.exists():
+        return None
+
+    with gzip.open(state_path, "rt", encoding="utf-8") as f:
+        return f.read()
+
+
+def _save_current_state_checkpoint(
+    snapshot_manager: PhiSnapshotManager,
+    iteration: int,
+    current_state: str,
+    save_info: Dict[str, Any]
+) -> None:
+    """Persist the collapsed state needed to resume exactly from this iteration."""
+    import gzip
+    import hashlib
+
+    state_path = snapshot_manager.data_dir / f"phi_iter{iteration}.state.txt.gz"
+    if len(current_state) > 100_000_000:
+        print(
+            f"   [checkpoint] WARNING: current_state is very large "
+            f"({len(current_state):,} chars); saving anyway for exact resume.",
+            flush=True
+        )
+
+    with gzip.open(state_path, "wt", encoding="utf-8", compresslevel=1) as f:
+        f.write(current_state)
+
+    state_sha = hashlib.sha256(current_state.encode("utf-8")).hexdigest().upper()
+    state_fields = {
+        "current_state_file": state_path.name,
+        "current_state_length": len(current_state),
+        "current_state_sha256": state_sha,
+    }
+    save_info.update(state_fields)
+
+    json_path = snapshot_manager.data_dir / f"phi_iter{iteration}.json"
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+        metadata.update(state_fields)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+    except OSError as exc:
+        print(f"   [checkpoint] WARNING: could not patch checkpoint metadata: {exc}", flush=True)
 
 
 def simulate_phi(
@@ -266,7 +397,9 @@ def simulate_phi(
     # ========== CHECKPOINT RECOVERY ==========
     start_iteration = 0
 
-    if resume_from_checkpoint and output_dir:
+    # Disabled: legacy resume confused cumulative Phi snapshots with current_state
+    # and reconstructed accumulation by appending cumulative snapshots.
+    if False and resume_from_checkpoint and output_dir:
         last_complete = find_last_completed_iteration(output_dir, variant)
 
         if last_complete > 0:
@@ -333,6 +466,70 @@ def simulate_phi(
                 start_iteration = 0
 
     # Nota: collapse_rule/collapse_depth/simplify_fn are ignored in basal‑pure mode
+    if resume_from_checkpoint and output_dir:
+        last_complete = find_last_completed_iteration(output_dir, variant)
+        if last_complete > 0:
+            print(f"\n{'='*60}")
+            print("CHECKPOINT RECOVERY")
+            print(f"{'='*60}")
+            print(f"Found {last_complete} completed iterations")
+            cleanup_incomplete_iteration(output_dir, variant, last_complete + 1)
+
+            checkpoint_state = _load_current_state_checkpoint(output_dir, variant, last_complete)
+            if checkpoint_state is None:
+                print(
+                    "   Stateful checkpoint not found. This run predates the "
+                    "current-state checkpoint format; starting from iteration 0 "
+                    "instead of performing an unsafe legacy resume.",
+                    flush=True
+                )
+            elif accumulation_manager:
+                snapshot_dir = _resolve_snapshot_dir(output_dir, variant)
+                meta_path = snapshot_dir / f"phi_iter{last_complete}.json"
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    checkpoint_meta = json.load(f)
+
+                if not str(checkpoint_meta.get("format", "")).startswith("v33_structural"):
+                    print(
+                        f"   Unsupported checkpoint format for exact resume: "
+                        f"{checkpoint_meta.get('format')}. Starting from iteration 0.",
+                        flush=True
+                    )
+                else:
+                    struct_path = snapshot_dir / f"phi_iter{last_complete}.struct.gz"
+                    expected_chars = int(checkpoint_meta.get("sequence_length") or 0)
+                    if not struct_path.exists() or expected_chars <= 0:
+                        print("   Checkpoint snapshot is incomplete. Starting from iteration 0.", flush=True)
+                    else:
+                        from hsi_agents_project.utils.bitarray_encoder import decode_phi_structural_gz_to_text_file
+
+                        print(f"   Restoring accumulation from snapshot: {struct_path.name}", flush=True)
+                        decoded_chars = decode_phi_structural_gz_to_text_file(
+                            str(struct_path),
+                            str(accumulation_manager.file_path),
+                            expected_chars=expected_chars,
+                            compresslevel=compress_level,
+                            verbose=True
+                        )
+                        accumulation_manager.recalculate_metadata()
+
+                        if decoded_chars == expected_chars:
+                            current_state = checkpoint_state
+                            start_iteration = last_complete
+                            print(f"Restored state from iteration {last_complete}", flush=True)
+                            print(f"   Current state length: {len(current_state):,}", flush=True)
+                            print(f"   Accumulation length: {accumulation_manager.get_length():,}", flush=True)
+                            print(f"   Resuming from iteration {start_iteration + 1}", flush=True)
+                        else:
+                            print(
+                                f"   WARNING: decoded checkpoint length mismatch "
+                                f"({decoded_chars:,} != {expected_chars:,}); starting from iteration 0.",
+                                flush=True
+                            )
+            print(f"{'='*60}\n")
+    elif output_dir:
+        print("[checkpoint] Recovery disabled by --no-resume; starting from iteration 0.", flush=True)
+
     def _simplify_base(seq: str) -> str:
         """Basal AND-rule simplification: 01 and 10 → 0; compress runs.
 
@@ -603,14 +800,19 @@ def simulate_phi(
                         print(f"   Free: {space_details['free_space_gb']:.1f} GB")
                         print(f"   Estimated (uncompressed): {space_details['estimated_needed_gb']:.1f} GB")
                         print(f"   Estimated (compressed): {space_details['estimated_compressed_gb']:.1f} GB")
-                        # Recreate AccumulationManager with compression enabled
-                        accumulation_manager.cleanup()  # Clean old file
+                        # Recreate AccumulationManager with compression enabled, preserving Acc.
+                        # The old file is deleted only after the compressed manager has resumed it.
+                        old_accumulation_path = accumulation_manager.get_file_path()
                         accumulation_manager = AccumulationManager(
                             output_dir=str(Path(output_dir) / "temp"),
                             variant=variant,
                             compress=True,
-                            compress_level=compress_level
+                            compress_level=compress_level,
+                            resume_from=str(old_accumulation_path)
                         )
+                        if old_accumulation_path.exists() and old_accumulation_path != accumulation_manager.get_file_path():
+                            old_accumulation_path.unlink()
+                            print(f"   [AccumulationManager] Removed uncompressed temp after compression switch: {old_accumulation_path}")
                         metadata["compression_activated_at_iter"] = iteration + 1
 
             # Build decay frame directly on disk (no RAM needed)
@@ -623,11 +825,15 @@ def simulate_phi(
                 prefix_mode=(variant == "N" and not n_suffix_mode)
             )
             decay_frame_size = decay_frame_path.stat().st_size
+            decay_frame_logical_size = accumulation_manager.get_length() + len(absolute_token) + 2
 
-            if decay_frame_size > max_ram_bytes:
+            if decay_frame_logical_size > max_ram_bytes:
                 # File > max RAM: use HYBRID multi-pass collapse with RAM blocks
                 used_hybrid = True
-                print(f"   [hybrid] Decay frame: {decay_frame_size/1e9:.2f} GB > {max_ram_gb} GB RAM limit")
+                print(
+                    f"   [hybrid] Decay frame logical size: {decay_frame_logical_size/1e9:.2f} GB "
+                    f"(physical {decay_frame_size/1e9:.2f} GB) > {max_ram_gb} GB RAM limit"
+                )
                 print(f"   [hybrid] Using block-based collapse (regex in {max_ram_gb} GB blocks)")
 
                 # Setup for multi-pass hybrid collapse
@@ -704,9 +910,12 @@ def simulate_phi(
                         else:
                             raise  # Re-raise other OS errors
 
-                    # Progress update
-                    if pass_num % 3 == 0 or output_size < 1000:
-                        print(f"   [pass {pass_num}] {current_file.stat().st_size:,} → {output_size:,} bytes")
+                    print(
+                        f"   [hybrid] pass {pass_num}: "
+                        f"{current_file.stat().st_size:,} bytes -> {output_size:,} chars "
+                        f"| changed={had_changes}",
+                        flush=True
+                    )
 
                     # Clean up previous temp file
                     if current_file.exists() and current_file != decay_frame_path:
@@ -714,8 +923,7 @@ def simulate_phi(
 
                     # Check termination conditions
                     if not had_changes or output_size <= 1:
-                        with open(next_file, 'r', encoding='utf-8') as f:
-                            state = f.read()
+                        state = _read_text_maybe_gzip(next_file)
                         if next_file.exists():
                             next_file.unlink()
                         print(f"   [hybrid] Completed in {pass_num} passes, final: '{state[:50]}'")
@@ -733,18 +941,15 @@ def simulate_phi(
 
             else:
                 # File fits in RAM: use original fast approach
-                if decay_frame_size > 100_000_000:  # >100MB
-                    print(f"   [decay] Reading {decay_frame_size/1e9:.2f} GB to RAM...", flush=True)
+                if decay_frame_logical_size > 100_000_000:  # >100MB
+                    print(
+                        f"   [decay] Reading {decay_frame_logical_size/1e9:.2f} GB logical "
+                        f"(physical {decay_frame_size/1e9:.2f} GB) to RAM...",
+                        flush=True
+                    )
                     t_read = time.perf_counter()
-                # Handle compressed files (.gz extension)
-                if str(decay_frame_path).endswith('.gz'):
-                    import gzip
-                    with gzip.open(decay_frame_path, 'rt', encoding='utf-8') as f:
-                        decay_frame = f.read()
-                else:
-                    with open(decay_frame_path, 'r', encoding='utf-8') as f:
-                        decay_frame = f.read()
-                if decay_frame_size > 100_000_000:
+                decay_frame = _read_text_maybe_gzip(decay_frame_path)
+                if decay_frame_logical_size > 100_000_000:
                     print(f"   [decay] Read complete in {time.perf_counter()-t_read:.1f}s", flush=True)
                 if decay_frame_path.exists():
                     decay_frame_path.unlink()
@@ -812,9 +1017,6 @@ def simulate_phi(
                 # Final global simplify for B to ensure L0 collapse per iteration
                 if len(state) > 1:
                     state = _collapse_global_ignore_parentheses(state)
-
-        if state_len > 100_000_000:
-            print(f"   [collapse] Done in {time.perf_counter()-collapse_t0:.1f}s ({collapse_pass} passes)", flush=True)
 
         elif variant == "G":
             # G — ABS parametritzable, sense auto-col·lapse intra-nivell
@@ -1034,6 +1236,9 @@ def simulate_phi(
 
         # 4) L'estat després del decaïment serà el símbol final si és un sol caràcter
         #    o l'string simplificat si encara hi ha estructura
+        if state_len > 100_000_000:
+            print(f"   [collapse] Done in {time.perf_counter()-collapse_t0:.1f}s ({collapse_pass} passes)", flush=True)
+
         current_state = state
 
         # MEMORY OPTIMIZED: Get length from AccumulationManager
@@ -1052,17 +1257,26 @@ def simulate_phi(
             if accumulation_manager:
                 # Check if accumulation is too large for RAM
                 accum_size = accumulation_manager.get_file_size()
-                if accum_size > max_ram_bytes:
+                accum_logical_size = accumulation_manager.get_length()
+                if accum_logical_size > max_ram_bytes:
                     # Use streaming save - don't load to RAM
                     use_streaming_save = True
                     phi_to_save = None  # Will use file path instead
-                    print(f"   [snapshot] Using streaming save ({accum_size/1e9:.2f} GB > {max_ram_gb} GB limit)", flush=True)
+                    print(
+                        f"   [snapshot] Using streaming save "
+                        f"({accum_logical_size/1e9:.2f} GB logical; physical {accum_size/1e9:.2f} GB > {max_ram_gb} GB limit)",
+                        flush=True
+                    )
                 else:
                     # Show progress for large reads
-                    if accum_size > 100_000_000:  # >100MB
-                        print(f"   [snapshot] Reading {accum_size/1e9:.2f} GB to RAM...", flush=True)
+                    if accum_logical_size > 100_000_000:  # >100MB
+                        print(
+                            f"   [snapshot] Reading {accum_logical_size/1e9:.2f} GB logical "
+                            f"(physical {accum_size/1e9:.2f} GB) to RAM...",
+                            flush=True
+                        )
                     phi_to_save = accumulation_manager.read_all()
-                    if accum_size > 100_000_000:
+                    if accum_logical_size > 100_000_000:
                         print(f"   [snapshot] Read complete.", flush=True)
             else:
                 phi_to_save = accumulation  # ✅ KEEPS PARENTHESES
@@ -1093,7 +1307,7 @@ def simulate_phi(
                     save_info = snapshot_manager.save_phi_state_structural_from_file(
                         str(accumulation_manager.file_path),
                         iteration + 1,
-                        {}
+                        {"source_length": accumulation_manager.get_length()}
                     )
                 else:
                     save_info = snapshot_manager.save_phi_state_structural(
@@ -1107,6 +1321,7 @@ def simulate_phi(
                     iteration + 1,
                     {}
                 )
+            _save_current_state_checkpoint(snapshot_manager, iteration + 1, current_state, save_info)
             print(f"   [snapshot] Saved in {time.perf_counter()-t_snap:.1f}s", flush=True)
             metadata["snapshots_saved"].append(save_info)
         elif save_snapshots and not use_compression:
@@ -1135,6 +1350,7 @@ def simulate_phi(
                     iteration + 1,
                     {}
                 )
+            _save_current_state_checkpoint(snapshot_manager, iteration + 1, current_state, save_info)
             metadata["snapshots_saved"].append(save_info)
 
         # Optional per-iteration logging (with flush for subprocess visibility)
@@ -1860,7 +2076,7 @@ def _save_results(
     # Write per-variant report including streaming metrics
     out_path = reports_dir / f"variant_{variant_code}_{iters_done}_{stamp}.json"
     metadata["report_path"] = str(out_path)
-    rel = out_path.relative_to(BASE_PATH)
+    rel = _display_path(out_path)
     print(f"[post] 2.2/4 writing variant report: {rel}")
     t0w = time.perf_counter()
     with open(out_path, "w") as f:

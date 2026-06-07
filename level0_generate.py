@@ -72,8 +72,47 @@ except Exception:
 # Anchor outputs under project root (this file lives in hsi_agents_project/)
 BASE_PATH = Path(__file__).resolve().parent
 ROOT_PATH = BASE_PATH.parent  # repository root; parent of the package dir
-RESULTS_DIR = BASE_PATH / "results"
+
+
+def _load_dotenv_for_paths() -> None:
+    env_path = BASE_PATH / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        print(f"[WARN] Failed to load .env for results path: {exc}")
+
+
+def _results_root() -> Path:
+    results_base = os.environ.get("HSI_RESULTS_BASE_DIR") or os.environ.get("HSI_V1_RESULTS_BASE_DIR")
+    if results_base:
+        return Path(results_base).expanduser().resolve()
+    return BASE_PATH / "results"
+
+
+_load_dotenv_for_paths()
+RESULTS_DIR = _results_root()
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _display_path(path: Path | str) -> Path:
+    resolved = Path(path).resolve()
+    for base in (BASE_PATH, RESULTS_DIR):
+        try:
+            return resolved.relative_to(base)
+        except ValueError:
+            pass
+    return resolved
+
 
 # Use unified structure: level0/visualizations
 VIS_DIR = RESULTS_DIR / "level0" / "visualizations"
@@ -136,7 +175,17 @@ def _load_dotenv_if_present(path: str = ".env"):
     except Exception as e:
         print(f"[WARN] Failed to load .env: {e}")
 
-def run_variant_script(python_flag, module_or_script, variant_name, results_file, variant_code, iterations: int | None, force_compress: bool = False):
+def run_variant_script(
+    python_flag,
+    module_or_script,
+    variant_name,
+    results_file,
+    variant_code,
+    iterations: int | None,
+    force_compress: bool = False,
+    no_plots: bool = False,
+    no_resume: bool = False,
+):
     """Run one generator variant (A–F) and capture results with live progress."""
     print(f"\n🚀 Running {variant_name}...")
     print("=" * 50)
@@ -166,8 +215,14 @@ def run_variant_script(python_flag, module_or_script, variant_name, results_file
             str(ROOT_PATH),  # parent of hsi_agents_project, so package is importable
             env.get("PYTHONPATH", "")
         ])
+        cmd = [py_exe, python_flag, module_or_script]
+        if no_plots and module_or_script == "hsi_agents_project.level0.generator":
+            cmd.append("--no-generate-plots")
+        if no_resume and module_or_script == "hsi_agents_project.level0.generator":
+            cmd.append("--no-resume")
+
         proc = subprocess.Popen(
-            [py_exe, python_flag, module_or_script],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -265,12 +320,34 @@ def load_variant_results(filename):
         return None
 
 
+def write_execution_logs(execution_results: list[dict]) -> None:
+    """Persist subprocess logs regardless of success, so failures remain auditable."""
+    reports_dir = RESULTS_DIR / "level0" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    for exec_result in execution_results:
+        if not exec_result.get('full_output'):
+            continue
+        variant_name = exec_result.get('variant', 'unknown')
+        variant_code = exec_result.get('variant_code', 'X')
+        log_path = reports_dir / f"variant_{variant_code}_execution.log.md"
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write(f"# Execution Log: {variant_name}\n\n")
+            f.write(f"- **Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"- **Execution time**: {exec_result.get('execution_time', 0):.2f}s\n")
+            f.write(f"- **Success**: {exec_result.get('success')}\n\n")
+            f.write("## Output\n\n```\n")
+            f.write(exec_result.get('full_output', ''))
+            f.write("\n```\n")
+        print(f"ðŸ“ Log saved: {_display_path(log_path)}")
+
+
 def find_variant_result_file(variant_code: str, iterations: int | None = None) -> str:
     """Find the JSON report for a given variant.
     If 'iterations' is provided, try to find a report matching that iteration;
     if not found, fall back to the latest report for the variant.
     """
-    reports_dir = BASE_PATH / "results" / "level0" / "reports"
+    reports_dir = RESULTS_DIR / "level0" / "reports"
     try:
         if iterations is not None:
             # First try exact iteration match
@@ -457,7 +534,7 @@ def plot_growth_and_time(results_list):
         var_tag = 'UNK'
     max_iter = max((r.get('iterations') or 0) for r in valid_results) or 0
     out = VIS_DIR / f"growth_time_{var_tag}{_abs_suffix()}_i{max_iter}_{_ts}.png"
-    rel = out.relative_to(BASE_PATH)
+    rel = _display_path(out)
     plt.tight_layout(); plt.savefig(out); print(f"[INFO] Growth/Time saved: {rel}"); plt.close()
 
 
@@ -499,7 +576,7 @@ def _abs_suffix() -> str:
 def _project_snapshots_dir(var: str | None = None) -> str:
     # Match Level0 generator snapshot dir structure, include ABS if provided
     # Fallback to var_{VARIANT} if var_{VARIANT}_abs{mode} doesn't exist
-    base = BASE_PATH / "results" / "level0" / "phi_snapshots"
+    base = RESULTS_DIR / "level0" / "phi_snapshots"
     if var:
         abs_m = _get_abs_mode()
         if abs_m:
@@ -663,7 +740,7 @@ def plot_raster2d(results_list, max_iter_cap: int | None = None):
         _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         out = VIS_DIR / f"raster2d_{var}{_abs_suffix()}_i{target_iter}_{_ts}.png"
         plt.savefig(out, dpi=200)
-        print(f"[INFO] 2D raster saved: {out.relative_to(BASE_PATH)}")
+        print(f"[INFO] 2D raster saved: {_display_path(out)}")
         plt.close()
 
 def _welch_psd_from_gz(iterations: int, cfg: dict, max_bits_cap: int | None = None, label: str = "welch", var: str | None = None):
@@ -1272,7 +1349,7 @@ def plot_hilbert_heatmap(results_list, max_bits: int, skip: bool):
             prog.update(message="Saving...")
             plt.savefig(out, dpi=200)
             plt.close()
-        print(f"[INFO] Hilbert saved: {out.relative_to(BASE_PATH)}", flush=True)
+        print(f"[INFO] Hilbert saved: {_display_path(out)}", flush=True)
     print('[INFO] Saved Hilbert heatmaps (where data available).', flush=True)
 
 
@@ -1335,7 +1412,7 @@ def plot_fft(results_list, max_bits: int, skip: bool):
             prog.update(message="Saving...")
             plt.tight_layout(); plt.savefig(out, dpi=200)
             plt.close()
-        print(f"[INFO] FFT saved: {out.relative_to(BASE_PATH)}", flush=True)
+        print(f"[INFO] FFT saved: {_display_path(out)}", flush=True)
         plt.close()
     print('[INFO] Saved FFT power spectra (where data available).')
 
@@ -1426,7 +1503,7 @@ def plot_spectrum_beta_fit(results_list, max_bits: int, skip: bool):
         _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         out = VIS_DIR / f"spectrum_beta_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
         plt.tight_layout(); plt.savefig(out, dpi=200)
-        print(f"[INFO] Spectrum beta plot saved: {out.relative_to(BASE_PATH)}")
+        print(f"[INFO] Spectrum beta plot saved: {_display_path(out)}")
         plt.close()
         out_metrics.append({
             'beta': float(beta) if beta_valid else None,
@@ -1664,7 +1741,7 @@ def plot_spectrum_beta_fit_enhanced(results_list, max_bits: int, skip: bool):
         _ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         out_path = VIS_DIR / f"spectrum_enhanced_{var}{_abs_suffix()}_i{iters}_{_ts}.png"
         plt.savefig(out_path, dpi=200)
-        print(f"[INFO] Enhanced spectrum saved: {out_path.relative_to(BASE_PATH)}")
+        print(f"[INFO] Enhanced spectrum saved: {_display_path(out_path)}")
         plt.close()
 
         # Compile metrics
@@ -1895,7 +1972,7 @@ def plot_autocorrelation(results_list, max_bits: int, skip: bool):
             plt.savefig(out, dpi=200, bbox_inches='tight')
             plt.close()
 
-        print(f"[INFO] Autocorrelation saved: {out.relative_to(BASE_PATH)}", flush=True)
+        print(f"[INFO] Autocorrelation saved: {_display_path(out)}", flush=True)
         print(f"       📊 {var}: {n_chunks} chunks, top periods = {[p[0] for p in top_peaks[:5]]}", flush=True)
         if fib_matches:
             print(f"       🔢 Fibonacci matches: {[(m[0], m[1]) for m in fib_matches]}", flush=True)
@@ -2095,7 +2172,7 @@ def plot_block_entropy(results_list, max_bits: int, skip: bool):
     plt.savefig(out, dpi=200, bbox_inches='tight')
     plt.close()
 
-    print(f"[INFO] Block entropy saved: {out.relative_to(BASE_PATH)}", flush=True)
+    print(f"[INFO] Block entropy saved: {_display_path(out)}", flush=True)
 
     # Print summary
     for var, data in all_results.items():
@@ -2193,6 +2270,8 @@ def parse_args():
                         help="Generate ONLY this plot type: growth, raster, hilbert, fft, autocorr, beta")
     parser.add_argument("--force-compress", action="store_true",
                         help="Force gzip compression for temp files (for testing disk space optimization)")
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Disable Level 0 checkpoint recovery and start from iteration 0")
     return parser.parse_args()
 
     ax4.scatter(fractal_dims, y_scatter, c=colors, s=100, alpha=0.7)
@@ -2273,7 +2352,17 @@ def main():
     total_start_time = time.time()
 
     for flag, mod, name, results_file, variant_code in variants:
-        success, exec_time, output = run_variant_script(flag, mod, name, results_file, variant_code, args.iterations, args.force_compress)
+        success, exec_time, output = run_variant_script(
+            flag,
+            mod,
+            name,
+            results_file,
+            variant_code,
+            args.iterations,
+            args.force_compress,
+            args.no_plots,
+            args.no_resume,
+        )
         execution_results.append({
             'variant': name,
             'variant_code': variant_code,
@@ -2301,6 +2390,7 @@ def main():
     successful_count = sum(1 for r in execution_results if r['success'])
     print(f"\n⏱️ TOTAL EXECUTION TIME: {total_execution_time:.2f}s", flush=True)
     print(f"✅ Successful variants: {successful_count}/{len(variants)}", flush=True)
+    write_execution_logs(execution_results)
 
     # If no variants succeeded, skip all post-processing
     if successful_count == 0:
@@ -2363,24 +2453,7 @@ def main():
             plot_raster2d(variant_results, max_iter_cap=None)
 
     # NOTE: hsi_master_results_{variant}.json removed - all data now in variant_*.json
-    # Save execution log as markdown for each variant
-    master_results_dir = RESULTS_DIR / "level0" / "reports"
-    master_results_dir.mkdir(parents=True, exist_ok=True)
-
-    for exec_result in execution_results:
-        if exec_result.get('success') and exec_result.get('full_output'):
-            variant_name = exec_result.get('variant', 'unknown')
-            variant_code = exec_result.get('variant_code', 'X')
-            log_path = master_results_dir / f"variant_{variant_code}_execution.log.md"
-            with open(log_path, 'w', encoding='utf-8') as f:
-                f.write(f"# Execution Log: {variant_name}\n\n")
-                f.write(f"- **Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"- **Execution time**: {exec_result.get('execution_time', 0):.2f}s\n")
-                f.write(f"- **Success**: {exec_result.get('success')}\n\n")
-                f.write("## Output\n\n```\n")
-                f.write(exec_result.get('full_output', ''))
-                f.write("\n```\n")
-            print(f"📝 Log saved: {log_path.relative_to(BASE_PATH)}")
+    # Execution logs are persisted before the success gate so failed runs are auditable.
 
     # Compress iteration snapshots for Level 1 (if enabled in config)
     try:
@@ -2521,7 +2594,7 @@ def _run_plot_only():
 
     if target_iter and target_iter != report_iter:
         # Check if snapshot exists for target iteration
-        snapshot_dir = BASE_PATH / "results" / "level0" / "phi_snapshots" / f"var_{var}"
+        snapshot_dir = RESULTS_DIR / "level0" / "phi_snapshots" / f"var_{var}"
         snapshot_file = snapshot_dir / f"phi_iter{target_iter}.struct.gz"
         if snapshot_file.exists():
             print(f"       [override] Using iteration {target_iter} instead of report's {report_iter}", flush=True)
@@ -2635,7 +2708,7 @@ def compress_iterations_to_tar(variant_code: str):
         import gzip
 
         # v33: snapshots are in level0/phi_snapshots/var_X/
-        var_dir = BASE_PATH / "results" / "level0" / "phi_snapshots" / f"var_{variant_code.upper()}"
+        var_dir = RESULTS_DIR / "level0" / "phi_snapshots" / f"var_{variant_code.upper()}"
         if not var_dir.exists():
             print(f"[WARN] Variant directory not found: {var_dir}")
             return False
@@ -2666,7 +2739,7 @@ def compress_iterations_to_tar(variant_code: str):
         print(f"       Original: {original_size / 1e9:.2f} GB")
         print(f"       Compressed: {compressed_size / 1e9:.2f} GB")
         print(f"       Ratio: {ratio:.2%}")
-        print(f"       Saved: {tar_path.relative_to(BASE_PATH)}")
+        print(f"       Saved: {_display_path(tar_path)}")
 
         return True
 

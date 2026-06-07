@@ -198,9 +198,11 @@ class HybridCollapseEngine:
         input_path = Path(input_path)
         output_path = Path(output_path)
 
-        file_size = input_path.stat().st_size
+        physical_size = input_path.stat().st_size
+        compressed_input = str(input_path).endswith('.gz')
         total_had_changes = False
-        bytes_processed = 0
+        chars_processed = 0
+        chars_written = 0
 
         with self._open_file(output_path, 'w') as out_f:
             with self._open_file(input_path, 'r') as in_f:
@@ -218,7 +220,7 @@ class HybridCollapseEngine:
 
                     # Combine carry_over with new chunk
                     data = carry_over + chunk
-                    bytes_processed += len(chunk)
+                    chars_processed += len(chunk)
 
                     # Check if this is the last block
                     is_last_block = len(chunk) < read_size
@@ -246,20 +248,23 @@ class HybridCollapseEngine:
 
                     # Write result
                     out_f.write(collapsed)
+                    chars_written += len(collapsed)
 
                     if log_progress:
-                        pct = (bytes_processed / file_size) * 100
-                        print(f"   [hybrid] Block {block_num}: {pct:.1f}% processed", end='\r')
+                        if compressed_input:
+                            print(f"   [hybrid] Block {block_num}: {chars_processed:,} chars processed", end='\r', flush=True)
+                        else:
+                            pct = (chars_processed / physical_size) * 100
+                            print(f"   [hybrid] Block {block_num}: {pct:.1f}% processed", end='\r', flush=True)
 
                     if is_last_block:
                         break
 
         compress_note = " (compressed)" if self.compress else ""
         if log_progress:
-            print(f"   [hybrid] Complete: {file_size:,} bytes in {block_num} blocks{compress_note}")
+            print(f"   [hybrid] Complete: {physical_size:,} bytes in {block_num} blocks{compress_note}; logical_out={chars_written:,}", flush=True)
 
-        output_size = output_path.stat().st_size
-        return output_size, total_had_changes
+        return chars_written, total_had_changes
 
     def collapse_fully(
         self,
@@ -347,4 +352,3 @@ def collapse_hybrid(
         compress_level=compress_level
     )
     return engine.collapse_one_pass(input_path, output_path, log_progress)
-

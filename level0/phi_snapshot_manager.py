@@ -246,7 +246,7 @@ class PhiSnapshotManager:
 
         start_time = time.time()
         input_path = Path(input_file_path)
-        original_length = input_path.stat().st_size  # Approximate char count
+        original_length = int((metadata or {}).get("source_length") or input_path.stat().st_size)
 
         # Prepare metadata
         save_metadata = {
@@ -267,7 +267,8 @@ class PhiSnapshotManager:
         compressed_size = save_phi_structural_gz_from_file(
             str(input_path),
             str(struct_path),
-            compresslevel=self.compression_level
+            compresslevel=self.compression_level,
+            input_length=original_length
         )
 
         save_metadata["compressed_size_bytes"] = compressed_size
@@ -358,7 +359,7 @@ class PhiSnapshotManager:
             metadata = json.load(f)
 
         # Verificar format
-        if metadata.get("format") != "v33_structural":
+        if not str(metadata.get("format", "")).startswith("v33_structural"):
             raise ValueError(f"Iteration {iteration} is not in v33 structural format (found: {metadata.get('format')})")
 
         # Carregar seqüència estructural

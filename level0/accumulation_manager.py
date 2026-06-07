@@ -84,24 +84,48 @@ class AccumulationManager:
         if self.compress:
             if 'r' in mode:
                 return gzip.open(self.file_path, 'rt', encoding='utf-8')
+            if 'w' in mode:
+                return gzip.open(self.file_path, 'wt', encoding='utf-8', compresslevel=self.compress_level)
             else:
                 return gzip.open(self.file_path, 'at', encoding='utf-8', compresslevel=self.compress_level)
         else:
             return open(self.file_path, mode, encoding='utf-8')
 
     def _resume_from_file(self, file_path: str):
-        """Resume from existing accumulation file."""
-        import shutil
-        shutil.copy(file_path, self.file_path)
-
-        # Recalculate metadata
+        """Resume from an existing accumulation file without loading it into RAM."""
         print(f"   [AccumulationManager] Resuming from {file_path}...")
-        with self._open_file('r') as f:
-            content = f.read()
-            self.current_length = len(content)
-            self.clean_bits_count = sum(1 for c in content if c in '01')
+        source_path = Path(file_path)
+        source_is_compressed = str(source_path).endswith('.gz')
+        source_open = gzip.open if source_is_compressed else open
+
+        if source_path.resolve() != self.file_path.resolve():
+            if self.file_path.exists():
+                self.file_path.unlink()
+
+            with source_open(source_path, 'rt', encoding='utf-8') as src:
+                with self._open_file('w') as dst:
+                    while True:
+                        chunk = src.read(50_000_000)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+
+        self.recalculate_metadata()
         compress_note = " (compressed)" if self.compress else ""
         print(f"   [AccumulationManager] Loaded {self.current_length:,} chars, {self.clean_bits_count:,} clean bits{compress_note}")
+
+    def recalculate_metadata(self, chunk_size: int = 50_000_000):
+        """Recalculate length counters by streaming the accumulation file."""
+        self._flush()
+        self.current_length = 0
+        self.clean_bits_count = 0
+        with self._open_file('r') as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                self.current_length += len(chunk)
+                self.clean_bits_count += sum(1 for c in chunk if c in '01')
     
     def append(self, state: str):
         """
@@ -311,4 +335,3 @@ class AccumulationManager:
         """Cleanup on deletion (optional)."""
         # Flush buffer to ensure data is written
         self._flush()
-

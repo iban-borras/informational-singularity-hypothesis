@@ -22,12 +22,41 @@ Author: Iban Borràs with collaboration from Augment Agent (Sophia)
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 # Base paths (anchored to project root)
 BASE_PATH = Path(__file__).resolve().parent.parent  # hsi_agents_project/
-RESULTS_DIR = BASE_PATH / "results"
+
+
+def _load_dotenv_for_paths() -> None:
+    env_path = BASE_PATH / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        print(f"[WARN] Failed to load .env for results path: {exc}")
+
+
+def _results_root() -> Path:
+    results_base = os.environ.get("HSI_RESULTS_BASE_DIR") or os.environ.get("HSI_V1_RESULTS_BASE_DIR")
+    if results_base:
+        return Path(results_base).expanduser().resolve()
+    return BASE_PATH / "results"
+
+
+_load_dotenv_for_paths()
+RESULTS_DIR = _results_root()
 
 # Standard categories per level
 LEVEL0_CATEGORIES = ['phi_snapshots', 'reports', 'visualizations']
@@ -168,4 +197,3 @@ def save_figure(
         print(f"📊 Saved: {relative_path(path)}")
 
     return path
-

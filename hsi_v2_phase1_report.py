@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from v2.common.cli import parse_variants, resolve_dir
+from v2.common.cli import parse_variants, resolve_results_dir
 from v2.phase1.report import (
     build_report_rows,
     discover_phase1_runs,
@@ -93,8 +93,8 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    phase1_dir = resolve_dir(args.phase1_dir, anchor_file=__file__)
-    report_dir = resolve_dir(args.report_dir, anchor_file=__file__)
+    phase1_dir = resolve_results_dir(args.phase1_dir, anchor_file=__file__)
+    report_dir = resolve_results_dir(args.report_dir, anchor_file=__file__)
     report_dir.mkdir(parents=True, exist_ok=True)
 
     variants = parse_variants(args.variants)

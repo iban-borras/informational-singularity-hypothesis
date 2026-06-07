@@ -28,6 +28,7 @@ from v2.common.io import (
     resolve_struct_path,
     split_into_segments,
 )
+from v2.common.cli import resolve_results_dir
 from v2.common.naming import build_phase1_run_slug
 from v2.common.null_models import SUPPORTED_NULLS, generate_control
 from v2.phase1.tower import (
@@ -103,7 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=str,
         default="results/hsi_v2/phase1",
-        help="Output directory, relative to hsi_agents_project or absolute.",
+        help=(
+            "Output directory, relative to hsi_agents_project or absolute. "
+            "If relative and rooted at results/, HSI_RESULTS_BASE_DIR can redirect that root."
+        ),
     )
     parser.add_argument(
         "--null-model",
@@ -514,10 +518,7 @@ def save_json(path: Path, payload: dict | list) -> None:
 
 
 def resolve_output_dir(raw_output_dir: str) -> Path:
-    output_path = Path(raw_output_dir)
-    if not output_path.is_absolute():
-        output_path = Path(__file__).parent / output_path
-    return output_path.resolve()
+    return resolve_results_dir(raw_output_dir, anchor_file=__file__)
 
 
 def print_summary(summary: dict) -> None:

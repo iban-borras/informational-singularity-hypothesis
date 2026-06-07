@@ -179,7 +179,8 @@ def save_phi_structural_gz_from_file(
     input_path: str,
     output_path: str,
     compresslevel: int = 9,
-    chunk_size: int = 50_000_000
+    chunk_size: int = 50_000_000,
+    input_length: Optional[int] = None
 ) -> int:
     """
     STREAMING VERSION: Encode and save Φ from file to gzip without loading to RAM.
@@ -189,6 +190,8 @@ def save_phi_structural_gz_from_file(
         output_path: Output file path (should end with .gz)
         compresslevel: gzip compression level (1-9, default 9)
         chunk_size: Number of characters to process at once (default: 50M)
+        input_length: Optional logical character count. Useful when input_path
+            is itself gzip-compressed and Path.stat() is only physical size.
 
     Returns:
         Number of bytes written
@@ -197,7 +200,7 @@ def save_phi_structural_gz_from_file(
     from pathlib import Path
 
     input_path = Path(input_path)
-    total_size = input_path.stat().st_size
+    total_size = int(input_length) if input_length is not None else input_path.stat().st_size
     processed = 0
     num_chunks = (total_size + chunk_size - 1) // chunk_size
 
@@ -212,7 +215,9 @@ def save_phi_structural_gz_from_file(
             bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}<{remaining}]"
         )
 
-    with open(input_path, 'r', encoding='utf-8') as in_f:
+    input_open = gzip.open if str(input_path).endswith('.gz') else open
+
+    with input_open(input_path, 'rt', encoding='utf-8') as in_f:
         with gzip.open(output_path, "wb", compresslevel=compresslevel) as out_f:
             while True:
                 chunk = in_f.read(chunk_size)
@@ -256,6 +261,87 @@ def load_phi_structural_gz(filepath: str) -> str:
         bits.fromfile(f)
 
     return decode_phi_with_structure(bits)
+
+
+def decode_phi_structural_gz_to_text_file(
+    input_path: str,
+    output_path: str,
+    expected_chars: Optional[int] = None,
+    compresslevel: int = 1,
+    chunk_size: int = 4_194_304,
+    verbose: bool = True
+) -> int:
+    """
+    Decode a v33 structural snapshot to a text/gzip accumulation file.
+
+    This is the resume-safe inverse of save_phi_structural_gz*_without loading
+    the full decoded Phi string into RAM.
+    """
+    import os
+    from pathlib import Path
+
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    byte_table = [
+        ''.join(DECODING_MAP[f"{byte:08b}"[i:i + 2]] for i in range(0, 8, 2))
+        for byte in range(256)
+    ]
+
+    output_is_gzip = str(output_path).endswith(".gz")
+    chars_written = 0
+    chunks = 0
+    last_report = 0
+    t0 = None
+    if verbose:
+        import time
+        t0 = time.perf_counter()
+        print(
+            f"   [resume] Decoding structural snapshot to temp accumulation: "
+            f"{input_path.name} -> {output_path.name}",
+            flush=True
+        )
+
+    with gzip.open(input_path, "rb") as in_f:
+        if output_is_gzip:
+            out_ctx = gzip.open(output_path, "wt", encoding="utf-8", compresslevel=compresslevel)
+        else:
+            out_ctx = open(output_path, "w", encoding="utf-8")
+        with out_ctx as out_f:
+            while True:
+                raw = in_f.read(chunk_size)
+                if not raw:
+                    break
+
+                decoded = ''.join(byte_table[b] for b in raw)
+                if expected_chars is not None:
+                    remaining = expected_chars - chars_written
+                    if remaining <= 0:
+                        break
+                    if len(decoded) > remaining:
+                        decoded = decoded[:remaining]
+
+                out_f.write(decoded)
+                chars_written += len(decoded)
+                chunks += 1
+
+                if verbose and expected_chars:
+                    pct = int((100 * chars_written) / expected_chars)
+                    if pct >= last_report + 5:
+                        last_report = pct
+                        elapsed = time.perf_counter() - t0 if t0 is not None else 0.0
+                        print(
+                            f"   [resume] Decoded {pct:3d}% "
+                            f"({chars_written:,}/{expected_chars:,} chars, {elapsed:.1f}s)",
+                            flush=True
+                        )
+
+    if verbose:
+        elapsed = time.perf_counter() - t0 if t0 is not None else 0.0
+        print(f"   [resume] Decode complete: {chars_written:,} chars in {elapsed:.1f}s", flush=True)
+
+    return chars_written
 
 
 def stream_phi_prefix_gz(filepath: str, max_chars: int, clean: bool = True,
@@ -498,4 +584,3 @@ def stream_multi_segment_gz(
             print(f"   ⚠️ Partial segment {current_segment_idx + 1} ({len(segment_str):,} chars)")
 
     return segments
-

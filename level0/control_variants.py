@@ -49,10 +49,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 # Project paths - results are inside hsi_agents_project/
 # Now we're inside level0/, so go up one level to hsi_agents_project/
 ROOT = Path(__file__).resolve().parent.parent
-RESULTS_DIR = ROOT / "results" / "level0" / "phi_snapshots" / "var_A"
+
+
+def _load_dotenv_for_paths() -> None:
+    env_path = ROOT / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        print(f"[variant_controls] ⚠️  Failed to load .env for results path: {exc}", flush=True)
+
+
+def _results_root() -> Path:
+    results_base = os.environ.get("HSI_RESULTS_BASE_DIR") or os.environ.get("HSI_V1_RESULTS_BASE_DIR")
+    if results_base:
+        return Path(results_base).expanduser().resolve()
+    return ROOT / "results"
+
+
+_load_dotenv_for_paths()
+RESULTS_ROOT = _results_root()
+RESULTS_DIR = RESULTS_ROOT / "level0" / "phi_snapshots" / "var_A"
 
 # Pi cache configuration
-PI_CACHE_DIR = ROOT / "results" / "cache"
+PI_CACHE_DIR = RESULTS_ROOT / "cache"
 PI_CACHE_FILE = PI_CACHE_DIR / "Pi.zip"
 PI_ARCHIVE_URL = "https://archive.org/download/Math_Constants/Pi.zip"
 PI_CACHE_MAX_DIGITS = 1_000_000_000  # 1 billion digits available
@@ -298,7 +327,7 @@ def estimate_iteration_size(iteration: int) -> int:
 def get_variant_size(variant: str, iterations: int) -> Optional[int]:
     """Get the size of a variant at a given iteration from its metadata, or estimate."""
     # Standard structure: level0/phi_snapshots/var_{X}/
-    var_dir = ROOT / "results" / "level0" / "phi_snapshots" / f"var_{variant}"
+    var_dir = RESULTS_ROOT / "level0" / "phi_snapshots" / f"var_{variant}"
     meta_path = var_dir / f"phi_iter{iterations}.json"
 
     if meta_path.exists():
@@ -400,7 +429,7 @@ def generate_control_variant(
         json.dump(meta, f, indent=2)
 
     # Also create a report file for the pipeline to find
-    report_dir = ROOT / "results" / "level0" / "reports"
+    report_dir = RESULTS_ROOT / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_name = f"variant_A_{iterations}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report = {
@@ -469,9 +498,9 @@ def generate_pi_variant(num_bits: int, iterations: int) -> dict:
     """
     from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
 
-    results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_J"
+    results_dir = RESULTS_ROOT / "level0" / "phi_snapshots" / "var_J"
     results_dir.mkdir(parents=True, exist_ok=True)
-    report_dir = ROOT / "results" / "level0" / "reports"
+    report_dir = RESULTS_ROOT / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     t0_total = time.perf_counter()
@@ -805,9 +834,9 @@ def generate_rule30_variant(num_bits: int, iterations: int) -> dict:
     """
     from hsi_agents_project.utils.bitarray_encoder import save_phi_structural_gz, get_format_info
 
-    results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_K"
+    results_dir = RESULTS_ROOT / "level0" / "phi_snapshots" / "var_K"
     results_dir.mkdir(parents=True, exist_ok=True)
-    report_dir = ROOT / "results" / "level0" / "reports"
+    report_dir = RESULTS_ROOT / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     t0_total = time.perf_counter()
@@ -957,7 +986,7 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
     Returns:
         Metadata dictionary
     """
-    results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_L"
+    results_dir = RESULTS_ROOT / "level0" / "phi_snapshots" / "var_L"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     t0 = time.perf_counter()
@@ -996,7 +1025,7 @@ def generate_logistic_variant(num_bits: int, iterations: int) -> dict:
         json.dump(meta, f, indent=2)
 
     # Report
-    report_dir = ROOT / "results" / "level0" / "reports"
+    report_dir = RESULTS_ROOT / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "variant": "L",
@@ -1114,9 +1143,9 @@ def generate_fibonacci_variant(num_bits: int, iterations: int) -> dict:
     Returns:
         Metadata dictionary for the last iteration
     """
-    results_dir = ROOT / "results" / "level0" / "phi_snapshots" / "var_M"
+    results_dir = RESULTS_ROOT / "level0" / "phi_snapshots" / "var_M"
     results_dir.mkdir(parents=True, exist_ok=True)
-    report_dir = ROOT / "results" / "level0" / "reports"
+    report_dir = RESULTS_ROOT / "level0" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     t0_total = time.perf_counter()
@@ -1349,4 +1378,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-
