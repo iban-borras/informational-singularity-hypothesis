@@ -321,8 +321,8 @@ class StreamingTEAccumulator:
             if i not in coarse_grained or j not in coarse_grained:
                 continue
 
-            source = coarse_grained[i].astype(np.int32)  # X
-            target = coarse_grained[j].astype(np.int32)  # Y
+            source = coarse_grained[i].astype(np.int16, copy=False)  # X
+            target = coarse_grained[j].astype(np.int16, copy=False)  # Y
 
             n = min(len(source), len(target))
             if n <= self.k:
@@ -333,8 +333,11 @@ class StreamingTEAccumulator:
             # For k=3, n_bins=4: max value = 63
 
             # Build encoded arrays
-            y_past_encoded = np.zeros(n - self.k, dtype=np.int32)
-            x_past_encoded = np.zeros(n - self.k, dtype=np.int32)
+            # n_bins=2 and k=3 in all current HSI v2 TE uses, so encoded
+            # histories fit safely in int16. Keeping the temporaries narrow is
+            # important for multi-day runs over B/E@24 on Windows.
+            y_past_encoded = np.zeros(n - self.k, dtype=np.int16)
+            x_past_encoded = np.zeros(n - self.k, dtype=np.int16)
 
             for offset in range(self.k):
                 multiplier = self.n_bins ** (self.k - 1 - offset)
@@ -343,17 +346,25 @@ class StreamingTEAccumulator:
 
             y_future = target[self.k:n]
 
-            # Combined key: y_past * 256 + x_past * 4 + y_future
-            # Max: 63 * 256 + 63 * 4 + 3 = 16128 + 252 + 3 = 16383 (fits in int16)
+            # Combined key: y_past * (n_y_past * n_bins) + x_past * n_bins + y_future.
+            # Build it in-place to avoid large expression temporaries.
             n_y_past = self.n_bins ** self.k  # 64
-            joint_keys = y_past_encoded * (n_y_past * self.n_bins) + x_past_encoded * self.n_bins + y_future
+            joint_keys = y_past_encoded.copy()
+            joint_keys *= n_y_past
+            joint_keys += x_past_encoded
+            joint_keys *= self.n_bins
+            joint_keys += y_future
 
             # Use bincount for fast counting
             joint_counts = np.bincount(joint_keys, minlength=n_y_past * n_y_past * self.n_bins)
             y_past_counts = np.bincount(y_past_encoded, minlength=n_y_past)
-            yx_past_keys = y_past_encoded * n_y_past + x_past_encoded
+            yx_past_keys = y_past_encoded.copy()
+            yx_past_keys *= n_y_past
+            yx_past_keys += x_past_encoded
             yx_past_counts = np.bincount(yx_past_keys, minlength=n_y_past * n_y_past)
-            yf_keys = y_past_encoded * self.n_bins + y_future
+            yf_keys = y_past_encoded.copy()
+            yf_keys *= self.n_bins
+            yf_keys += y_future
             yf_counts = np.bincount(yf_keys, minlength=n_y_past * self.n_bins)
 
             # Merge into existing counters (convert to dict format for compatibility)
@@ -388,8 +399,8 @@ class StreamingTEAccumulator:
                 if i not in coarse_grained or j not in coarse_grained:
                     continue
 
-                x = coarse_grained[i].astype(np.float64)
-                y = coarse_grained[j].astype(np.float64)
+                x = coarse_grained[i]
+                y = coarse_grained[j]
                 n = min(len(x), len(y))
                 if n < 2:
                     continue
@@ -405,13 +416,18 @@ class StreamingTEAccumulator:
                             self.mi_joint_counters[(i, j)].get(key, 0) + int(cnt)
                 self.mi_joint_samples[(i, j)] += n
 
-                # Correlation sums (for auto-similarity)
+                # Correlation sums (for auto-similarity). Data are binary, so
+                # sum(x^2)=sum(x) and sum(x*y)=count(x & y); avoid float64
+                # copies that can fragment memory during long streaming runs.
+                sum_x = int(np.count_nonzero(x))
+                sum_y = int(np.count_nonzero(y))
+                sum_xy = int(np.count_nonzero(np.logical_and(x, y)))
                 acc = self.corr_accumulators[(i, j)]
-                acc['sum_x'] += float(np.sum(x))
-                acc['sum_y'] += float(np.sum(y))
-                acc['sum_xy'] += float(np.sum(x * y))
-                acc['sum_x2'] += float(np.sum(x * x))
-                acc['sum_y2'] += float(np.sum(y * y))
+                acc['sum_x'] += float(sum_x)
+                acc['sum_y'] += float(sum_y)
+                acc['sum_xy'] += float(sum_xy)
+                acc['sum_x2'] += float(sum_x)
+                acc['sum_y2'] += float(sum_y)
                 acc['n'] += n
 
         self.chunks_processed += 1

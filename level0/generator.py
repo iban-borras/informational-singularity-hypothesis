@@ -832,9 +832,10 @@ def simulate_phi(
                 used_hybrid = True
                 print(
                     f"   [hybrid] Decay frame logical size: {decay_frame_logical_size/1e9:.2f} GB "
-                    f"(physical {decay_frame_size/1e9:.2f} GB) > {max_ram_gb} GB RAM limit"
+                    f"(physical {decay_frame_size/1e9:.2f} GB) > {max_ram_gb} GB RAM limit",
+                    flush=True,
                 )
-                print(f"   [hybrid] Using block-based collapse (regex in {max_ram_gb} GB blocks)")
+                print(f"   [hybrid] Using block-based collapse (regex in {max_ram_gb} GB blocks)", flush=True)
 
                 # Setup for multi-pass hybrid collapse
                 temp_dir = accumulation_manager.output_dir
@@ -926,7 +927,7 @@ def simulate_phi(
                         state = _read_text_maybe_gzip(next_file)
                         if next_file.exists():
                             next_file.unlink()
-                        print(f"   [hybrid] Completed in {pass_num} passes, final: '{state[:50]}'")
+                        print(f"   [hybrid] Completed in {pass_num} passes, final: '{state[:50]}'", flush=True)
                         break
 
                     current_file = next_file

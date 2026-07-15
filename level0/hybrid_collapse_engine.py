@@ -18,6 +18,9 @@ Date: November 2025
 
 import re
 import gzip
+import os
+import sys
+import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple, IO
 
@@ -203,6 +206,12 @@ class HybridCollapseEngine:
         total_had_changes = False
         chars_processed = 0
         chars_written = 0
+        progress_mode = os.environ.get("HSI_PROGRESS_MODE", "auto").strip().lower()
+        progress_interactive = (
+            progress_mode not in {"log", "plain", "none"}
+            and sys.stdout.isatty()
+        )
+        progress_last_log = 0.0
 
         with self._open_file(output_path, 'w') as out_f:
             with self._open_file(input_path, 'r') as in_f:
@@ -250,17 +259,36 @@ class HybridCollapseEngine:
                     out_f.write(collapsed)
                     chars_written += len(collapsed)
 
-                    if log_progress:
+                    if log_progress and progress_mode != "none":
+                        now = time.perf_counter()
+                        should_log = (
+                            progress_interactive
+                            or block_num == 1
+                            or is_last_block
+                            or now - progress_last_log >= 30.0
+                        )
+                    else:
+                        should_log = False
+
+                    if should_log:
                         if compressed_input:
-                            print(f"   [hybrid] Block {block_num}: {chars_processed:,} chars processed", end='\r', flush=True)
+                            message = f"   [hybrid] Block {block_num}: {chars_processed:,} chars processed"
                         else:
                             pct = (chars_processed / physical_size) * 100
-                            print(f"   [hybrid] Block {block_num}: {pct:.1f}% processed", end='\r', flush=True)
+                            message = f"   [hybrid] Block {block_num}: {pct:.1f}% processed"
+                        print(
+                            message,
+                            end='\r' if progress_interactive else '\n',
+                            flush=True,
+                        )
+                        progress_last_log = now
 
                     if is_last_block:
                         break
 
         compress_note = " (compressed)" if self.compress else ""
+        if log_progress and progress_interactive:
+            print("", flush=True)
         if log_progress:
             print(f"   [hybrid] Complete: {physical_size:,} bytes in {block_num} blocks{compress_note}; logical_out={chars_written:,}", flush=True)
 

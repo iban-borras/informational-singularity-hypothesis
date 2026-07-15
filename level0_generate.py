@@ -234,14 +234,32 @@ def run_variant_script(
 
         live_output_lines = []
         pbar = None  # tqdm progress bar for subprocess progress protocol
+        progress_mode = os.environ.get("HSI_PROGRESS_MODE", "auto").strip().lower()
+        progress_interactive = (
+            progress_mode not in {"log", "plain", "none"}
+            and sys.stderr.isatty()
+        )
+        progress_log_enabled = progress_mode != "none" and not progress_interactive
+        progress_desc = "Processing"
+        progress_total = 0
+        progress_last_pct = -1
+        progress_done_logged = False
+        stream_child_log = env.get("HSI_STREAM_CHILD_LOG", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+        def emit_progress_log(message: str) -> None:
+            print(message, flush=True)
+            live_output_lines.append(message + "\n")
 
         while True:
             line = proc.stdout.readline()
             if not line and proc.poll() is not None:
                 break
             if line:
-                live_output_lines.append(line)
-
                 # Check for progress protocol messages first
                 if HAS_PROGRESS_PROTOCOL:
                     progress_msg = parse_progress_line(line)
@@ -250,21 +268,47 @@ def run_variant_script(
                             # Close any existing progress bar
                             if pbar:
                                 pbar.close()
-                            pbar = tqdm(
-                                total=progress_msg['total'],
-                                desc=f"   {progress_msg['desc']}",
-                                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
-                                leave=True
-                            )
-                        elif progress_msg['type'] == 'update' and pbar:
-                            pbar.n = progress_msg['current']
-                            pbar.refresh()
-                        elif progress_msg['type'] == 'end' and pbar:
-                            pbar.n = pbar.total  # Ensure 100%
-                            pbar.refresh()
-                            pbar.close()
-                            pbar = None
+                            progress_desc = str(progress_msg['desc'])
+                            progress_total = int(progress_msg['total'])
+                            progress_last_pct = -1
+                            progress_done_logged = False
+                            if progress_interactive:
+                                pbar = tqdm(
+                                    total=progress_total,
+                                    desc=f"   {progress_desc}",
+                                    bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
+                                    leave=False,
+                                    dynamic_ncols=True,
+                                    file=sys.stderr,
+                                )
+                            elif progress_log_enabled:
+                                emit_progress_log(f"   [progress] {progress_desc}: start total={progress_total}")
+                        elif progress_msg['type'] == 'update':
+                            current = int(progress_msg['current'])
+                            if pbar:
+                                pbar.n = current
+                                pbar.refresh()
+                            elif progress_log_enabled and progress_total > 0:
+                                pct = int((current * 100) // progress_total)
+                                if pct >= progress_last_pct + 10 or pct == 100:
+                                    emit_progress_log(
+                                        f"   [progress] {progress_desc}: {pct}% ({current}/{progress_total})"
+                                    )
+                                    progress_last_pct = pct
+                        elif progress_msg['type'] == 'end':
+                            if pbar:
+                                pbar.n = pbar.total  # Ensure 100%
+                                pbar.refresh()
+                                pbar.close()
+                                pbar = None
+                            elif progress_log_enabled and not progress_done_logged:
+                                emit_progress_log(
+                                    f"   [progress] {progress_desc}: complete ({progress_total}/{progress_total})"
+                                )
+                                progress_done_logged = True
                         continue  # Don't print protocol lines
+
+                live_output_lines.append(line)
 
                 # Show progress lines and key info
                 stripped = line.lstrip()
@@ -282,8 +326,8 @@ def run_variant_script(
                     "✅" in line or
                     "⏳" in line or
                     "📐" in line)
-                if should_print:
-                    print(line.rstrip())
+                if stream_child_log or should_print:
+                    print(line.rstrip(), flush=True)
 
         # Cleanup any remaining progress bar
         if pbar:

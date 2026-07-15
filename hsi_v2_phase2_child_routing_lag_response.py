@@ -37,7 +37,7 @@ from hsi_v2_phase2_parent_survival_revalidation import (
 )
 from hsi_v2_phase2_transport_defect_strict import parse_int_list, phase_print
 from utils.progress import HeartbeatProgress, format_time
-from v2.common.cli import resolve_dir
+from v2.common.cli import resolve_dir, resolve_results_dir
 from v2.common.naming import compact_int
 
 
@@ -653,11 +653,26 @@ def main(argv: list[str] | None = None) -> int:
 
     project_root = Path(__file__).resolve().parent
     phase1_dir = resolve_dir(args.phase1_dir, anchor_file=__file__)
-    output_dir = resolve_dir(args.output_dir, anchor_file=__file__)
+    output_dir = resolve_results_dir(args.output_dir, anchor_file=__file__)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     targets = build_targets(args)
     lags = parse_lag_list(args.lags)
     selection = build_selection(args)
+    selection.update(
+        {
+            "iteration": args.iteration,
+            "segment_bits": args.segment_bits,
+            "num_segments": args.num_segments,
+            "scales": args.scales,
+            "phase1_policies": args.phase1_policies,
+            "low_scale": args.low_scale,
+            "high_scale": args.high_scale,
+            "top_patterns": args.top_patterns,
+            "pattern_selection": args.pattern_selection,
+            "scan_forward_bits": args.probe_forward_bits,
+            "scan_backward_bits": args.probe_backward_bits,
+        }
+    )
     if args.anchor_variant == args.candidate_variant:
         raise SystemExit("--anchor-variant and --candidate-variant must differ")
     selection["anchor_variant"] = args.anchor_variant
@@ -952,11 +967,24 @@ def main(argv: list[str] | None = None) -> int:
             "stage": args.stage,
             "anchor_variant": args.anchor_variant,
             "candidate_variant": args.candidate_variant,
+            "iteration": args.iteration,
+            "segment_bits": args.segment_bits,
+            "num_segments": args.num_segments,
+            "scales": args.scales,
+            "phase1_policies": args.phase1_policies,
+            "low_scale": args.low_scale,
+            "high_scale": args.high_scale,
             "top_patterns": args.top_patterns,
+            "pattern_selection": args.pattern_selection,
             "band_starts": args.band_starts,
             "window_count": args.window_count,
             "window_step_bits": args.window_step_bits,
+            "probe_backward_bits": args.probe_backward_bits,
+            "probe_forward_bits": args.probe_forward_bits,
+            "scan_step_bits": args.scan_step_bits,
             "lags": args.lags,
+            "null_models": args.null_models,
+            "matched_lz_seeds": args.matched_lz_seeds,
             "workers": args.workers,
             "dry_run": args.dry_run,
             "execution_order": "descending_estimated_required_bits_for_cache_warmth",
@@ -971,6 +999,8 @@ def main(argv: list[str] | None = None) -> int:
         "script": Path(__file__).name,
         "run_dir": str(run_dir),
         "phase1_dir": str(phase1_dir),
+        "arguments": vars(args),
+        "selection": selection,
         "commands": commands,
         "outputs": {
             "summary": str(run_dir / "summary.json"),

@@ -352,6 +352,14 @@ def _source_cache_root() -> Path:
     override = os.environ.get("HSI_V2_SOURCE_CACHE_DIR", "").strip()
     if override:
         return Path(override).expanduser().resolve()
+    results_base = os.environ.get("HSI_RESULTS_BASE_DIR", "").strip()
+    if results_base:
+        return (
+            Path(results_base).expanduser()
+            / "hsi_v2"
+            / "source_cache"
+            / "frozen_sources"
+        ).resolve()
     return SOURCE_CACHE_ROOT
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Dict, Optional
@@ -11,7 +12,38 @@ from utils.streaming_phi_loader import StreamingPhiLoader
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_LEVEL0_ROOT = PROJECT_ROOT / "results" / "level0" / "phi_snapshots"
+
+
+def _load_dotenv_for_io() -> None:
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        print(f"[WARN] Failed to load .env for Level 0 path: {exc}")
+
+
+def _default_level0_root() -> Path:
+    results_base = (
+        os.environ.get("HSI_V1_RESULTS_BASE_DIR", "").strip()
+        or os.environ.get("HSI_RESULTS_BASE_DIR", "").strip()
+    )
+    if results_base:
+        return (Path(results_base).expanduser() / "level0" / "phi_snapshots").resolve()
+    return PROJECT_ROOT / "results" / "level0" / "phi_snapshots"
+
+
+_load_dotenv_for_io()
+DEFAULT_LEVEL0_ROOT = _default_level0_root()
 
 
 def normalize_variant(variant: str) -> str:
