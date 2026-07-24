@@ -840,7 +840,9 @@ def simulate_phi(
                 # Setup for multi-pass hybrid collapse
                 temp_dir = accumulation_manager.output_dir
                 current_file = decay_frame_path
+                current_logical_size = decay_frame_logical_size
                 pass_num = 0
+                hybrid_pass_files = []
 
                 # Select simplify function based on variant
                 variant_simplify_fns = {
@@ -873,8 +875,10 @@ def simulate_phi(
                         print(f"\n⚠️  SAFETY STOP: Accumulation ({current_accum_size/1e12:.2f} TB) exceeds limit!")
                         metadata["safety_stop"] = True
                         metadata["safety_stop_reason"] = f"Accumulation exceeded {max_disk_tb} TB during pass {pass_num}"
-                        if current_file.exists() and current_file != decay_frame_path:
-                            current_file.unlink()
+                        for pass_file in hybrid_pass_files:
+                            if pass_file.exists():
+                                pass_file.unlink()
+                            hybrid_engine.cleanup_checkpoint_artifacts(pass_file)
                         if decay_frame_path.exists():
                             decay_frame_path.unlink()
                         break
@@ -886,7 +890,15 @@ def simulate_phi(
                     next_file = temp_dir / f"hybrid_{variant}_{pass_num}{tmp_ext}"
                     try:
                         output_size, had_changes = hybrid_engine.collapse_one_pass(
-                            current_file, next_file, log_progress=(pass_num == 1)
+                            current_file,
+                            next_file,
+                            log_progress=(pass_num == 1),
+                            checkpoint_key=(
+                                f"variant={variant}|iteration={iteration + 1}|"
+                                f"pass={pass_num}|input_chars={current_logical_size}|"
+                                f"absolute_token={absolute_token}|hybrid_stream=v1"
+                            ),
+                            expected_input_chars=current_logical_size,
                         )
                     except OSError as e:
                         if e.errno == 28:  # No space left on device
@@ -901,10 +913,13 @@ def simulate_phi(
                             metadata["safety_stop"] = True
                             metadata["safety_stop_reason"] = f"Disk full at iteration {iteration + 1}"
                             # Clean up temp files
-                            if current_file.exists() and current_file != decay_frame_path:
-                                current_file.unlink()
                             if next_file.exists():
                                 next_file.unlink()
+                            hybrid_engine.cleanup_checkpoint_artifacts(next_file)
+                            for pass_file in hybrid_pass_files:
+                                if pass_file.exists():
+                                    pass_file.unlink()
+                                hybrid_engine.cleanup_checkpoint_artifacts(pass_file)
                             if decay_frame_path.exists():
                                 decay_frame_path.unlink()
                             break
@@ -918,19 +933,21 @@ def simulate_phi(
                         flush=True
                     )
 
-                    # Clean up previous temp file
-                    if current_file.exists() and current_file != decay_frame_path:
-                        current_file.unlink()
+                    if next_file not in hybrid_pass_files:
+                        hybrid_pass_files.append(next_file)
 
                     # Check termination conditions
                     if not had_changes or output_size <= 1:
                         state = _read_text_maybe_gzip(next_file)
-                        if next_file.exists():
-                            next_file.unlink()
                         print(f"   [hybrid] Completed in {pass_num} passes, final: '{state[:50]}'", flush=True)
+                        for pass_file in hybrid_pass_files:
+                            if pass_file.exists():
+                                pass_file.unlink()
+                            hybrid_engine.cleanup_checkpoint_artifacts(pass_file)
                         break
 
                     current_file = next_file
+                    current_logical_size = output_size
 
                 # Check if we broke out due to safety stop
                 if metadata.get("safety_stop"):

@@ -2439,7 +2439,7 @@ def main():
     # If no variants succeeded, skip all post-processing
     if successful_count == 0:
         print("\n⚠️ No variants completed successfully. Skipping post-processing.", flush=True)
-        return
+        return 1
 
     # Compare convergence
     print("\n📊 Comparing φ-convergence across variants...", flush=True)
@@ -2514,6 +2514,8 @@ def main():
                     compress_iterations_to_tar(variant_code)
     except Exception as e:
         print(f"[WARN] Level 1 export failed: {e}")
+
+    return 0
 
 def _run_plot_only():
     """Plot-only mode: load report(s) and generate charts for a specific variant.
@@ -2798,8 +2800,10 @@ if __name__ == "__main__":
     is_plot_only = args.plot_only or os.environ.get("HSI_PLOT_ONLY") == "1"
     if is_plot_only:
         _run_plot_only()
+        exit_code = 0
     else:
-        main()
+        exit_code = main()
+    raise SystemExit(exit_code)
 
     # =========================================================================
     # 💡 POST-EXECUTION ANALYSIS

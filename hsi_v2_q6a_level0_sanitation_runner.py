@@ -199,6 +199,16 @@ def main() -> int:
                 command = without_flag(command, "--no-resume")
             record["command"] = command
             code = run_command_with_retries(command, log_path, results_base, args)
+            if code == 0:
+                checkpoint_error = verify_target_checkpoint(
+                    results_base,
+                    variant,
+                    target_iteration,
+                )
+                if checkpoint_error:
+                    code = 2
+                    record["postcondition_error"] = checkpoint_error
+                    print(f"[x] {checkpoint_error}", flush=True)
             record["return_code"] = code
             record["finished_at"] = datetime.now().isoformat(timespec="seconds")
             record["status"] = "completed" if code == 0 else "failed"
@@ -387,6 +397,41 @@ def quarantine_variant(
 
 def contains_state_checkpoints(variant_dir: Path) -> bool:
     return any(variant_dir.glob("phi_iter*.state.txt.gz"))
+
+
+def verify_target_checkpoint(
+    results_base: Path,
+    variant: str,
+    target_iteration: int,
+) -> str | None:
+    variant_dir = results_base / "level0" / "phi_snapshots" / f"var_{variant}"
+    stem = f"phi_iter{target_iteration}"
+    metadata_path = variant_dir / f"{stem}.json"
+    snapshot_path = variant_dir / f"{stem}.struct.gz"
+    state_path = variant_dir / f"{stem}.state.txt.gz"
+    missing = [
+        path.name
+        for path in (metadata_path, snapshot_path, state_path)
+        if not path.exists()
+    ]
+    if missing:
+        return (
+            f"Target checkpoint {variant}@{target_iteration} is incomplete; "
+            f"missing: {', '.join(missing)}"
+        )
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as handle:
+            metadata = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"Target checkpoint metadata is unreadable: {exc}"
+    if int(metadata.get("iteration", -1)) != target_iteration:
+        return (
+            f"Target checkpoint metadata iteration mismatch: "
+            f"{metadata.get('iteration')} != {target_iteration}"
+        )
+    if int(metadata.get("sequence_length") or 0) <= 0:
+        return "Target checkpoint metadata has no positive sequence_length"
+    return None
 
 
 def move_path(source: Path, destination: Path) -> None:

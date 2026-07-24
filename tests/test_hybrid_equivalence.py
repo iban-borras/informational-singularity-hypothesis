@@ -9,6 +9,8 @@ Author: Iban Borràs with Augment Agent (Sophia)
 Date: December 2025
 """
 
+import gzip
+import random
 import re
 import tempfile
 from pathlib import Path
@@ -273,6 +275,163 @@ class TestHybridEquivalence:
             )
 
 
+    def test_gzip_checkpoint_resume_equivalence(self):
+        """An interrupted gzip pass resumes from its last atomic part."""
+        test_input = "((01)1)0((10)0)1" * 200
+        expected, expected_changed = collapse_inmemory_one_pass(test_input)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            input_file = tmpdir / "input.txt.gz"
+            output_file = tmpdir / "output.txt.gz"
+            with gzip.open(input_file, "wt", encoding="utf-8", compresslevel=1) as f:
+                f.write(test_input)
+
+            interrupted = HybridCollapseEngine(
+                max_ram_bytes=128,
+                compress=True,
+                stream_chunk_chars=31,
+                checkpoint_chars=93,
+            )
+            original_write = interrupted._write_json_atomic
+
+            def stop_after_second_part(path, payload):
+                original_write(path, payload)
+                if path.name == "checkpoint.json" and len(payload.get("parts", [])) == 2:
+                    raise RuntimeError("simulated interruption")
+
+            interrupted._write_json_atomic = stop_after_second_part
+            try:
+                interrupted.collapse_one_pass(
+                    input_file,
+                    output_file,
+                    log_progress=False,
+                    checkpoint_key="resume-test",
+                    expected_input_chars=len(test_input),
+                )
+                raise AssertionError("The simulated interruption did not fire")
+            except RuntimeError as exc:
+                assert str(exc) == "simulated interruption"
+
+            resumed = HybridCollapseEngine(
+                max_ram_bytes=128,
+                compress=True,
+                stream_chunk_chars=31,
+                checkpoint_chars=93,
+            )
+            output_size, had_changes = resumed.collapse_one_pass(
+                input_file,
+                output_file,
+                log_progress=False,
+                checkpoint_key="resume-test",
+                expected_input_chars=len(test_input),
+            )
+            with gzip.open(output_file, "rt", encoding="utf-8") as f:
+                actual = f.read()
+
+            assert actual == expected
+            assert output_size == len(expected)
+            assert had_changes == expected_changed
+
+    def test_match_crossing_every_chunk_boundary(self):
+        """Regex matches spanning read boundaries remain exact."""
+        test_input = "0" * 7 + "(" + "01" * 101 + ")" + "1" * 9
+        expected, _ = collapse_inmemory_one_pass(test_input)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            input_file = tmpdir / "input.txt"
+            output_file = tmpdir / "output.txt"
+            input_file.write_text(test_input)
+
+            engine = HybridCollapseEngine(
+                max_ram_bytes=64,
+                stream_chunk_chars=13,
+                checkpoint_chars=39,
+            )
+            engine.collapse_one_pass(
+                input_file,
+                output_file,
+                log_progress=False,
+                checkpoint_key="boundary-test",
+                expected_input_chars=len(test_input),
+            )
+            assert output_file.read_text() == expected
+
+    def test_completed_pass_is_reused(self):
+        """A completed pass is returned without re-running simplification."""
+        test_input = "((01)1)0" * 50
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            input_file = tmpdir / "input.txt"
+            output_file = tmpdir / "output.txt"
+            input_file.write_text(test_input)
+
+            first = HybridCollapseEngine(
+                max_ram_bytes=64,
+                stream_chunk_chars=17,
+                checkpoint_chars=51,
+            )
+            expected_size, expected_changed = first.collapse_one_pass(
+                input_file,
+                output_file,
+                log_progress=False,
+                checkpoint_key="complete-cache-test",
+                expected_input_chars=len(test_input),
+            )
+
+            def must_not_run(_):
+                raise AssertionError("Completed pass cache was not reused")
+
+            cached = HybridCollapseEngine(
+                max_ram_bytes=64,
+                simplify_fn=must_not_run,
+                stream_chunk_chars=17,
+                checkpoint_chars=51,
+            )
+            actual_size, actual_changed = cached.collapse_one_pass(
+                input_file,
+                output_file,
+                log_progress=False,
+                checkpoint_key="complete-cache-test",
+                expected_input_chars=len(test_input),
+            )
+            assert actual_size == expected_size
+            assert actual_changed == expected_changed
+
+    def test_randomized_chunk_boundary_equivalence(self):
+        """Random structural strings agree with re.sub at many chunk sizes."""
+        rng = random.Random(42)
+        for case_number in range(12):
+            length = rng.randint(1, 600)
+            test_input = "".join(rng.choice("01()") for _ in range(length))
+            expected, expected_changed = collapse_inmemory_one_pass(test_input)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir = Path(tmpdir)
+                input_file = tmpdir / "input.txt"
+                input_file.write_text(test_input)
+                for chunk_size in (1, 2, 7, 17, 64):
+                    output_file = tmpdir / f"output-{chunk_size}.txt"
+                    engine = HybridCollapseEngine(
+                        max_ram_bytes=max(4, chunk_size * 4),
+                        stream_chunk_chars=chunk_size,
+                        checkpoint_chars=10_000,
+                    )
+                    output_size, had_changes = engine.collapse_one_pass(
+                        input_file,
+                        output_file,
+                        log_progress=False,
+                        checkpoint_key=f"fuzz-{case_number}-{chunk_size}",
+                        expected_input_chars=len(test_input),
+                    )
+                    actual = output_file.read_text()
+                    assert actual == expected
+                    assert output_size == len(expected)
+                    assert had_changes == expected_changed
+
+
 # =============================================================================
 # RUN STANDALONE
 # =============================================================================
@@ -314,6 +473,21 @@ if __name__ == "__main__":
     except AssertionError as e:
         print(f"   ✗ FAILED - {e}")
 
+    print("\n5. Gzip checkpoint resume test:")
+    test.test_gzip_checkpoint_resume_equivalence()
+    print("   ✓ Interrupted gzip pass resumes exactly")
+
+    print("\n6. Cross-boundary regex test:")
+    test.test_match_crossing_every_chunk_boundary()
+    print("   ✓ Match crossing chunk boundaries")
+
+    print("\n7. Completed-pass cache test:")
+    test.test_completed_pass_is_reused()
+    print("   ✓ Completed pass reused without recomputation")
+
+    print("\n8. Randomized boundary equivalence test:")
+    test.test_randomized_chunk_boundary_equivalence()
+    print("   ✓ 12 random structures across 5 chunk sizes")
+
     print("\n" + "=" * 60)
     print("✅ All tests completed!")
-
