@@ -431,6 +431,39 @@ class TestHybridEquivalence:
                     assert output_size == len(expected)
                     assert had_changes == expected_changed
 
+    def test_compiled_base_collapse_equivalence(self):
+        """The Numba base-rule path is byte-exact across random structures."""
+        rng = random.Random(20260801)
+        for case_number in range(20):
+            test_input = "".join(rng.choice("01()") for _ in range(2_000))
+            expected, expected_changed = collapse_inmemory_one_pass(
+                test_input,
+                _simplify_base,
+            )
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir = Path(tmpdir)
+                input_file = tmpdir / "input.txt"
+                output_file = tmpdir / "output.txt"
+                input_file.write_text(test_input)
+                engine = HybridCollapseEngine(
+                    max_ram_bytes=256,
+                    simplify_fn=_simplify_base,
+                    stream_chunk_chars=127,
+                    checkpoint_chars=508,
+                    compiled_base_collapse=True,
+                )
+                output_size, had_changes = engine.collapse_one_pass(
+                    input_file,
+                    output_file,
+                    log_progress=False,
+                    checkpoint_key=f"compiled-base-{case_number}",
+                    expected_input_chars=len(test_input),
+                )
+                actual = output_file.read_text()
+                assert actual == expected
+                assert output_size == len(expected)
+                assert had_changes == expected_changed
+
 
 # =============================================================================
 # RUN STANDALONE
@@ -488,6 +521,10 @@ if __name__ == "__main__":
     print("\n8. Randomized boundary equivalence test:")
     test.test_randomized_chunk_boundary_equivalence()
     print("   ✓ 12 random structures across 5 chunk sizes")
+
+    print("\n9. Compiled base-collapse equivalence test:")
+    test.test_compiled_base_collapse_equivalence()
+    print("   Compiled path matches 20 random reference cases")
 
     print("\n" + "=" * 60)
     print("✅ All tests completed!")

@@ -751,6 +751,8 @@ def simulate_phi(
 
     for iteration in range(start_iteration, max_iterations):
         iter_t0 = time.perf_counter() if ENABLE_TIMING else None
+        hybrid_cleanup_engine = None
+        hybrid_cleanup_files = []
         # 1) Actualitzar acumulació amb l'estat actual
         # MEMORY OPTIMIZED: Use AccumulationManager instead of string concatenation
         if accumulation_manager:
@@ -835,7 +837,11 @@ def simulate_phi(
                     f"(physical {decay_frame_size/1e9:.2f} GB) > {max_ram_gb} GB RAM limit",
                     flush=True,
                 )
-                print(f"   [hybrid] Using block-based collapse (regex in {max_ram_gb} GB blocks)", flush=True)
+                print(
+                    f"   [hybrid] Using restartable bounded-chunk collapse "
+                    f"({max_ram_gb} GB RAM ceiling)",
+                    flush=True,
+                )
 
                 # Setup for multi-pass hybrid collapse
                 temp_dir = accumulation_manager.output_dir
@@ -860,8 +866,11 @@ def simulate_phi(
                     max_ram_bytes=max_ram_bytes,
                     simplify_fn=hybrid_simplify_fn,
                     compress=compress_temp_files,
-                    compress_level=compress_level
+                    compress_level=compress_level,
+                    compiled_base_collapse=(variant == "F"),
                 )
+                if hybrid_engine.compiled_base_collapse:
+                    print("   [hybrid] Numba base-rule scan enabled", flush=True)
 
                 # File extension depends on compression mode
                 tmp_ext = ".tmp.gz" if compress_temp_files else ".tmp"
@@ -892,7 +901,7 @@ def simulate_phi(
                         output_size, had_changes = hybrid_engine.collapse_one_pass(
                             current_file,
                             next_file,
-                            log_progress=(pass_num == 1),
+                            log_progress=True,
                             checkpoint_key=(
                                 f"variant={variant}|iteration={iteration + 1}|"
                                 f"pass={pass_num}|input_chars={current_logical_size}|"
@@ -940,10 +949,11 @@ def simulate_phi(
                     if not had_changes or output_size <= 1:
                         state = _read_text_maybe_gzip(next_file)
                         print(f"   [hybrid] Completed in {pass_num} passes, final: '{state[:50]}'", flush=True)
-                        for pass_file in hybrid_pass_files:
-                            if pass_file.exists():
-                                pass_file.unlink()
-                            hybrid_engine.cleanup_checkpoint_artifacts(pass_file)
+                        # Keep every completed pass until the iteration snapshot
+                        # is durable. A restart during snapshot encoding can then
+                        # replay the iteration from cached deterministic passes.
+                        hybrid_cleanup_engine = hybrid_engine
+                        hybrid_cleanup_files = list(hybrid_pass_files)
                         break
 
                     current_file = next_file
@@ -1370,6 +1380,12 @@ def simulate_phi(
                 )
             _save_current_state_checkpoint(snapshot_manager, iteration + 1, current_state, save_info)
             metadata["snapshots_saved"].append(save_info)
+
+        if hybrid_cleanup_engine is not None:
+            for pass_file in hybrid_cleanup_files:
+                if pass_file.exists():
+                    pass_file.unlink()
+                hybrid_cleanup_engine.cleanup_checkpoint_artifacts(pass_file)
 
         # Optional per-iteration logging (with flush for subprocess visibility)
         if LOG_EVERY and ((iteration + 1) % LOG_EVERY == 0 or iteration == 0):

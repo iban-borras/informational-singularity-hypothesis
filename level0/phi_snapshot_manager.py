@@ -268,7 +268,11 @@ class PhiSnapshotManager:
             str(input_path),
             str(struct_path),
             compresslevel=self.compression_level,
-            input_length=original_length
+            input_length=original_length,
+            checkpoint_key=(
+                f"iteration={iteration}|input_chars={original_length}|"
+                "format=v33-structural-stream-v2"
+            ),
         )
 
         save_metadata["compressed_size_bytes"] = compressed_size
@@ -280,6 +284,10 @@ class PhiSnapshotManager:
             json.dump(save_metadata, f, indent=2)
             f.flush()
             os.fsync(f.fileno())  # Force write to disk for Windows compatibility
+
+        encoder_complete = struct_path.with_name(struct_path.name + ".complete.json")
+        if encoder_complete.exists():
+            encoder_complete.unlink()
 
         save_time = time.time() - start_time
         save_metadata["save_time_seconds"] = save_time

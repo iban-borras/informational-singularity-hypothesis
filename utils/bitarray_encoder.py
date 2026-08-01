@@ -18,8 +18,20 @@ Version: v33
 """
 
 from bitarray import bitarray
+from pathlib import Path
 from typing import Optional, List, Tuple
 import gzip
+import json
+import os
+import shutil
+import time
+
+try:
+    import numpy as np
+    HAS_NUMPY_ENCODER = True
+except ImportError:
+    np = None
+    HAS_NUMPY_ENCODER = False
 
 # Progress bar support
 try:
@@ -52,6 +64,85 @@ DECODING_MAP = {
     '10': '(',
     '11': ')'
 }
+
+if HAS_NUMPY_ENCODER:
+    _STRUCTURAL_ASCII_LUT = np.full(256, 255, dtype=np.uint8)
+    _STRUCTURAL_ASCII_LUT[ord('0')] = 0
+    _STRUCTURAL_ASCII_LUT[ord('1')] = 1
+    _STRUCTURAL_ASCII_LUT[ord('(')] = 2
+    _STRUCTURAL_ASCII_LUT[ord(')')] = 3
+
+
+def _pack_structural_ascii(
+    raw: bytes,
+    carry_codes: bytes = b"",
+    *,
+    final: bool = False,
+) -> Tuple[bytes, bytes]:
+    """Pack ASCII structural symbols into the canonical 2-bit byte stream."""
+    if HAS_NUMPY_ENCODER:
+        values = _STRUCTURAL_ASCII_LUT[np.frombuffer(raw, dtype=np.uint8)]
+        if np.any(values == 255):
+            values = values[values != 255]
+        if carry_codes:
+            values = np.concatenate(
+                (np.frombuffer(carry_codes, dtype=np.uint8), values)
+            )
+
+        complete = (values.size // 4) * 4
+        if complete:
+            packed = (
+                (values[:complete:4] << 6)
+                | (values[1:complete:4] << 4)
+                | (values[2:complete:4] << 2)
+                | values[3:complete:4]
+            ).tobytes()
+        else:
+            packed = b""
+        tail = values[complete:].tobytes()
+    else:
+        code_map = {ord('0'): 0, ord('1'): 1, ord('('): 2, ord(')'): 3}
+        values = bytearray(carry_codes)
+        values.extend(code_map[value] for value in raw if value in code_map)
+        complete = (len(values) // 4) * 4
+        packed = bytes(
+            (values[i] << 6)
+            | (values[i + 1] << 4)
+            | (values[i + 2] << 2)
+            | values[i + 3]
+            for i in range(0, complete, 4)
+        )
+        tail = bytes(values[complete:])
+
+    if final and tail:
+        padded = tail + bytes(4 - len(tail))
+        packed += bytes([
+            (padded[0] << 6)
+            | (padded[1] << 4)
+            | (padded[2] << 2)
+            | padded[3]
+        ])
+        tail = b""
+
+    return packed, tail
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def _load_json(path: Path) -> Optional[dict]:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def encode_phi_with_structure(phi_str: str, chunk_size: int = 10_000_000, silent: bool = False) -> bitarray:
@@ -175,12 +266,12 @@ def save_phi_structural_gz(phi_str: str, filepath: str, compresslevel: int = 6, 
     return file_size
 
 
-def save_phi_structural_gz_from_file(
+def _save_phi_structural_gz_from_file_legacy(
     input_path: str,
     output_path: str,
     compresslevel: int = 9,
     chunk_size: int = 50_000_000,
-    input_length: Optional[int] = None
+    input_length: Optional[int] = None,
 ) -> int:
     """
     STREAMING VERSION: Encode and save Φ from file to gzip without loading to RAM.
@@ -239,6 +330,197 @@ def save_phi_structural_gz_from_file(
         pbar.close()
 
     return os.path.getsize(output_path)
+
+
+def save_phi_structural_gz_from_file(
+    input_path: str,
+    output_path: str,
+    compresslevel: int = 9,
+    chunk_size: int = 50_000_000,
+    input_length: Optional[int] = None,
+    checkpoint_key: Optional[str] = None,
+    checkpoint_chars: Optional[int] = None,
+    _test_interrupt_after_parts: Optional[int] = None,
+) -> int:
+    """Encode a structural stream into atomic, restartable gzip members."""
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+    total_size = int(input_length) if input_length is not None else input_path.stat().st_size
+    checkpoint_chars = int(
+        checkpoint_chars
+        or int(os.environ.get("HSI_SNAPSHOT_CHECKPOINT_MB", "2000")) * 1_000_000
+    )
+    checkpoint_chars = max(chunk_size, checkpoint_chars)
+
+    parts_dir = output_path.with_name(output_path.name + ".parts")
+    checkpoint_path = parts_dir / "checkpoint.json"
+    complete_path = output_path.with_name(output_path.name + ".complete.json")
+    identity = {
+        "path": str(input_path.resolve()),
+        "input_chars": total_size,
+        "checkpoint_key": checkpoint_key or "v33-structural-stream-v2",
+    }
+
+    completed = _load_json(complete_path)
+    if (
+        completed
+        and completed.get("source_identity") == identity
+        and output_path.exists()
+        and output_path.stat().st_size == completed.get("output_physical_bytes")
+    ):
+        print(f"   [snapshot] Reusing completed encoder output: {output_path.name}", flush=True)
+        return output_path.stat().st_size
+
+    state = _load_json(checkpoint_path)
+    if not state or state.get("source_identity") != identity:
+        if parts_dir.exists():
+            shutil.rmtree(parts_dir)
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        state = {
+            "version": 1,
+            "source_identity": identity,
+            "input_chars": 0,
+            "encoded_bytes": 0,
+            "carry_codes": [],
+            "parts": [],
+        }
+        _write_json_atomic(checkpoint_path, state)
+    else:
+        for part in state.get("parts", []):
+            part_path = parts_dir / part["name"]
+            if (
+                not part_path.exists()
+                or part_path.stat().st_size != int(part["physical_bytes"])
+            ):
+                raise RuntimeError(f"Snapshot checkpoint part is missing or truncated: {part_path}")
+
+    processed = int(state["input_chars"])
+    resume_offset = processed
+    carry_codes = bytes(state.get("carry_codes", []))
+    input_open = gzip.open if str(input_path).endswith('.gz') else open
+    started_at = time.perf_counter()
+    last_progress = 0.0
+
+    with input_open(input_path, "rb") as in_f:
+        to_skip = processed
+        while to_skip:
+            skipped = in_f.read(min(chunk_size, to_skip))
+            if not skipped:
+                raise RuntimeError(
+                    f"Snapshot checkpoint offset {processed:,} exceeds the input"
+                )
+            to_skip -= len(skipped)
+        if processed:
+            print(
+                f"   [snapshot] Resuming encoder at {processed:,}/{total_size:,} chars "
+                f"from {len(state['parts'])} parts",
+                flush=True,
+            )
+
+        while processed < total_size:
+            part_number = len(state["parts"]) + 1
+            part_path = parts_dir / f"part-{part_number:06d}.gz"
+            part_tmp = parts_dir / f"part-{part_number:06d}.tmp.gz"
+            part_input = 0
+            part_encoded = 0
+
+            with open(part_tmp, "wb") as raw_output:
+                with gzip.GzipFile(
+                    filename="",
+                    mode="wb",
+                    compresslevel=compresslevel,
+                    fileobj=raw_output,
+                    mtime=0,
+                ) as encoded_output:
+                    while part_input < checkpoint_chars and processed < total_size:
+                        read_size = min(
+                            chunk_size,
+                            checkpoint_chars - part_input,
+                            total_size - processed,
+                        )
+                        raw = in_f.read(read_size)
+                        if not raw:
+                            raise RuntimeError(
+                                f"Structural source ended at {processed:,}/{total_size:,} chars"
+                            )
+                        processed += len(raw)
+                        part_input += len(raw)
+                        packed, carry_codes = _pack_structural_ascii(
+                            raw,
+                            carry_codes,
+                            final=(processed == total_size),
+                        )
+                        encoded_output.write(packed)
+                        part_encoded += len(packed)
+
+                        now = time.perf_counter()
+                        if now - last_progress >= 30.0:
+                            elapsed = max(now - started_at, 1e-9)
+                            session_chars = processed - resume_offset
+                            rate = session_chars / elapsed
+                            remaining = total_size - processed
+                            eta = remaining / rate if rate else 0.0
+                            print(
+                                f"   [snapshot] {100 * processed / total_size:6.2f}% | "
+                                f"{processed:,}/{total_size:,} chars | "
+                                f"{rate / 1e6:.2f} Mchar/s | eta={eta / 3600:.1f}h",
+                                flush=True,
+                            )
+                            last_progress = now
+
+                raw_output.flush()
+                os.fsync(raw_output.fileno())
+            os.replace(part_tmp, part_path)
+
+            state["input_chars"] = processed
+            state["encoded_bytes"] = int(state["encoded_bytes"]) + part_encoded
+            state["carry_codes"] = list(carry_codes)
+            state["parts"].append(
+                {
+                    "name": part_path.name,
+                    "input_chars": part_input,
+                    "encoded_bytes": part_encoded,
+                    "physical_bytes": part_path.stat().st_size,
+                }
+            )
+            _write_json_atomic(checkpoint_path, state)
+            print(
+                f"   [snapshot] Checkpoint part {part_number}: "
+                f"{processed:,}/{total_size:,} input chars",
+                flush=True,
+            )
+
+            if (
+                _test_interrupt_after_parts is not None
+                and len(state["parts"]) >= _test_interrupt_after_parts
+            ):
+                raise RuntimeError("simulated snapshot interruption")
+
+    if carry_codes:
+        raise RuntimeError("Structural encoder ended with an unflushed bit carry")
+
+    assembling = output_path.with_name(output_path.name + ".assembling")
+    with open(assembling, "wb") as destination:
+        for part in state["parts"]:
+            with open(parts_dir / part["name"], "rb") as source:
+                shutil.copyfileobj(source, destination, length=16 * 1024 * 1024)
+        destination.flush()
+        os.fsync(destination.fileno())
+    os.replace(assembling, output_path)
+
+    completed = {
+        "version": 1,
+        "source_identity": identity,
+        "output_physical_bytes": output_path.stat().st_size,
+        "encoded_bytes": int(state["encoded_bytes"]),
+    }
+    _write_json_atomic(complete_path, completed)
+    shutil.rmtree(parts_dir)
+    print(
+        f"   [snapshot] Encoding complete in {len(state['parts'])} restartable parts",
+        flush=True,
+    )
+    return output_path.stat().st_size
 
 
 def load_phi_structural_gz(filepath: str) -> str:

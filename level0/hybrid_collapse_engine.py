@@ -26,6 +26,49 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple, IO
 
+try:
+    import numpy as np
+    from numba import njit
+
+    @njit(cache=True)
+    def _collapse_base_ascii_numba(source):
+        """Collapse one innermost base-rule layer over ASCII bytes."""
+        output = np.empty(source.size, dtype=np.uint8)
+        input_pos = 0
+        output_pos = 0
+        changed = False
+
+        while input_pos < source.size:
+            if source[input_pos] == 40 and input_pos + 2 < source.size:  # '('
+                scan = input_pos + 1
+                all_ones = True
+                has_bits = False
+                while scan < source.size and (
+                    source[scan] == 48 or source[scan] == 49
+                ):
+                    has_bits = True
+                    if source[scan] == 48:
+                        all_ones = False
+                    scan += 1
+
+                if has_bits and scan < source.size and source[scan] == 41:  # ')'
+                    output[output_pos] = 49 if all_ones else 48
+                    output_pos += 1
+                    input_pos = scan + 1
+                    changed = True
+                    continue
+
+            output[output_pos] = source[input_pos]
+            output_pos += 1
+            input_pos += 1
+
+        return output[:output_pos], changed
+
+    HAS_NUMBA_BASE_COLLAPSE = True
+except ImportError:
+    np = None
+    HAS_NUMBA_BASE_COLLAPSE = False
+
 
 def _simplify_and(seq: str) -> str:
     """AND collapse: returns '1' only if all bits are '1', else '0'."""
@@ -54,6 +97,7 @@ class HybridCollapseEngine:
         compress_level: int = 1,
         stream_chunk_chars: Optional[int] = None,
         checkpoint_chars: Optional[int] = None,
+        compiled_base_collapse: bool = False,
     ):
         """
         Initialize hybrid collapse engine.
@@ -68,6 +112,9 @@ class HybridCollapseEngine:
         self.simplify_fn = simplify_fn or _simplify_and
         self.compress = compress
         self.compress_level = compress_level
+        self.compiled_base_collapse = bool(
+            compiled_base_collapse and HAS_NUMBA_BASE_COLLAPSE
+        )
         # Compile regex once for performance
         self._pattern = re.compile(r'\(([01]+)\)')
         self._pending_suffix = re.compile(r'\([01]*$')
@@ -144,6 +191,11 @@ class HybridCollapseEngine:
         Returns:
             Tuple (collapsed_string, had_changes)
         """
+        if self.compiled_base_collapse:
+            source = np.frombuffer(data.encode("ascii"), dtype=np.uint8)
+            collapsed, had_changes = _collapse_base_ascii_numba(source)
+            return collapsed.tobytes().decode("ascii"), bool(had_changes)
+
         # If data is small enough, process directly
         if len(data) <= max_chunk:
             had_changes = [False]
