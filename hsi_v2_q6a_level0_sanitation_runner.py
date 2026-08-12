@@ -43,6 +43,12 @@ VISUALIZATION_PATTERNS = (
 
 REPO_DIR = Path(__file__).resolve().parent
 
+TRANSIENT_STORAGE_ERROR_MARKERS = (
+    "[winerror 21]",    # Device not ready after sleep/hibernation.
+    "[winerror 1117]",  # I/O device error.
+    "[winerror 1167]",  # Device disconnected.
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -442,7 +448,12 @@ def move_path(source: Path, destination: Path) -> None:
     print(f"[quarantine] {source} -> {destination}", flush=True)
 
 
-def run_command(command: list[str], log_path: Path) -> int:
+def is_transient_storage_error(output_line: str) -> bool:
+    normalized = output_line.casefold()
+    return any(marker in normalized for marker in TRANSIENT_STORAGE_ERROR_MARKERS)
+
+
+def run_command(command: list[str], log_path: Path) -> tuple[int, bool]:
     env = os.environ.copy()
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
@@ -467,14 +478,17 @@ def run_command(command: list[str], log_path: Path) -> int:
             bufsize=1,
         )
         assert process.stdout is not None
+        transient_storage_failure = False
         for line in process.stdout:
             print(line, end="")
             log.write(line)
             log.flush()
+            transient_storage_failure |= is_transient_storage_error(line)
         code = process.wait()
         log.write("\n```\n")
         log.write(f"\nReturn code: {code}\n")
-    return code
+        log.write(f"Transient storage failure detected: {transient_storage_failure}\n")
+    return code, transient_storage_failure
 
 
 def run_command_with_retries(
@@ -492,8 +506,18 @@ def run_command_with_retries(
             timeout_seconds=args.results_ready_timeout_seconds,
             interval_seconds=args.results_ready_check_interval_seconds,
         )
-        code = run_command(current_command, log_path)
+        code, transient_storage_failure = run_command(current_command, log_path)
         if code == 0 or attempt >= max_retries:
+            return code
+
+        if not transient_storage_failure:
+            message = (
+                f"[stop] Generation failed with exit code {code}, but no recognized "
+                "transient storage error was reported; automatic retry disabled."
+            )
+            print(message, flush=True)
+            with open(log_path, "a", encoding="utf-8") as log:
+                log.write("\n" + message + "\n")
             return code
 
         retry_number = attempt + 1
