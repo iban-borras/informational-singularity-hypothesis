@@ -464,6 +464,28 @@ class TestHybridEquivalence:
                 assert output_size == len(expected)
                 assert had_changes == expected_changed
 
+    def test_compiled_failure_falls_back_to_reference_path(self):
+        """A JIT failure degrades to the exact regex implementation."""
+        import level0.hybrid_collapse_engine as hybrid_module
+
+        test_input = "((01)1)0((10)0)1" * 10
+        expected, expected_changed = collapse_inmemory_one_pass(test_input)
+        original_compiled = hybrid_module._collapse_base_ascii_numba
+
+        def fail_compilation(_source):
+            raise ModuleNotFoundError("simulated incompatible Numba cache")
+
+        hybrid_module._collapse_base_ascii_numba = fail_compilation
+        try:
+            engine = HybridCollapseEngine(compiled_base_collapse=True)
+            actual, actual_changed = engine._collapse_regex(test_input)
+        finally:
+            hybrid_module._collapse_base_ascii_numba = original_compiled
+
+        assert actual == expected
+        assert actual_changed == expected_changed
+        assert engine.compiled_base_collapse is False
+
 
 # =============================================================================
 # RUN STANDALONE
@@ -525,6 +547,10 @@ if __name__ == "__main__":
     print("\n9. Compiled base-collapse equivalence test:")
     test.test_compiled_base_collapse_equivalence()
     print("   Compiled path matches 20 random reference cases")
+
+    print("\n10. Compiled failure fallback test:")
+    test.test_compiled_failure_falls_back_to_reference_path()
+    print("   JIT failure falls back to the exact regex path")
 
     print("\n" + "=" * 60)
     print("✅ All tests completed!")

@@ -30,7 +30,11 @@ try:
     import numpy as np
     from numba import njit
 
-    @njit(cache=True)
+    # Do not persist Numba's cache: this module is imported both as `level0.*`
+    # in local tooling and `hsi_agents_project.level0.*` by the canonical runner.
+    # Cached environments pickle that module name and are not portable between
+    # the two legitimate entry points.
+    @njit(cache=False)
     def _collapse_base_ascii_numba(source):
         """Collapse one innermost base-rule layer over ASCII bytes."""
         output = np.empty(source.size, dtype=np.uint8)
@@ -115,6 +119,7 @@ class HybridCollapseEngine:
         self.compiled_base_collapse = bool(
             compiled_base_collapse and HAS_NUMBA_BASE_COLLAPSE
         )
+        self._compiled_fallback_reported = False
         # Compile regex once for performance
         self._pattern = re.compile(r'\(([01]+)\)')
         self._pending_suffix = re.compile(r'\([01]*$')
@@ -192,9 +197,21 @@ class HybridCollapseEngine:
             Tuple (collapsed_string, had_changes)
         """
         if self.compiled_base_collapse:
-            source = np.frombuffer(data.encode("ascii"), dtype=np.uint8)
-            collapsed, had_changes = _collapse_base_ascii_numba(source)
-            return collapsed.tobytes().decode("ascii"), bool(had_changes)
+            try:
+                source = np.frombuffer(data.encode("ascii"), dtype=np.uint8)
+                collapsed, had_changes = _collapse_base_ascii_numba(source)
+                return collapsed.tobytes().decode("ascii"), bool(had_changes)
+            except Exception as exc:
+                # Performance acceleration must never become a correctness or
+                # availability dependency. The reference regex path is exact.
+                self.compiled_base_collapse = False
+                if not self._compiled_fallback_reported:
+                    print(
+                        f"   [hybrid] WARNING: compiled base-rule scan unavailable "
+                        f"({type(exc).__name__}: {exc}); using exact regex fallback",
+                        flush=True,
+                    )
+                    self._compiled_fallback_reported = True
 
         # If data is small enough, process directly
         if len(data) <= max_chunk:
