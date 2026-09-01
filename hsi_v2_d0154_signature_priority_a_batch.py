@@ -31,6 +31,12 @@ if str(REPO_DIR) not in sys.path:
 from level1_deep_analysis import lempel_ziv_complexity, recurrence_analysis, test_multiple_constants
 from level1_nesting_tree import analyze_nesting_tree
 from utils.streaming_phi_loader import StreamingPhiLoader
+from v2.signature.resumable_te import (
+    build_checkpoint as build_te_checkpoint,
+    load_checkpoint as load_te_checkpoint,
+    restore_checkpoint as restore_te_checkpoint,
+    write_checkpoint_atomic as write_te_checkpoint_atomic,
+)
 
 
 DEFAULT_TARGETS = "E:24,I:23,D:20,G:20,F:20"
@@ -38,6 +44,7 @@ DEFAULT_METRICS = "lz,cbar,te,det,fractal"
 DEFAULT_LZ_SCALES = "1000,2000,5000,10000,20000,50000"
 DEFAULT_TE_SCALES = "4,8,16,32,64,128"
 DEFAULT_OUTPUT_ROOT = "results/hsi_v2/d0154_priority_a_signature"
+RESUMABLE_TE_MODULE = REPO_DIR / "v2" / "signature" / "resumable_te.py"
 PHI_PLUS_ONE = (1.0 + math.sqrt(5.0)) / 2.0 + 1.0
 
 PAPER_VALUES: dict[str, dict[str, float | None]] = {
@@ -65,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--metrics", default=DEFAULT_METRICS)
     parser.add_argument("--results-base", default=None)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--resume-run", default=None)
     parser.add_argument("--lz-scales", default=DEFAULT_LZ_SCALES)
     parser.add_argument("--det-bits", type=int, default=10_000)
     parser.add_argument("--cbar-segment-chars", type=int, default=1_000_000_000)
@@ -78,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--te-shuffle-seed", type=int, default=42)
     parser.add_argument("--te-max-bits", type=int, default=0, help="0 means full observable stream.")
     parser.add_argument("--te-progress-seconds", type=int, default=60)
+    parser.add_argument("--te-checkpoint-chunks", type=int, default=25)
     parser.add_argument(
         "--te-reference-run",
         default=None,
@@ -104,8 +113,16 @@ def main() -> int:
 
     results_base = resolve_results_base(args.results_base)
     output_root = resolve_results_path(args.output_dir, results_base)
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    run_dir = output_root / f"d0154-signature-priority-a__{timestamp}"
+    if args.resume_run:
+        run_dir = Path(args.resume_run).expanduser().resolve()
+    else:
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        run_dir = output_root / f"d0154-signature-priority-a__{timestamp}"
+
+    if args.te_checkpoint_chunks <= 0:
+        raise SystemExit("--te-checkpoint-chunks must be positive")
+    if "te" in metrics and args.skip_source_hash:
+        raise SystemExit("Resumable TE requires source hashing; remove --skip-source-hash")
 
     plan = {
         "status": "planned" if not args.execute else "running",
@@ -116,6 +133,10 @@ def main() -> int:
         "run_dir": str(run_dir),
         "targets": targets,
         "metrics": metrics,
+        "code_hashes": {
+            "runner": sha256_file(Path(__file__)),
+            "resumable_te": sha256_file(RESUMABLE_TE_MODULE),
+        },
         "protocol": {
             "lz_scales": parse_ints(args.lz_scales),
             "det_bits": args.det_bits,
@@ -130,6 +151,7 @@ def main() -> int:
             "te_shuffle_seed": args.te_shuffle_seed,
             "te_max_bits": args.te_max_bits,
             "te_progress_seconds": args.te_progress_seconds,
+            "te_checkpoint_chunks": args.te_checkpoint_chunks,
             "te_reference_run": args.te_reference_run,
             "source_hash_policy": "skipped" if args.skip_source_hash else "sha256",
         },
@@ -139,14 +161,28 @@ def main() -> int:
         print_plan(plan)
         return 0
 
-    run_dir.mkdir(parents=True, exist_ok=False)
     log_path = run_dir / "batch.log"
     manifest_path = run_dir / "manifest.json"
-    write_json(manifest_path, plan)
-    write_log_header(log_path, plan)
+    resuming = args.resume_run is not None
+    prior_manifest: dict[str, Any] | None = None
+    if resuming:
+        if not run_dir.is_dir() or not manifest_path.exists():
+            raise SystemExit(f"Resume run is missing its manifest: {run_dir}")
+        prior_manifest = read_json(manifest_path)
+        if prior_manifest.get("generated_at"):
+            plan["generated_at"] = prior_manifest["generated_at"]
+        validate_resume_plan(prior_manifest, plan)
+        log(log_path, f"[resume] Reopening interrupted run: {run_dir}")
+    else:
+        run_dir.mkdir(parents=True, exist_ok=False)
+        write_json(manifest_path, plan)
+        write_log_header(log_path, plan)
 
     log(log_path, "[phase] Discovering clean sources and hashing declared inputs")
     source_records = discover_sources(targets, results_base, args.skip_source_hash)
+    if prior_manifest is not None and "sources" in prior_manifest and prior_manifest["sources"] != source_records:
+        raise RuntimeError("Resume source records do not match the interrupted run")
+    write_json(manifest_path, {**plan, "status": "running", "sources": source_records})
     log(log_path, "[phase] Source discovery complete")
     summary: dict[str, Any] = {
         "status": "running",
@@ -180,14 +216,17 @@ def main() -> int:
         }
 
         if "lz" in metrics:
-            log(log_path, f"[metric] {variant}: LZ")
-            variant_details["metrics"]["lz"] = compute_lz_metric(
-                Path(record["struct_path"]),
-                parse_ints(args.lz_scales),
-                log_path,
-                args.quiet,
-            )
-            write_json(run_dir / f"{variant}_lz.json", variant_details["metrics"]["lz"])
+            cached = load_completed_metric(run_dir, variant, "lz", resuming, log_path)
+            if cached is None:
+                log(log_path, f"[metric] {variant}: LZ")
+                cached = compute_lz_metric(
+                    Path(record["struct_path"]),
+                    parse_ints(args.lz_scales),
+                    log_path,
+                    args.quiet,
+                )
+                write_json(run_dir / f"{variant}_lz.json", cached)
+            variant_details["metrics"]["lz"] = cached
 
         if "det" in metrics:
             log(log_path, f"[metric] {variant}: DET")
@@ -219,19 +258,48 @@ def main() -> int:
             write_json(run_dir / f"{variant}_cbar.json", variant_details["metrics"]["cbar"])
 
         if "te" in metrics:
-            log(log_path, f"[metric] {variant}: TE")
-            variant_details["metrics"]["te"] = compute_te_metric(
+            te_checkpoint_path = run_dir / f"{variant}_te_checkpoint.json"
+            te_identity = build_te_identity(
                 Path(record["struct_path"]),
                 parse_ints(args.te_scales),
                 args.te_history,
                 args.te_chunk_bits,
                 args.te_shuffle_seed,
                 args.te_max_bits,
-                args.te_progress_seconds,
-                log_path,
-                args.quiet,
+                str(record["struct_sha256"]),
+                int(record["struct_bytes"]),
+                plan["code_hashes"],
             )
-            write_json(run_dir / f"{variant}_te.json", variant_details["metrics"]["te"])
+            cached = load_completed_metric(
+                run_dir,
+                variant,
+                "te",
+                resuming,
+                log_path,
+                completion_checkpoint=te_checkpoint_path,
+                completion_identity=te_identity,
+            )
+            if cached is None:
+                log(log_path, f"[metric] {variant}: TE")
+                cached = compute_te_metric(
+                    Path(record["struct_path"]),
+                    parse_ints(args.te_scales),
+                    args.te_history,
+                    args.te_chunk_bits,
+                    args.te_shuffle_seed,
+                    args.te_max_bits,
+                    args.te_progress_seconds,
+                    log_path,
+                    args.quiet,
+                    checkpoint_path=te_checkpoint_path,
+                    checkpoint_chunks=args.te_checkpoint_chunks,
+                    source_sha256=str(record["struct_sha256"]),
+                    source_size=int(record["struct_bytes"]),
+                    code_hashes=plan["code_hashes"],
+                    resume=resuming,
+                )
+                write_json(run_dir / f"{variant}_te.json", cached)
+            variant_details["metrics"]["te"] = cached
 
         row = build_summary_row(variant_details)
         comparisons = compare_to_paper(row)
@@ -339,6 +407,74 @@ def parse_tokens(raw: str) -> list[str]:
 
 def parse_ints(raw: str) -> list[int]:
     return [int(item.strip()) for item in raw.split(",") if item.strip()]
+
+
+def validate_resume_plan(prior: dict[str, Any], current: dict[str, Any]) -> None:
+    if prior.get("status") == "completed":
+        raise RuntimeError("Cannot resume a completed signature batch")
+    for key in ("script", "results_base", "run_dir", "targets", "metrics", "code_hashes", "protocol"):
+        if prior.get(key) != current.get(key):
+            raise RuntimeError(f"Resume plan mismatch in {key}")
+
+
+def load_completed_metric(
+    run_dir: Path,
+    variant: str,
+    metric: str,
+    resuming: bool,
+    log_path: Path,
+    *,
+    completion_checkpoint: Path | None = None,
+    completion_identity: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    path = run_dir / f"{variant}_{metric}.json"
+    if not resuming or not path.exists():
+        return None
+    if completion_checkpoint is not None:
+        if not completion_checkpoint.exists():
+            raise RuntimeError(
+                f"Completed {metric} metric exists without its completion checkpoint: {path.name}"
+            )
+        checkpoint = load_te_checkpoint(completion_checkpoint)
+        if checkpoint.get("status") != "completed":
+            raise RuntimeError(
+                f"Completed {metric} metric has a non-completed checkpoint: "
+                f"{completion_checkpoint.name}"
+            )
+        if completion_identity is not None and checkpoint.get("identity") != completion_identity:
+            raise RuntimeError(
+                f"Completed {metric} checkpoint identity does not match this execution"
+            )
+    payload = read_json(path)
+    log(log_path, f"[resume] Reusing completed metric: {path.name}")
+    return payload
+
+
+def build_te_identity(
+    struct_path: Path,
+    scales: list[int],
+    history: int,
+    chunk_bits: int,
+    shuffle_seed: int,
+    max_bits: int,
+    source_sha256: str,
+    source_size: int,
+    code_hashes: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "source_path": str(struct_path.resolve()),
+        "source_sha256": source_sha256.upper(),
+        "source_size": int(source_size),
+        "scales": [int(value) for value in scales],
+        "history": int(history),
+        "n_bins": 2,
+        "method": "density",
+        "chunk_bits": int(chunk_bits),
+        "raw_chunk_bytes": int(max(1, chunk_bits // 2)),
+        "shuffle_seed": int(shuffle_seed),
+        "max_bits": int(max_bits),
+        "code_hashes": dict(code_hashes),
+    }
 
 
 def discover_sources(targets: dict[str, int], results_base: Path, skip_hash: bool) -> dict[str, dict[str, Any]]:
@@ -554,30 +690,86 @@ def compute_te_metric(
     progress_seconds: int,
     log_path: Path,
     quiet: bool,
+    *,
+    checkpoint_path: Path,
+    checkpoint_chunks: int,
+    source_sha256: str,
+    source_size: int,
+    code_hashes: dict[str, str],
+    resume: bool,
 ) -> dict[str, Any]:
     from level2_transfer_entropy import StreamingTEAccumulator
 
-    accumulator = StreamingTEAccumulator(scales, k=history, n_bins=2)
-    shuffle_accumulator = StreamingTEAccumulator(scales, k=history, n_bins=2)
-    rng = np.random.default_rng(seed=shuffle_seed)
-    consumed = 0
-    yielded = 0
-    chunk_count = 0
     chunk_bytes = max(1, chunk_bits // 2)
     target = max_bits if max_bits > 0 else None
     compressed_size = struct_path.stat().st_size
-    encoded_bytes_read = 0
-    compressed_bytes_read = 0
+    if compressed_size != source_size:
+        raise RuntimeError("TE source size changed after source discovery")
+    identity = build_te_identity(
+        struct_path,
+        scales,
+        history,
+        chunk_bits,
+        shuffle_seed,
+        max_bits,
+        source_sha256,
+        source_size,
+        code_hashes,
+    )
+
+    previous_elapsed = 0.0
+    checkpoint_writes = 0
+    resume_seek_seconds = 0.0
+    checkpoint_restored = False
+    if resume and checkpoint_path.exists():
+        payload = load_te_checkpoint(checkpoint_path)
+        accumulator, shuffle_accumulator, rng, progress = restore_te_checkpoint(
+            payload, identity, StreamingTEAccumulator
+        )
+        consumed = int(progress["observable_bits_consumed"])
+        yielded = int(progress["observable_bits_yielded"])
+        chunk_count = int(progress["chunks_processed"])
+        encoded_bytes_read = int(progress["encoded_bytes_read"])
+        compressed_bytes_read = int(progress.get("compressed_bytes_read", 0))
+        previous_elapsed = float(progress.get("elapsed_seconds", 0.0))
+        checkpoint_writes = int(progress.get("checkpoint_writes", 0))
+        checkpoint_restored = True
+        log(
+            log_path,
+            f"  TE checkpoint restored: chunk={chunk_count:,}, "
+            f"obs_bits={consumed:,}, encoded_bytes={encoded_bytes_read:,}",
+        )
+    else:
+        if checkpoint_path.exists():
+            raise RuntimeError(f"TE checkpoint exists but --resume-run was not supplied: {checkpoint_path}")
+        accumulator = StreamingTEAccumulator(scales, k=history, n_bins=2)
+        shuffle_accumulator = StreamingTEAccumulator(scales, k=history, n_bins=2)
+        rng = np.random.default_rng(seed=shuffle_seed)
+        consumed = 0
+        yielded = 0
+        chunk_count = 0
+        encoded_bytes_read = 0
+        compressed_bytes_read = 0
+
     started = time.time()
     last_progress = started
     log(
         log_path,
         f"  TE stream start: compressed={compressed_size:,} bytes, "
         f"target={'full stream' if target is None else f'{target:,} observable bits'}, "
-        f"chunk_bytes={chunk_bytes:,}",
+        f"chunk_bytes={chunk_bytes:,}, checkpoint_every={checkpoint_chunks:,} chunks",
     )
+    if encoded_bytes_read:
+        log(log_path, f"  TE recovery seek: uncompressed encoded offset={encoded_bytes_read:,}")
 
-    for bits, encoded_bytes_read, compressed_bytes_read in iter_bits_numpy_with_progress(struct_path, chunk_bytes):
+    first_resumed_chunk = encoded_bytes_read > 0
+    for bits, encoded_bytes_read, compressed_bytes_read in iter_bits_numpy_with_progress(
+        struct_path, chunk_bytes, start_encoded_bytes=encoded_bytes_read
+    ):
+        if first_resumed_chunk:
+            resume_seek_seconds = time.time() - started
+            first_resumed_chunk = False
+            log(log_path, f"  TE recovery seek complete in {format_duration(resume_seek_seconds)}")
         chunk_count += 1
         yielded += int(len(bits))
         if target is not None:
@@ -592,11 +784,36 @@ def compute_te_metric(
         rng.shuffle(shuffled)
         shuffle_accumulator.process_chunk(shuffled, method="density")
         now = time.time()
+        elapsed = previous_elapsed + (now - started)
+        if chunk_count % checkpoint_chunks == 0:
+            checkpoint_writes += 1
+            write_te_checkpoint_atomic(
+                checkpoint_path,
+                build_te_checkpoint(
+                    identity=identity,
+                    observed=accumulator,
+                    shuffled=shuffle_accumulator,
+                    rng=rng,
+                    progress={
+                        "encoded_bytes_read": int(encoded_bytes_read),
+                        "compressed_bytes_read": int(compressed_bytes_read),
+                        "observable_bits_consumed": int(consumed),
+                        "observable_bits_yielded": int(yielded),
+                        "chunks_processed": int(chunk_count),
+                        "elapsed_seconds": float(elapsed),
+                        "checkpoint_writes": int(checkpoint_writes),
+                    },
+                    status="running",
+                ),
+            )
+            log(
+                log_path,
+                f"  TE checkpoint {checkpoint_writes:,}: chunk={chunk_count:,}, obs_bits={consumed:,}",
+            )
         if not quiet and (chunk_count == 1 or now - last_progress >= progress_seconds):
             last_progress = now
             progress_fraction = min(1.0, consumed / target) if target is not None and target > 0 else None
             compressed_fraction = min(1.0, compressed_bytes_read / compressed_size) if compressed_size > 0 else 0.0
-            elapsed = now - started
             rate = consumed / elapsed if elapsed > 0 else 0.0
             eta = (
                 (elapsed * (1.0 - progress_fraction) / progress_fraction)
@@ -622,6 +839,27 @@ def compute_te_metric(
     observed = accumulator.compute_all_metrics()
     shuffled_metrics = shuffle_accumulator.compute_all_metrics()
     ratio_info = compute_te_ratio(observed["te_matrix"], shuffled_metrics["te_matrix"], scales)
+    total_elapsed = previous_elapsed + (time.time() - started)
+    checkpoint_writes += 1
+    write_te_checkpoint_atomic(
+        checkpoint_path,
+        build_te_checkpoint(
+            identity=identity,
+            observed=accumulator,
+            shuffled=shuffle_accumulator,
+            rng=rng,
+            progress={
+                "encoded_bytes_read": int(encoded_bytes_read),
+                "compressed_bytes_read": int(compressed_bytes_read),
+                "observable_bits_consumed": int(consumed),
+                "observable_bits_yielded": int(yielded),
+                "chunks_processed": int(chunk_count),
+                "elapsed_seconds": float(total_elapsed),
+                "checkpoint_writes": int(checkpoint_writes),
+            },
+            status="completed",
+        ),
+    )
     return {
         "metric": "legacy_streaming_te_density_shuffle",
         "scales": scales,
@@ -635,7 +873,11 @@ def compute_te_metric(
         "compressed_bytes_read": compressed_bytes_read,
         "compressed_size_bytes": compressed_size,
         "chunks_processed": chunk_count,
-        "elapsed_seconds": round(time.time() - started, 3),
+        "elapsed_seconds": round(total_elapsed, 3),
+        "checkpoint_path": str(checkpoint_path),
+        "checkpoint_writes": checkpoint_writes,
+        "resumed": checkpoint_restored,
+        "resume_seek_seconds": round(resume_seek_seconds, 3),
         "te_matrix": observed["te_matrix"].tolist(),
         "shuffle_te_matrix": shuffled_metrics["te_matrix"].tolist(),
         **ratio_info,
@@ -643,9 +885,15 @@ def compute_te_metric(
     }
 
 
-def iter_bits_numpy_with_progress(struct_path: Path, chunk_bytes: int):
+def iter_bits_numpy_with_progress(struct_path: Path, chunk_bytes: int, start_encoded_bytes: int = 0):
     with gzip.open(struct_path, "rb") as handle:
-        encoded_bytes_read = 0
+        if start_encoded_bytes:
+            restored = int(handle.seek(start_encoded_bytes))
+            if restored != start_encoded_bytes:
+                raise RuntimeError(
+                    f"TE recovery seek mismatch: expected {start_encoded_bytes}, got {restored}"
+                )
+        encoded_bytes_read = start_encoded_bytes
         while True:
             raw = handle.read(chunk_bytes)
             if not raw:

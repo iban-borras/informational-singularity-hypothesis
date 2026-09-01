@@ -10664,6 +10664,1237 @@ No manuscript change authorized yet. Editorial freeze unchanged until full Prior
 
 Execution of the DET provenance-review batch is authorized (Grace's green light + standing delegated scope). Expected deliverable per Amendment 10: comparison table paper vs clean-under-legacy-protocol; DET cells close without patch if reproduced, escalate with decomposition-first discipline if not.
 
+### Amendment 17 — 2026-08-15 (F@27 clean regeneration: material closure)
+
+**Run:** `q6a-level0-sanitation__20260812T090207` (route (a), Amendment 12). Status `completed`, `return_code: 0`, 27 consecutive strictly-increasing iterations, Phi observable 1,118,478,867,305 bits, structural snapshot 1,397,647,527,079 chars, final state `"0"` with verified internal hash.
+
+**Closure hashes (Ariadna reported; Sofia independently recomputed at filesystem level 2026-08-15; all five MATCH):**
+
+| Artefact | SHA-256 | Bytes |
+|---|---|---|
+| `var_F\phi_iter27.struct.gz` | `B3D77CBCC3507C96D9E20C71A84A965C6C01CAC127006D51B0250BA65F75F970` | 20,031,695,910 |
+| `var_F\phi_complete.tar.gz` | `9CC1B9BEEE283576D621E5D927C44C24A425FE27291258B0839182A56A09CA7C` | 8,694,727,252 |
+| `reports\variant_F_27_20260815_154918.json` | `BFC6D8C150E970D2C6062B0D57CE7E580E285B91E0830497C115BDEA6D939310` | 677 |
+| run `manifest.json` | `AE081752C56D8219E99DE479D30148FA2E022351E440DA82F3D2EA40D5C2151B` | 1,595 |
+| run `sanitation_runner.log` | `1BC04DD26FF6EFB921E38DB27F20FE77DE147C36419F24BB1EE74EE3622672A4` | 233,161 |
+
+**State:** material closure reached; **policy closure pending Grace's audit** (three-state semantics of Amendment 2). F@27 is not paper-facing until then. Ariadna's proposed sequence is endorsed as operational order: Grace audit → D@23 regeneration → F-only cbar mini-contract on F@27 → LZ/TE of F and D_f of D re-derivations → DET provenance-review relaunch.
+
+**Design flag for the F-only cbar contract (arithmetic on the record):** at F's observed ~4.0 chars/node density, canonical 1G-char segments imply ~250M nodes per segment — 5× the legacy 50M node_limit; full-stream parsing at 1.4T chars is out of reach of any in-memory approach. The contract's parser strategy (raised limit, streaming, or shorter segments) must be sized to these numbers and declared with its comparability boundary per Amendment 12. Honest note: route (a)'s premise that F@27 would be "cheap" (Amendment 12) underestimated F's growth by orders of magnitude — one month of compute; accepted under the Amendment 6 unconstrained-compute default.
+
+**DET provenance-review:** the 2026-07-15 run was interrupted by a Windows restart with status `running` and **no readout produced** — no data was observed, so the review's blinding is intact. Relaunch pending in the endorsed sequence.
+
+No manuscript change authorized. Editorial freeze unchanged.
+
+### Amendment 18 — 2026-08-15 (F@27 policy closure; scope precision on the audit's completion claim)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_D0154_F27_Level0_Sanitation_Closure.md`, SHA-256 `CC5561381EF9959D07EA7CAD30C72CE0A51090F1D9EEBBA4FD5B9D78FBC0F536` (Sofia recomputed: MATCH). Verdict: **APPROVED AND CLOSED** for the F@27 regeneration. The audit validates the sequence/observable arithmetic (1.397T structural chars vs 1.118T observable bits = 80.03% observable fraction, correct parenthesis-syntax overhead).
+
+**Scope precision (Sofia, on the record):** the audit states this "completes the material closure of the Level 0 sanitation scope under D-0154", listing clean snapshots `{E@24, I@23, D@20, G@20, F@20, F@27}`. That claim covers the original policy-item-2 scope plus F@27 — but the route (a) extension (Amendment 12) comprises **both F@27 and D@23**, and **D@23 remains unregenerated** (canonical directory reaches D@20 only; Ariadna's endorsed sequence step 2). **Level 0 sanitation is therefore NOT fully closed**; it closes when D@23 lands and is audited. The audit's verdict stands for what it examined; its completion claim is corrected here for the record.
+
+**Green lights acknowledged:** Ariadna may present the F-only cbar mini-contract preregistration on clean F@27 (parser sizing per Amendment 17's arithmetic; comparability boundary per Amendment 12) and proceed with the F-dependent signature re-derivations (LZ of F@27, TE of F@27). `D_f` of D waits for D@23.
+
+No manuscript change authorized. Editorial freeze unchanged.
+
+### Amendment 19 — 2026-08-15 (F-only cbar prereg v0.1: Sofia editorial pass PASSED + Grace audit APPROVED; one declared citation delta for v1.0)
+
+**Contract:** `prereg_D0154_F27_cbar_streaming_v0.1_DRAFT.md`, SHA-256 `1EA82857562AC1A636A1F307D9804A3BE3BA532485CC707D4EE3541D81BF7F7D` (Sofia recomputed: MATCH).
+
+**Sofia editorial pass: PASSED.** Verified at text and filesystem level:
+
+1. All declared source hashes recomputed on disk and MATCH: `phi_iter27.struct.gz` (consistent with Amendment 17), `phi_iter27.json`, `phi_iter27.state.txt.gz`, and the E@24 calibration source `phi_iter24.struct.gz` (`8D3BE0CE...`).
+2. Segment-start arithmetic independently recomputed from the frozen formula `int((i/4)*(N-L))`: all four positions exact.
+3. Stage 0 calibration integers cross-checked against the audited canonical run: `total_nodes 18,147,523 / total_edges 18,147,522 / total_branching_nodes 6,931,737` — exact match.
+4. Outcome space: hierarchical, logically complete and disjoint; the `f-cbar-aggregate-only-at-27` branch correctly imports the Stage 3 anti-rescue discipline (an aggregate may not rescue segment heterogeneity).
+5. Threshold provenance (§7.1): calibration-derived from the clean family, frozen pre-observation — the Item 2 discipline applied without being asked.
+6. Comparability boundary explicit (equivalence claimed only for the five count outputs; all other nesting-tree outputs absent or `N.A.`); wording fence includes the honest boundary that the streaming parser is the same observable, not an independent replication.
+
+**Grace methodological audit: APPROVED.** `docs/HSI_v2_Audit_Prereg_D0154_F27_cbar_streaming_v0.1.md`, SHA-256 `21D4493F9DC7FEF6C1B608D553B096048A87CE06E557467EB4C3DB417B48D71D` (Sofia recomputed: MATCH).
+
+**Single declared delta for v1.0 promotion (Sofia, non-blocking):** §3/§6.2's frozen E@24 calibration integers are cited as "already observed and audited under D-0154"; the v1.0 text must anchor this to the exact provenance: run `d0154-signature-priority-a__20260703T150824`, `summary.json` SHA-256 `9B4704C0124EAF92F922F2AC20B667128D050DEA80CCAC879513B77A4EA13697` (E@24 segment-1 record). This citation addition is the **only** authorized content change in promotion; everything else follows the Item 2 precedent (version/freeze metadata only). The freeze amendment must confirm this.
+
+**Remaining gate:** Iban authorization (contract §13 step 4). Upon it: promotion to `prereg_D0154_F27_cbar_streaming_v1.0.md`, SHA-256 freeze, anchoring amendment here, implementation + Grace code audit, Stage 0 gate, Stage 1 readout.
+
+### Amendment 20 — 2026-08-15 (Iban authorization granted for the F-only cbar contract)
+
+Iban authorizes the F@27 cbar streaming contract (explicit go, 2026-08-15, relayed via Sofia's session). All design gates are satisfied:
+
+1. Sofia editorial pass: PASSED (Amendment 19).
+2. Grace methodological audit: APPROVED (`21D4493F...`).
+3. Iban authorization: GRANTED (this amendment).
+
+Mechanical steps, owned by Ariadna: promote v0.1_DRAFT (`1EA82857...`) to `prereg_D0154_F27_cbar_streaming_v1.0.md` with content identical except version/freeze metadata **plus the single authorized citation delta** (Amendment 19: provenance anchor for the E@24 calibration integers — run `d0154-signature-priority-a__20260703T150824`, summary SHA-256 `9B4704C0...`); compute the freeze SHA-256; record the anchoring amendment here. Sofia will verify the promotion diff against the authorized delta and OTS-stamp the frozen contract per D-0157. Then: implementation, Grace code audit, Stage 0 equivalence gate, Stage 1 readout. Any substantive difference beyond the declared delta voids the editorial pass.
+
+D@23 regeneration proceeds in parallel (resume from clean post-patch D@20 checkpoints, no quarantine needed — same precedent as variant I's clean resume).
+
+### Amendment 21 — 2026-08-15 (F-only cbar v1.0 executable freeze anchor)
+
+Ariadna completed the mechanical promotion authorized by Amendment 20. The frozen executable contract is:
+
+`prereg_D0154_F27_cbar_streaming_v1.0.md`
+
+Freeze SHA-256:
+
+`B21B5935631D4C4B9CA2D98CC56E1B67C92542235EA4A49675F7190367F01C02`
+
+Promotion verification:
+
+1. The source draft remains `prereg_D0154_F27_cbar_streaming_v0.1_DRAFT.md`, SHA-256 `1EA82857562AC1A636A1F307D9804A3BE3BA532485CC707D4EE3541D81BF7F7D`.
+2. A no-index diff confirms that the v1.0 changes are limited to version/freeze metadata plus the single citation delta authorized by Amendment 19.
+3. That citation anchors the E@24 calibration integers to run `d0154-signature-priority-a__20260703T150824`, `summary.json` SHA-256 `9B4704C0124EAF92F922F2AC20B667128D050DEA80CCAC879513B77A4EA13697`, E@24 segment-1 record.
+4. No source, segment, threshold, metric, equivalence condition, outcome rule, recovery rule, wording fence, or scope boundary changed during promotion.
+
+The contract is frozen, but target-data execution remains blocked until Grace audits the public wrapper and internal streaming implementation. Stage 0 must then pass before any F@27 target segment is read.
+
+### Amendment 22 — 2026-08-15 (F-only cbar code audit anchored; Stage 0 authorized)
+
+Grace completed the mandatory pre-execution code audit:
+
+`docs/HSI_v2_Audit_Code_D0154_F27_cbar_streaming.md`
+
+Audit SHA-256:
+
+`BF619EE7BF2FC1A8C62C9EC04CB064882C35957FF6626932FB57CEE5FE032BA6`
+
+Verdict: **APPROVED — Code Gate Cleared for Stage 0 Execution**.
+
+The audit binds the exact implementation artifacts subsequently reverified by Ariadna without mismatch:
+
+| Artifact | SHA-256 |
+|---|---|
+| `hsi_v2_d0154_f27_cbar_streaming.py` | `10E0D76FE125B5BC5FC5EC9729934C8BB3D08634B01BF8F82A8FADA458945EEE` |
+| `v2/signature/streaming_cbar.py` | `5D5C6690992CFD56CE821081655290175C8F6EAD54A489C7DCBFA6A766F06E53` |
+| `tests/test_streaming_cbar.py` | `530B6C7D174D0CC4BBF60D522BADD0248BF68DCA486D2EA2251C01E5CB8BA97C` |
+
+The 13-test suite passed in full, including canonical integer equivalence, malformed/unclosed Dyck cases, non-byte-aligned intervals, checkpoint resumption, and outcome-boundary checks. Stage 0 is now authorized under frozen contract `B21B5935...F01C02`: synthetic fixtures plus the frozen E@24 calibration only. No F@27 target segment may be read unless Stage 0 passes exactly.
+
+### Amendment 23 — 2026-08-15 (F-only cbar Stage 0 exact-equivalence gate PASSED)
+
+Ariadna executed Stage 0 only under frozen contract `B21B5935631D4C4B9CA2D98CC56E1B67C92542235EA4A49675F7190367F01C02` and code audit `BF619EE7BF2FC1A8C62C9EC04CB064882C35957FF6626932FB57CEE5FE032BA6`:
+
+`D:\Iban\Projectes\HSI\results\hsi_v2\d0154_f27_cbar_streaming\d0154-f27-cbar-streaming__20260815T171700\`
+
+Gate status: **PASSED**. This is an infrastructure/equivalence gate, not a scientific F@27 outcome; `summary.json` therefore records `outcome: null` and `status: stage0-completed`.
+
+Exact calibration readout on the frozen first 1,000,000,000 structural characters of clean E@24:
+
+| Integer/statistic | Frozen expected | Streaming observed |
+|---|---:|---:|
+| total nodes | 18,147,523 | 18,147,523 |
+| total edges | 18,147,522 | 18,147,522 |
+| total branching nodes | 6,931,737 | 6,931,737 |
+| cbar | 2.61803383480937 | 2.61803383480937 |
+
+`cbar_absolute_delta = 0.0`; all 7/7 synthetic fixtures matched the canonical parser exactly; parser backend `numba`; maximum observed E calibration stack depth 19; peak process resident memory 152,313,856 bytes. No F@27 target segment was opened or read by Stage 0.
+
+Primary artifact hashes:
+
+| Artifact | SHA-256 |
+|---|---|
+| `equivalence.json` | `946B8E716624B8C768EBA17F5D98D3C6FF757EBCD50662E7ACA982FC0487EACC` |
+| `summary.json` | `31BD1133B5542E266AE3DD3010C5EF6A1F090595F1581D17D40DB361C03EFEBA` |
+| `report.md` | `FDFC992325296BDF0CECF3D7A8A9430C23D5AAA86490D628C3F60A427CA13CED` |
+| `per_segment_cbar.csv` | `5B0C625A67A4A561491EE5BC5237DD183FDEEEBDA063C32872D28F8540989F9B` |
+| `run.log` | `03058FD672C2D4AF9CCBEFD0BED87D185A94DB31A93609CB0576229B50A9D4DA` |
+| `manifest.json` | `D17EBB11880E0E10AF3E1F218B1CE523D4E5CDA571563DD66472D3F202ADE6F3` |
+
+The exact Stage 0 gate required by §6 is satisfied. Stage 1 is now contractually eligible using `equivalence.json` above; no manuscript edit or scientific claim is authorized by this amendment.
+
+### Amendment 24 — 2026-08-15 (Sofia independent verification of the freeze chain and Stage 0; OTS anchoring; Stage 1 editorial clearance)
+
+Closes the editorial gate assigned in Amendment 20 ("Sofia will verify the promotion diff against the authorized delta and OTS-stamp the frozen contract"), and adds independent verification of Amendments 21-23.
+
+**Independent recomputation at filesystem level.** Derived separately from Ariadna's reports (the freeze-hash computation was concurrent with, and unaware of, Amendment 21) and agreeing exactly in every case: contract v1.0 `B21B5935...F01C02`; code audit `BF619EE7...032BA6`; the three implementation artifacts; the contract §3 sources (`phi_iter27.json`, `phi_iter27.state.txt.gz`, E@24 `phi_iter24.struct.gz` `8D3BE0CE...`); and all six Stage 0 artifacts of Amendment 23. **All MATCH.**
+
+**Editorial diff verification of the promotion.** The v0.1→v1.0 diff was read line by line: changes are confined to title/status/revision metadata, the §13 freeze-state rewrite, and the single citation delta authorized by Amendment 19. No substantive difference exists, so the Amendment 19 editorial pass carries over to the frozen contract without re-review.
+
+**Stage 0 editorial reading.** The gate is exact in the strong sense: integer equality on all three counts, `cbar_absolute_delta = 0.0`, 7/7 synthetic fixtures. Two properties worth recording because they are what makes the gate meaningful: the run reports `outcome: null` / `status: stage0-completed` rather than borrowing a scientific outcome label (the reporting discipline of D-0154 Amendment 11 applied without prompting), and no F@27 target segment was opened — the blinding of the target readout is intact.
+
+**Comparability note carried into Stage 1 reporting.** The exactness of the calibration establishes that the streaming counter reproduces the canonical observable on a source of E's structure. F's structure differs precisely in the property that defeated the canonical parser (node density from lack of collapse), so the Stage 1 report must state that equivalence was established on E and inherited by construction, not re-verified on F — the contract's §5 comparability boundary in operational form. This is a reporting requirement, not a reservation about the method.
+
+**OTS anchoring (D-0157):** the frozen contract and the code audit are timestamped; `.ots` sidecars sit alongside each file and must enter the next commit.
+
+**Order note for the record:** the execution green light listed anchoring the code-audit hash but not the contract freeze hash, which the contract's own §13 requires before Stage 0. Ariadna's Amendment 21 supplied it independently, so the sequence held and Stage 0 executed legitimately. Recorded for provenance clarity, not as a defect.
+
+**Status:** every pre-execution gate is closed and cross-verified by two parties. **Stage 1 has editorial clearance**; the outcome, whichever of the four it is, enters the chain by the standard route (Grace post-execution audit → Sofia editorial review → amendment → Iban authorization for any paper-facing use).
+
+### Amendment 25 — 2026-08-15 (F-only cbar Stage 1 readout: preregistered negative, pending post-execution audit)
+
+Ariadna executed Stage 1 under frozen contract `B21B5935631D4C4B9CA2D98CC56E1B67C92542235EA4A49675F7190367F01C02`, after the exact Stage 0 equivalence gate in Amendment 23 and the editorial clearance in Amendment 24:
+
+`D:\Iban\Projectes\HSI\results\hsi_v2\d0154_f27_cbar_streaming\d0154-f27-cbar-streaming__20260815T172008\`
+
+Run status: `completed`, with no execution error. Contractual outcome: **`f-cbar-not-preserved-at-27`**.
+
+The exact branching-weighted aggregate is:
+
+```text
+aggregate edges           = 396,184,972
+aggregate branching nodes = 151,330,365
+cbar_aggregate             = 2.6180137211722183
+phi_plus_one               = 2.618033988749895
+absolute distance          = 2.0267577676591486e-05
+frozen aggregate tolerance = 1.0e-06
+```
+
+The aggregate distance is `20.2676x` the preregistered tolerance. Under the first-match hierarchy in contract Section 8, this uniquely triggers the negative outcome; neither local proximity nor an alternate aggregation can rescue it.
+
+| Segment | Branching nodes | `cbar` | Distance to `phi_plus_one` | Max stack | Unclosed nodes |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 95,316,278 | 2.6180339731687803 | 1.5581114620744074e-08 | 21 | 10 |
+| 2 | 12,331,194 | 2.6180326090076920 | 1.3797422027117534e-06 | 30 | 22 |
+| 3 | 30,625,552 | 2.6180337582160154 | 2.3053387954163895e-07 | 20 | 11 |
+| 4 | 13,057,341 | 2.6178010515310888 | 2.3293721880612850e-04 | 1,460 | 1,452 |
+
+All four segments completed and all have non-zero branching support. Segments 1-3 remain inside the frozen `5e-6` segment guard; segment 4 exceeds it by `46.5874x`. Although segment 4 carries only `8.6284%` of aggregate branching weight, it contributes `99.1667%` of the aggregate deficit. Its simultaneous deep-stack readout is recorded as **descriptive structural heterogeneity only**. It does not alter the contractual outcome, establish a mechanism, or authorize post-hoc segment removal. Any causal investigation of that regional behavior requires a separately preregistered cycle.
+
+The Stage 0 comparability boundary remains in force: exact equivalence was established on E@24 and is inherited by construction for the same integer observable on F@27; this run is not an independent metric or replication. Runtime was 843.438 s, peak resident memory 153,006,080 bytes, with 1,048,508,891,136 structural characters traversed using the audited Numba backend.
+
+Primary artifact hashes:
+
+| Artifact | SHA-256 |
+|---|---|
+| `summary.json` | `574BC9AF87F5431D956889AD56884C30BDC95C9E9DAE25224C68338717A9BC14` |
+| `report.md` | `F6C06EF2112698A4FEC13C72586A0051FED59E6F4B9034A909DECBC790DCEDE0` |
+| `per_segment_cbar.csv` | `FF80B3B6AA301F6EF71957C9ADD891D5BA423E59AF3F93A0A28E9EA9CD01403A` |
+| `equivalence.json` | `1BFB4AEC191D2D89A518F7D281AD379BBEAD8CD9725B540B793BD809EA04B1BE` |
+| `manifest.json` | `528E6EDA6EDA035C2B902BF8AF3353051A8FE5626571F30B3B61917ECAFA0130` |
+| `run.log` | `C8B6EBC036FEDDECD08E42A70EB3A510161315E270C5CCF32B7647F740CDA06A` |
+
+**State:** repo-facing readout anchored; Grace post-execution audit pending. Per contract Section 11, the clean F@27 negative requires manuscript reconciliation, but **no manuscript edit is authorized** until Grace audits the execution, Sofia completes editorial review, the resulting decision is recorded, and Iban explicitly authorizes paper-facing use. Editorial freeze unchanged.
+
+### Amendment 26 — 2026-08-15 (Stage 1 audited; editorial review; F cell ruled to the measured value, NOT `N.D.`)
+
+**Verification (Sofia, filesystem level):** the four reported run artifacts and Grace's audit `docs/HSI_v2_Audit_D0154_F27_cbar_Stage1_Readout.md` SHA-256 `18CEF1C2F06C2AFA7A8B68D6ECD8D1E6B68D198F108788169130B23B81CF9F29` — **all MATCH**. Grace's verdict: **AUDITED AND VALIDATED**; integer counts and hierarchical classification exact; segment-4 alert recorded as heterogeneity description with no post-hoc rescue.
+
+**Outcome accepted without qualification:** `f-cbar-not-preserved-at-27`. The tolerance was frozen before observation and is exceeded 20.27×. Segment-level proximity in 1-3 does not rescue the aggregate, exactly as the aggregate may not rescue segment heterogeneity in the mirror branch. This is a **hard negative on clean data** and enters the manuscript as one.
+
+**Editorial ruling on the `tab:signatura` F/cbar cell — Grace's `N.D.` recommendation is DECLINED.** `N.D.` / `inputs-not-derivable` was the interim label from Amendment 11, valid while the quantity could not be measured. It can now be measured and has been: `cbar_aggregate = 2.6180137211722183` under a frozen contract with an audited exact-equivalence gate. Printing `N.D.` would replace a measured hard negative with a procedural blank — a disappearance of a finding behind a label, which the editorial contract forbids in either direction. **The cell takes the measured clean value** (display at the table's six-decimal precision: `2.618014`, visibly distinct from the family's `2.618034`), with a footnote giving the contract, the resolution, and the segment heterogeneity as fact. Options 1 and 3 of Amendment 11 are superseded: option 3 executed, and its output replaces option 1's placeholder.
+
+**Manuscript consequence beyond the cell (new, not covered by the R2 diff).** §`sec:absurd` (v2.03 l. 327) states: *"La conservació de c̄ = φ+1 sota F ... F preserva l'aspecte sintàctic del marc (la sintaxi de parèntesis, invariant) i suprimeix l'aspecte estratificat"*. That sentence is **falsified by clean data at the preregistered resolution** and must be rewritten in the v2.04 release. The corrected reading is stronger against the paper's own convenience, and therefore the one to adopt: F suppresses stratification **and** departs from the family's mean-children value, so the elegant syntax-preserved/stratification-destroyed dichotomy does not survive re-derivation. Tracked as a new required diff in `docs/HSI_v2_Editorial_Release_Plan_v2.04.md` (extends R2's scope; the release plan's design-approval must be revisited for this item only).
+
+**Open question recorded, explicitly not resolved:** segment 4 shows max stack depth 1,460 with 1,452 unclosed nodes against 20-30 in segments 1-3 — a regime difference of roughly 50×, not a fluctuation. Whether this reflects genuine position-dependent structure in F at that depth, or a window-comparability limit (a 1G-character window slicing a nesting structure larger than itself), is **undetermined and may not be asserted in either direction**. It is not a rescue route: the contractual negative stands regardless of the answer. If pursued, it requires a fresh preregistration whose outcome space includes "segment 4 is representative and F simply departs from φ+1", designed so that no configuration can be selected for producing the friendlier answer.
+
+**Consequence for D-0156 (conjecture cycle), recorded as constraint:** a combinatorial derivation of c̄ = φ+1 from parenthesis-tree structure alone would predict preservation under F, since F preserves the Dyck syntax. Clean F@27 does not preserve it. The conjecture's mechanism therefore cannot be purely syntactic in the trivial sense; it must depend on a property that F's deep-nesting regime violates. This narrows the target and is input to Ariadna's analytic work, not a claim.
+
+**Tone guard (standing, per Amendment 15):** internal framing of this negative as an epistemic asset is fine in the audit trail; the manuscript states it factually — measured value, resolution, heterogeneity — with no assertive inflation about what the negative proves. Assertive inflation is the mirror of defensive inflation; both are barred.
+
+**Sofia's prior, for calibration:** before the readout, Sofia predicted preservation, with the stated reservation that F's ~14× higher node density implies genuinely different tree geometry. The headline prediction was **wrong**; the reservation pointed at the right property. Recorded per the D-0156 practice of keeping predictions accountable.
+
+No manuscript edit authorized. Editorial freeze unchanged; the F cell and the §5 sentence enter the v2.04 release queue as reconciliation-ready items pending Iban's authorization.
+
+### Amendment 27 — 2026-08-15 (Grace audit erratum incorporated; editorial alignment confirmed)
+
+Grace corrected one non-outcome-bearing sentence in Section 3.1 of `docs/HSI_v2_Audit_D0154_F27_cbar_Stage1_Readout.md`. The original audit hash recorded in Amendment 26 remains the provenance anchor for the first archived version:
+
+`18CEF1C2F06C2AFA7A8B68D6ECD8D1E6B68D198F108788169130B23B81CF9F29`
+
+The corrected audit SHA-256, independently recomputed by Ariadna, is:
+
+`C7D44389B230F02198D045A6AE5CD6EBD3600A8F52ABBE30BB1F18E753812F7E`
+
+The correction states precisely that segments 1-3 satisfy the frozen **segment** tolerance `5e-6`, while segments 1 and 3 also lie below `1e-6`. The `1e-6` value remains the aggregate decision threshold and is not an additional per-segment gate. No integer, ratio, artifact hash, outcome, methodological verdict, or scientific reading changed.
+
+Grace also explicitly aligns with Amendment 26's editorial ruling: because the clean value is exactly derivable and audited, the paper-facing F cell should report `2.618014` at six-decimal precision rather than revert to the former procedural `N.D.` placeholder. The expanded R2 rewrite remains queued for Grace review once Sofia supplies the exact v2.04 wording.
+
+No manuscript edit is authorized by this erratum. Editorial freeze and the remaining D-0154 queue are unchanged.
+
+### Amendment 28 — 2026-08-17 (D@23 resume: bounded accumulation flush after deterministic MemoryError)
+
+The authorized clean `D@20 -> D@23` extension run `q6a-level0-sanitation__20260816T100701` stopped deterministically after durably completing iteration 21. The failure occurred while preparing iteration 22, after the canonical D@21 snapshot and state checkpoint had closed:
+
+```text
+level0/accumulation_manager.py::_flush
+f.write(''.join(self.buffer))
+MemoryError
+```
+
+Root cause: the buffer contained a single approximately 29.69-billion-character state. `''.join(...)` attempted to materialize a second contiguous copy before writing it, exceeding available memory. This is an infrastructure allocation defect, not a collapse-rule failure, data-source substitution, or scientific outcome.
+
+Durable recovery anchor:
+
+| Artifact | SHA-256 | Bytes |
+|---|---|---:|
+| `var_D/phi_iter21.struct.gz` | `C9646E47A41DAF1D852A5B954591B19DE62D7DCD49E717A0262C949996BA41C8` | 612,918,440 |
+| `var_D/phi_iter21.json` | `78FF38B97780E776124F1A3034E952069CFCD81DA84D5E88A61C544FE724BE8E` | 803 |
+| `var_D/phi_iter21.state.txt.gz` | `B419DC7AA4F5AC20094B6166ACD5718FCC88CF36F03A5FA39D9C9F66DBAE8AB4` | 48 |
+
+The metadata records `sequence_length = 29,693,868,208`; the exact state checkpoint decodes to the one-character state `"0"`. Therefore iterations 1-21 remain reusable and no regeneration from D@20 or earlier is required.
+
+Iban authorized the minimal recovery option. Ariadna changed only `AccumulationManager` write mechanics:
+
+1. buffered content is capped by character count (`64 MiB`) in addition to append count;
+2. `_flush()` writes in bounded `16 MiB` character chunks instead of joining the buffer;
+3. large flushes emit deterministic 10% progress records;
+4. a partial write is marked failed and is never retried from `__del__`, preventing accidental duplicate append; checkpoint recovery remains the only valid continuation after such a failure.
+
+No generator rule, D simplifier, iteration target, source, snapshot encoding, accumulation order, collapse path, or scientific metric changed. Exact concatenation order is preserved.
+
+Implementation anchors:
+
+| Artifact | SHA-256 |
+|---|---|
+| `level0/accumulation_manager.py` | `FBFE3DCA910925E798423B57A8A9BDE3034F8046919AA12739B24481AF6EFC09` |
+| `tests/test_accumulation_manager.py` | `E9AD3E50C31507AC8E02E03D1D538EE4F3E308A51B6999750CAAFA3D57761D2A` |
+
+Validation completed before recovery: 3/3 bounded-flush tests passed under project Python 3.11 (exact compressed/uncompressed content, single-state chunking, no destructor retry); restartable snapshot regression passed; sanitation retry-policy regression passed; full hybrid-engine equivalence suite passed, including variant D, gzip checkpoint recovery, chunk-boundary matches, completed-pass reuse, and randomized boundaries. Both modified files compile successfully.
+
+Authorized recovery is the same D-only sanitation command with `--quarantine-existing` and without `--force-quarantine-postpatch`. The runner must recognize the clean state checkpoints, skip quarantine, and resume from durable `D@21`. No paper-facing readout or manuscript edit is authorized by this infrastructure amendment.
+
+### Amendment 29 — 2026-08-17 (AccumulationManager patch audit: APPROVED FOR RESUME)
+
+Grace completed the independent code audit of the bounded-flush recovery patch:
+
+`docs/HSI_v2_Audit_Code_D0154_AccumulationManager_Memory_Patch.md`
+
+Audit SHA-256, independently recomputed by Ariadna:
+
+`34D6796492A2E227D7FA6E1E1B5AD437BEDE7A16B56A0BA5AB5F02CF2BC740F3`
+
+Verdict: **APPROVED FOR RESUME**. The audit independently binds the exact implementation and test hashes recorded in Amendment 28 (`FBFE3DCA...EFC09` and `E9AD3E50...61D2A`), verifies bounded 16 MiB writes and the anti-duplication failure guard, and confirms zero changes to rewrite rules, counters, snapshots, metrics, or scientific semantics. Grace additionally reports the repository test suite passing `57/57`.
+
+All recovery gates are now closed. The D-only sanitation run may resume from the durable clean D@21 checkpoint into iteration 22 using the unchanged scientific target D@23. No `--force-quarantine-postpatch` is permitted. Paper-facing and editorial boundaries remain unchanged.
+
+### Amendment 30 — 2026-08-18 (D@23 material regeneration completed; independent audit pending)
+
+The route-(a) D@23 Level 0 regeneration requested in Amendment 12 completed successfully from the audited clean D@21 checkpoint. Canonical sanitation run:
+
+`D:\Iban\Projectes\HSI\results\hsi_v2\q6a_level0_sanitation\q6a-level0-sanitation__20260817T130446\`
+
+The run manifest records `status=completed`, child `return_code=0`, `resume_existing_postpatch=true`, start `2026-08-17T13:04:47`, and finish `2026-08-18T09:32:35`. The runner therefore preserved the clean post-patch D@21 lineage and invoked the generator without `--no-resume`; no quarantine or pre-patch source reuse occurred. The top-level `commands` planning field retains the runner's nominal fresh-run command, while the per-run `command` field records the actual resumed child invocation.
+
+Continuity and size checks:
+
+| Snapshot | Structural length | Observable Phi length | Structural growth |
+|---|---:|---:|---:|
+| D@21 | 29,693,868,208 | — | — |
+| D@22 | 83,181,944,634 | 80,912,138,296 | 2.80131723x |
+| D@23 | 232,475,477,397 | 226,533,047,253 | 2.79478291x |
+
+The observable D@22->D@23 growth ratio is `2.79974120x`; D@23's observable fraction is `0.974438465`. The structural/observable distinction is the expected parenthesis-syntax overhead and is not a metric discrepancy.
+
+Canonical D@23 hashes, independently recomputed by Ariadna:
+
+- `phi_iter23.struct.gz`: `7E7CC9412FB349860698D83C798664BABF9C3232FB167E1F5A3B1DE782BAA0EC`
+- `phi_iter23.json`: `7C2D8B99FFE69A1530C81A6093224071D74CAB0626AF8A01846E7DC5C356F9CD`
+- `phi_iter23.state.txt.gz`: `F18CDB8C559029D5A03B01C070B901F54B0304E7ECBB5EDA543AE141A9C5919A`
+- `phi_complete.tar.gz`: `629B74CCE34C02F78874EE709F3DD033ED5C1C18FA67F36C2644A6D3AB560AB8`
+- `level0/reports/variant_D_23_20260818_092824.json`: `1C2C87458C3E98070E5A56907CF4BE5A4DF95A4B8DB339AE912399C6AE4B53E3`
+- sanitation `manifest.json`: `8AE458441F769C02A6272A0C2A60547F602509E1EF4E1DD95005DFA852FACF31`
+- `sanitation_runner.log`: `227BB9423E41F67A79FF1C31500D4E75E092DF5058B335850C5E3816F2768375`
+
+Inventory verification found all 23 structural snapshots, all 23 metadata files, and all 23 state files. `phi_complete.tar.gz` contains exactly the 23 structural snapshots. The execution log contains no traceback, `MemoryError`, failed status, or transient-storage warning. It records successful bounded flushes, including the formerly failing 29.69 GB accumulation, and only the expected post-processing warning that optional comparison metrics are incomplete under the streaming `--no-plots` run.
+
+**State:** D@23 is materially generated and hash-anchored, but this amendment does not claim policy-level closure until Grace independently audits the lineage and artifacts. No paper-facing value is revalidated by generation alone. The D@23 `D_f` re-derivation at the printed depth remains pending, and the manuscript freeze remains unchanged.
+
+### Amendment 31 — 2026-08-18 (D@23 Level 0 audit: APPROVED AND CLOSED)
+
+Grace completed the independent closure audit:
+
+`docs/HSI_v2_Audit_D0154_D23_Level0_Sanitation_Closure.md`
+
+Audit SHA-256, independently recomputed by Ariadna:
+
+`D1A277DF9B2D3C063B675D61386C28CB896306E665B345C05590F297181D8C04`
+
+Verdict: **APPROVED AND CLOSED**. The audit verifies all Amendment 30 hashes, the clean D@21 -> D@22 -> D@23 checkpoint lineage, the `2.79974120x` observable growth arithmetic, the structural/observable accounting, and successful operation of the bounded-memory `AccumulationManager` patch.
+
+This closes the full Level 0 source-sanitation inventory `{E@24, I@23, D@20, G@20, F@20, F@27, D@23}`. It does not by itself close the downstream paper-facing reconciliation: Grace authorizes the read-only `D_f` re-derivation on clean D@23, after which the resulting value and provenance still require artifact-level audit and editorial ruling.
+
+**Execution preflight guard:** the current `hsi_v2_d0154_signature_priority_a_batch.py --metrics fractal` branch is an extractor, not a derivator: it only reads `fractal_dimension` / `fractal_dimension_streaming` from the Level 0 report. Both fields are null in the clean streaming D@23 report. The legacy estimator also recognizes only `v33_structural` and its v33 path materializes the full observable string, so it is not safe for the 232,475,477,397-character `v33_structural_streaming` source. No D@23 fractal value has been observed. An exact, bounded-memory, read-only streaming implementation of the same box-counting definition (`max_box_size=64`) must be code-audited before execution; substituting the null report field or loading the full source is prohibited.
+
+The manuscript freeze remains active until the D@23 `D_f` artifact and the remaining D-0154 downstream items are independently reconciled.
+
+### Amendment 32 — 2026-08-18 (D@23 D_f streaming implementation candidate; execution blocked for code audit)
+
+Iban selected the dedicated-derivator option after the Amendment 31 preflight showed that the existing Priority-A `fractal` branch only extracts a pre-existing report value. Ariadna implemented a read-only, bounded-memory replacement without modifying Level 0, the clean D@23 report, or the manuscript:
+
+| Artifact | SHA-256 |
+|---|---|
+| `hsi_v2_d0154_d23_fractal_rederivation.py` | `4DAE50B3EEC87896B8ED530D79F9FC0515004453BE53E8D0914AD0BA9AA2EFBE` |
+| `v2/signature/streaming_fractal.py` | `884DE81CA040AC915CAE0F7BDF43743A679E58697F630EAE4CDC9CFDE78A906F` |
+| `tests/test_streaming_fractal.py` | `7F45455C15C6047B320843B4DA6C69D5570D955D551EEB4B0E7D09EA5C9C8BE0` |
+
+Frozen method-equivalence target:
+
+1. decode the canonical 2-bit structural stream and retain only observable codes `00/01`;
+2. partition the observable sequence from offset zero into non-overlapping boxes for sizes `s in {2,...,63}` (`max_box_size=64`);
+3. count a trailing partial box iff it contains at least one `1`;
+4. fit `numpy.polyfit(log(s), log(max(1, occupied_boxes)), 1)` and return the clamped negative slope, exactly matching the legacy v33 branch used for the printed D@23 value;
+5. compare only at the manuscript's three-decimal precision (`0.992`) after retaining the full-precision clean value.
+
+The implementation performs all box sizes in one source pass, bounds working memory by the raw chunk (default 4 MiB), writes atomic checkpoints every 256 MiB of decoded packed input, verifies the frozen source/metadata/state/report hashes and exact observable-bit count, and emits visible progress plus `summary.json`, `report.md`, `box_counts.csv`, `equivalence.json`, `checkpoint.json`, and `manifest.json`. Resume requires the original run directory and exact runtime/code identity.
+
+Validation before audit:
+
+- `25/25` focused tests passed (`streaming_fractal`, existing `streaming_cbar`, and `AccumulationManager` suites);
+- the new 9-test suite covers random chunk partitions, random structural streams, parenthesis filtering, non-byte-aligned padding, exact observable counts, checkpoint identity, interrupted-run resume, and manuscript-precision classification;
+- Ruff check and format check passed; all three files compile;
+- a synthetic 16,000,000-bit operational-chunk benchmark measured `16.13 Mbit/s`, implying approximately 3.9 hours of pure counting for D@23 before gzip/I/O overhead; operational estimate is 5-8 hours with bounded memory in the low hundreds of MiB;
+- the repository-wide suite could not be collected in Ariadna's current system interpreter because the unrelated `bitarray` dependency is absent and the local venv launcher points to an unavailable Python 3.11 base. This environment limitation is disclosed for Grace to repeat the full-suite pass in an intact project environment.
+
+The public runner is fail-closed: `--execute` requires a matching code-audit file/hash and explicit Decision Log anchor confirmation. Dry-run and all validation above opened no target D@23 stream and produced no D@23 fractal readout. **Execution remains blocked pending Grace code audit.** No manuscript edit or numeric reconciliation is authorized by this amendment.
+
+### Amendment 33 — 2026-08-18 (D@23 D_f streaming code audit: APPROVED; execution authorized)
+
+Grace completed the independent methodological and code audit archived at:
+
+`docs/HSI_v2_Audit_Code_D0154_D23_Fractal_Rederivation.md`
+
+Audit SHA-256:
+
+`36F6463EC23EED1840915206F4DFBD6E0A4B4A9C4444F90050A352868FB31C6A`
+
+Verdict: **APPROVED (Code Gate Cleared for Execution)**. Filesystem verification by Ariadna confirms that the archived audit and all three bound implementation artifacts match Grace's hashes exactly:
+
+| Artifact | Audited SHA-256 |
+|---|---|
+| `hsi_v2_d0154_d23_fractal_rederivation.py` | `4DAE50B3EEC87896B8ED530D79F9FC0515004453BE53E8D0914AD0BA9AA2EFBE` |
+| `v2/signature/streaming_fractal.py` | `884DE81CA040AC915CAE0F7BDF43743A679E58697F630EAE4CDC9CFDE78A906F` |
+| `tests/test_streaming_fractal.py` | `7F45455C15C6047B320843B4DA6C69D5570D955D551EEB4B0E7D09EA5C9C8BE0` |
+
+Grace independently verified the mathematical equivalence of the vectorized structural decoding, observable filtering, multi-scale streaming box counter, trailing-partial-box rule, and regression fit against the canonical legacy v33 definition. The intact project environment passed the repository-wide suite `66/66`, including all 9 focused D_f tests; this resolves the environment limitation disclosed in Amendment 32.
+
+The code-audit gate is therefore closed and execution of the frozen read-only derivator on the clean D@23 snapshot is authorized with the audit path/hash and `--decision-log-anchor-confirmed` supplied to the runner. This authorization is limited to producing the D_f artifact set defined in Amendment 32. It does not authorize modification of Level 0 sources or reports, manuscript edits, numeric replacement of the printed `0.992`, or scientific interpretation before post-execution artifact audit and editorial reconciliation.
+
+### Amendment 34 — 2026-08-19 (D@23 D_f read-only derivation completed; display mismatch; artifact audit pending)
+
+The audit-gated read-only run authorized by Amendment 33 completed successfully:
+
+`D:\Iban\Projectes\HSI\results\hsi_v2\d0154_d23_fractal_rederivation\d0154-d23-fractal__maxbox-64__20260818T113007`
+
+The run used the exact code and audit hashes anchored in Amendments 32-33 and verified the clean D@23 source chain before scanning. It consumed exactly `232,475,477,397` structural characters / `58,118,869,350` packed bytes and recovered exactly `226,533,047,253` observable bits (`103,455,189,287` ones plus `123,077,857,966` zeros), matching the frozen metadata and source audit without truncation or padding drift.
+
+Deterministic readout:
+
+- full-precision clean `D_f = 0.9938364154797651`;
+- clean three-decimal display: `0.994`;
+- manuscript display under reconciliation: `0.992`;
+- absolute difference from the stored manuscript numeric anchor: `0.0018364154797650967`;
+- classification: **`display-mismatch`**;
+- synthetic equivalence gate: passed on all four fixtures;
+- status: `completed`, error: null;
+- elapsed time: `105,783.797 s` (`29.384 h`);
+- peak RSS: `343,248,896` bytes (`327.35 MiB`).
+
+Ariadna independently recomputed the least-squares slope from all 62 rows of `box_counts.csv`, obtaining `D_f = 0.9938364154797672`; the approximately `2e-15` float-level difference from `summary.json` confirms the reported regression and the `0.994` display classification. The run log contains no traceback, memory error, failed status, warning, or unhandled interruption.
+
+Artifact hashes independently recomputed from disk:
+
+| Artifact | SHA-256 |
+|---|---|
+| `manifest.json` | `8A34AE26CECE84974988C12F0DE78E55D8F8DF616F249B15AA5FC47CB5641E6E` |
+| `summary.json` | `31277B970F167CB60CE83B834BD2C15529028F928E9AD7DC889A1385534AB920` |
+| `report.md` | `4CC62A18D040536AA8004620811F373721B972B1FF366DAEC3E0BEA98C7E3217` |
+| `box_counts.csv` | `FA55F9C4F6DFE169190A332E12191B356778B476485209EF10F201DA1C0AE7A3` |
+| `equivalence.json` | `66C1ACD43CC9F2CD228CEDEB6A681FEACBD909BDA266712C3CCB693D774D1379` |
+| `checkpoint.json` | `FDCCE9A17BA963F4441C81FDDA3F77ED02C1716CB9319720EA4CC872CE4C645B` |
+| `runtime_state.json` | `62C644803BC1EB4F7875FCF0A15EB2C9A8FA4EBE5FB15DB92DB72368B86839A8` |
+| `run.log` | `5DB8C79B2F9BFCC9D09B1C0FDD4E681553D05E889E454D07D2A36EBFDBB8F001` |
+
+The sidecar `manifest.sha256` records the same manifest hash. **State: material readout completed; independent post-execution artifact audit and Sofia's editorial ruling remain mandatory.** This amendment records the discrepancy rather than resolving it: no manuscript edit, replacement of `0.992`, reinterpretation of Variant D, or change to the paper-facing classification is authorized yet.
+
+### Amendment 35 — 2026-08-19 (D_f audited; editorial ruling: cell to the measured clean value, TE precedent)
+
+**Verification (Sofia, filesystem level):** Grace's post-execution audit `docs/HSI_v2_Audit_D0154_D23_Fractal_Stage1_Readout.md` SHA-256 `E1BFF022E05F27DC6418AE67936DA722121EA406CB401B98166E723D430FA23C` — MATCH. Four run artifacts independently recomputed (`manifest.json`, `summary.json`, `report.md`, `box_counts.csv`) — **all MATCH** against Amendment 34's table. Grace's verdict: **AUDITED AND VALIDATED**.
+
+**Editorial ruling (follows the Amendment 15 TE precedent exactly; Grace's recommendation and Sofia's ruling agree in this case):**
+
+1. The `tab:signatura` D_f cell for D updates **0.992 → 0.994** at reconciliation. Status: `reconciliation-ready`. The legacy value came from a bug-affected pre-patch D@23 source; the audited cause of the +0.0018 shift is complete full-stream sampling without truncation (232.5B structural chars / 226.5B observable bits). Policy item 1 governs: no legacy cells in a sanitized table.
+2. Qualitative classification of D is invariant (coherent compact regime) — matrix stop/escalation conditions NOT triggered.
+3. Reporting quality noted for the record: the run's cross-check discipline (independent least-squares recomputation over all 62 `box_counts.csv` rows agreeing at ~2e-15) and the 29.4h full-stream scan with clean checkpoint chain meet the standard without remark.
+4. Release-plan annex A6 extended: the D_f cell joins TE E/I and cbar F as confirmed numeric patches. At release execution, a **single consolidated table footnote** will cover all sanitation-updated cells rather than per-cell footnotes; drafting tracked in the plan.
+
+**Priority A remaining after this amendment:** LZ of F@27, TE of F@27, DET provenance-review, A-check reconciliation, E cbar display decision (Am. 11). The D-variant track (regeneration + D_f) is **complete**.
+
+No manuscript edit authorized. Editorial freeze unchanged.
+
+### Amendment 36 — 2026-08-19 (F@27 TE resumable infrastructure candidate; execution blocked for code audit)
+
+The pending full-stream F@27 transfer-entropy re-derivation is expected to run for several days and is exposed to involuntary Windows restarts. Iban selected the conservative infrastructure route: preserve the canonical TE protocol exactly while making the computation restartable from auditable checkpoints. Ariadna implemented this as a bounded change to the existing Priority-A signature runner; no F@27 TE or LZ readout was opened.
+
+**Scientific protocol held invariant:** density-mode streaming TE; scales `{4,8,16,32,64,128}`; history `k=3`; `te_chunk_bits=10,000,000`; deterministic per-chunk shuffle with seed `42`; full observable stream (`te_max_bits=0`). Checkpointing changes interruption recovery only. It does not change chunk boundaries, estimator state, shuffle semantics, source data, or paper-facing thresholds.
+
+**Recovery design:**
+
+1. An atomic JSON checkpoint is emitted only after both the observed and shuffled accumulators have fully consumed the same chunk (default cadence: 25 completed chunks).
+2. The checkpoint serializes every mutable `StreamingTEAccumulator` field, both accumulator instances, the exact `PCG64` state, observable counters, elapsed time, and the uncompressed v33 encoded-byte boundary.
+3. Resume uses `gzip.GzipFile.seek()` to that exact encoded-byte boundary and rejects any mismatch in source SHA-256/size, TE parameters, target set, code hashes, or run plan.
+4. A cached final `F_te.json` is reusable only when its companion checkpoint exists, declares `status=completed`, and carries the exact current execution identity.
+5. LZ completed output may also be reused when the same multi-metric run is resumed; no completed TE accumulator is silently recomputed or mixed with a different protocol.
+
+**Implementation candidate hashes:**
+
+| Artifact | SHA-256 |
+|---|---|
+| `hsi_v2_d0154_signature_priority_a_batch.py` | `616D9596161FB6E9EFF257FEE0A746BDE7B9838515AB2BC746A5EA71158A2248` |
+| `v2/signature/resumable_te.py` | `C7DEB96E5CE6E3E21E979078C605DC2C7229F8E1D519E0B5454DD37E44819387` |
+| `tests/test_resumable_te.py` | `57C53841A14E0D26CD7D05950C6A8571BDEBF8B0BBFEE9E7A1ECF5308B655E10` |
+
+**Local verification:** focused standard-library suite `8/8 PASSED`, including an end-to-end synthetic interruption after a real checkpoint followed by resume. The continuous and resumed executions agree exactly for both TE matrices, all reported averages and ratios, processed offsets/counters, and final value; accumulator serialization and PRNG state also round-trip exactly. `py_compile`, Ruff lint, format check, and `git diff --check` pass. The project venv does not contain `pytest`, so no repository-wide pytest claim is made here; the intact-suite run remains part of Grace's independent audit gate.
+
+**State:** infrastructure candidate only. Execution on F@27 remains **BLOCKED** until Grace audits the implementation and the audit hash/verdict is anchored in a subsequent amendment. The D_f audit wording issue is separate: its finite-depth D@23 full-stream value must not be described as an asymptotic value.
+
+### Amendment 37 — 2026-08-19 (F@27 resumable TE code audit APPROVED; execution gate closed; D_f audit erratum)
+
+Grace independently audited the resumable full-stream TE implementation introduced in Amendment 36:
+
+- audit: `docs/HSI_v2_Audit_Code_D0154_Resumable_TE.md`
+- SHA-256: `275A5A904D42EB85496DF5085BE2439D7E1AF0F5D625765522DD222012362038`
+- verdict: **APPROVED**
+- intact repository suite: **74/74 PASSED** in 17.26 s.
+
+The audit validates exact restoration of both TE accumulators and the `PCG64` state, atomic checkpoint persistence, exact v33 encoded-stream restart boundaries, strict source/protocol/code identity guards, and equality between continuous and interrupted/resumed readouts. Sofia/Iban may now launch the canonical F@27 TE re-derivation using the Amendment 36 hashes and protocol. No F@27 TE execution or readout is recorded by this amendment.
+
+Grace also corrected the wording in the D@23 D_f post-execution audit from an asymptotic characterization to **"exact full-stream value at finite depth D@23"**. Corrected audit:
+
+- `docs/HSI_v2_Audit_D0154_D23_Fractal_Stage1_Readout.md`
+- new SHA-256: `DFDFB9FA4AB1B6FE72F6429857420D44644FB9363C2952F956AB91940902C85F`
+
+This erratum supersedes the audit hash recorded in Amendment 35 but changes no artifact hash, numerical value, verdict, classification, or editorial ruling. The D_f cell remains reconciliation-ready at `0.994`.
+
+### Amendment 38 — 2026-08-25 (F@27 clean LZ/TE material readout completed; one-symbol v33 padding disclosed; audit pending)
+
+The Amendment 37-authorized Priority-A run completed successfully after a continuous full-stream execution:
+
+- run: `D:\Iban\Projectes\HSI\results\hsi_v2\d0154_priority_a_signature\d0154-signature-priority-a__20260819T214508`
+- target: clean `F@27`
+- metrics: legacy-compatible LZ prefix ladder plus full-stream density-mode TE
+- TE protocol: scales `{4,8,16,32,64,128}`, history `k=3`, `te_chunk_bits=10,000,000`, per-chunk shuffle seed `42`, `te_max_bits=0`
+- TE execution: `69,883` chunks, `2,796` checkpoint writes including the final `completed` checkpoint, `478,572.859 s`; production run did not require resume (`resumed=false`)
+- manifest SHA-256: `C9B7005E00B3430123F65232C9DDCEA9F8AEFF31C5ABF3041F4648C517AD9166`
+
+**Material readout (pre-audit):**
+
+| Metric | Paper display | Clean F@27 value | Clean display | State |
+|---|---:|---:|---:|---|
+| LZ | `0.5729` | `0.5719661285073038` | `0.5720` | display mismatch |
+| TE observed/shuffle | `0.92` | `0.9095386760765845` | `0.91` | display mismatch |
+
+Independent arithmetic recomputation from `F_lz.json` and the two TE matrices reproduces both stored values exactly (`avg_observed_te=0.0034147200129430668`; `avg_shuffle_te=0.0037543428363848294`). The differences require editorial reconciliation but do not by themselves establish a qualitative classification change.
+
+**Artifact integrity:** manifest sidecar matches the manifest, and every manifest-declared output was recomputed independently as MATCH.
+
+| Artifact | SHA-256 |
+|---|---|
+| `manifest.json` | `C9B7005E00B3430123F65232C9DDCEA9F8AEFF31C5ABF3041F4648C517AD9166` |
+| `summary.json` | `A60E48C7EEB42BFB63BFC55152FC76CCD3C19CADE1A72E43E011B430E4761FE0` |
+| `report.md` | `FE63E4AF8CEC424747BE4CEFF8CFDCA7FD9E3F41E914EF1C64161DED0FC6E50F` |
+| `F_lz.json` | `32E2B6BC364F1460C0E8EC6DA6DDB76F3BBB41F9F3A651C22E65176156BBD4F5` |
+| `F_te.json` | `FF8E25561E9A5ABB4CBF1539C55B617A8C6BB71D8C607B648DFCF83C35A03C62` |
+| `F_te_checkpoint.json` | `3FBD8450460814DF47B67765A06D4D9E8B03026CC009A4C7F3C7B18AB4BE90DF` |
+| `raw_metric_details.json` | `1964006CB827E58B8A4A9D2D1565FF0FC93B477BFFED19B8B4C672A0FCB2CF8D` |
+| `signature_display_comparison.csv` | `7E0204CBE8C62643667D382F8050B463F26B3B4311466D4EE497E0AFFEB114D3` |
+| `signature_metric_rows.csv` | `5FF8015702FEB55851856783D16D8DCE7DE90C1EBCA36224F461E4C686771E76` |
+| `batch.log` | `355CD7707A401492CDFD569ACAF587AA6CC8E284E382CFC888EE70E6EA9D8DC6` |
+
+**Mandatory v33 padding disclosure:** Level 0 records `1,397,647,527,079` structural symbols (`mod 4 = 3`) and `1,118,478,867,305` observable bits. Canonical byte packing pads the incomplete final four-symbol group with one `00` code; the TE decoder therefore consumed `1,118,478,867,306` observable symbols, exactly one trailing zero more than the Level 0 count (`8.94e-13` of the analyzed stream). The packed length `349,411,881,770` bytes and the encoder's final-padding rule confirm the cause exactly. LZ is unaffected because it reads only the first 50,000 observable bits.
+
+No post-hoc correction, rerun, or narrative rescue is authorized here. Grace's post-execution audit must rule explicitly whether the one-symbol padding is part of the historically reproduced legacy TE protocol or requires a separately declared correction path. Until that ruling and Sofia's reconciliation, both numeric cells remain **audit-pending**, no manuscript edit is authorized, and the D-0154 freeze remains active.
+
+### Amendment 39 — 2026-08-25 (F@27 LZ/TE audited; editorial ruling: both cells to measured clean values; F track COMPLETE)
+
+**Verification (Sofia, filesystem level):** Grace's audit `docs/HSI_v2_Audit_D0154_F27_Signature_LZ_TE_Readout.md` SHA-256 `4A4F75E81D0DC261238388A79CBEDC9E1372707CA87AF1C87AAD8A68038F3622` — MATCH. Six key run artifacts independently recomputed (`manifest.json`, `summary.json`, `report.md`, `F_lz.json`, `F_te.json`, `signature_display_comparison.csv`) — **all MATCH** against Amendment 38's table. Verdict: **AUDITED AND VALIDATED** (integrity across 133h / 69,883 chunks).
+
+**Padding ruling accepted:** Grace rules the one-symbol v33 padding (8.94e-13 of the stream, metric impact < 1e-12) requires no re-execution. Accepted as final: the deviation sits nine orders of magnitude below display resolution. The Amendment 38 disclosure and this ruling are the complete record; the consolidated manuscript footnote does **not** carry it (below any statable resolution), the Decision Log does.
+
+**Editorial rulings (standard sanitation-recovery precedent, Amendments 15/35):**
+
+1. `tab:signatura` **LZ of F: 0.5729 → 0.5720**, `reconciliation-ready`. Corroborating note: the clean F@20 smoke value (Amendment 10) was also 0.5720 — the clean value is depth-stable across @20/@27, identifying the legacy 0.5729 as the pre-patch artifact.
+2. `tab:signatura` **TE of F: 0.92 → 0.91**, `reconciliation-ready`. The §5/§6 prose narrating F's TE collapse ("consistent amb el flux esperat d'una seqüència sense estructura jeràrquica") is numerically unaffected: 0.91 vs 0.92 tells the same story. A-check will confirm no prose cell cites 0.92 verbatim.
+3. Qualitative taxonomy of F invariant (rigid, no inter-scale transfer above null). Matrix stop/escalation NOT triggered.
+4. Release plan annex A6 extended (A6.6); the consolidated footnote now covers TE E/I, D_f D, cbar F, LZ F, TE F.
+
+**Priority A remaining after this amendment:** DET provenance-review (whole row), A-check reconciliation, E cbar display decision. **The F-variant track (F@27 regeneration + cbar + LZ + TE) is COMPLETE.**
+
+No manuscript edit authorized. Editorial freeze unchanged.
+
+### Amendment 40 — 2026-08-25 (two wording precisions accepted as binding; erratum to Amendment 39's padding phrasing)
+
+Ariadna requested two epistemological wording precisions to the audit language, with no change to values, verdict, or editorial decisions. **Both are accepted as binding for all record-facing and manuscript-facing language**, as they apply the standing tone-guard doctrine (Amendment 15: negatives bounded like positives) in the direction not yet exercised — the implementer correcting the auditor's overstatement:
+
+1. **TE negative, canonical formulation.** The phrases "indistinguishable from the shuffled baseline", "zero non-trivial routing", and "confirming lack of hierarchical depth" are superseded by: *"TE_ratio = 0.91 shows no observed TE excess over the shuffled baseline under this estimator and protocol. This result does not assert TE = 0 or independently exclude every form of hierarchical structure."* This is the only formulation eligible for A-check prose and any manuscript use.
+2. **Padding, fact vs bound.** `8.94e-13` is the **source fraction**, not a formally derived bound on metric impact. Canonical statement: *"The trailing zero is part of the effectively reproduced legacy v33 byte-stream convention. Its source fraction is 8.94e-13. No rerun is required under the reconciliation protocol."* The no-rerun ruling stands on protocol grounds, not on an impact bound.
+
+**Erratum to Amendment 39 (Sofia, own text):** Amendment 39's padding paragraph asserted "metric impact < 1e-12" citing the audit. That figure is a plausible order-of-magnitude estimate, not a derived bound, and is hereby restated per point 2 above. Prior text stands unmodified per log convention; this amendment is its correction of record.
+
+**Request to Grace:** an erratum addendum to `docs/HSI_v2_Audit_D0154_F27_Signature_LZ_TE_Readout.md` incorporating both formulations, so the archived audit matches the corrected record (new SHA-256 to be anchored on receipt).
+
+LZ = 0.5720, TE = 0.91, invariant taxonomy, and the F-track closure are unchanged.
+
+### Amendment 41 — 2026-08-25 (corrected audit anchored; F-track record fully consistent)
+
+Grace incorporated both Amendment 40 formulations into the archived audit. Verified by Sofia at filesystem level: `docs/HSI_v2_Audit_D0154_F27_Signature_LZ_TE_Readout.md`, new SHA-256 `89D51869436BE7DDC772BB81CD95F0982D45799C74603D761B7E8B4628230E2C` — MATCH; both canonical formulations confirmed present in the text; the superseded strong phrases and the non-derived `1e-12` bound confirmed absent. The `4A4F75E8...` version anchored in Amendment 39 is superseded by this one.
+
+No pending editorial action: the cell rulings of Amendment 39 (LZ 0.5720, TE 0.91, `reconciliation-ready`) already stand and are unaffected. The F-track record — readout, audit, wording, and rulings — is now internally consistent end to end.
+
+### Amendment 42 — 2026-08-25 (DET variant-boundary resume implementation candidate; execution audit-gated)
+
+After the Windows restart that interrupted the approved DET provenance-review, filesystem inspection confirmed that run `d0154-det-provenance-review__20260715T100343` contains only `manifest.json` and `batch.log`: no source inventory, completed variant artifact, summary, CSV, or scientific readout exists. The interrupted run therefore remains a no-result infrastructure trace and is not retrofitted or interpreted.
+
+Iban selected the conservative recovery design proposed by Ariadna: **variant-boundary resume only**. The public runner `hsi_v2_d0154_det_provenance_review.py` now treats `<variant>_det.json` as reusable only after the full-medium scan, dynamic thinning, prefix control, both seeded RQA evaluations, row construction, and atomic publication have all completed. A restart inside a variant recomputes that whole variant; no partial sample, partial scan, or partial RQA state is ever reused.
+
+Resume is fail-closed:
+
+- new CLI flag `--resume-run <run_dir>` requires `--execute` and verified SHA-256 source identity;
+- target set/order, protocol, Decision Log context, results base, run directory, implementation hashes, runner hash, and exact source inventory must match the interrupted manifest;
+- completed manifests cannot be resumed;
+- each reusable variant artifact carries status `completed`, its complete execution identity, the reconciled row, and raw detail;
+- JSON, CSV, report, manifest, checksum, and per-variant writes use temporary-file + flush + `fsync` + `os.replace` publication;
+- final summaries are rebuilt in contractual target order from validated completed artifacts plus newly computed variants;
+- atomic temporary remnants are excluded from the output-hash inventory.
+
+No scientific parameter or definition changed: full-medium sampling, dynamic thinning, `det_bits=10000`, `medium_divisor=1000000`, `medium_min_step=100`, fixed threshold seed `42`, 50,000,000-byte chunks, the legacy RQA implementation, paper comparison precision, and the prefix-contiguous decomposition control remain exactly as in the previously approved design.
+
+**Implementation candidate hashes:**
+
+- `hsi_v2_d0154_det_provenance_review.py`: `F2D35BE182BFA5A5A2552303145E7F310356C8B063886530F2C606630E16280F`
+- `tests/test_det_variant_resume.py`: `900E3F40D7FF305BCAEB491B62D7FA4352F16DBDFBAB327758E3874871177C05`
+- unchanged medium sampler: `505E4D4D97D9050C7F847A1A84DE97C457F3597603E3DC2DE60254D9EC2A2D62`
+- unchanged RQA implementation: `1DD6DFC4938F68DDAB4A74B5DA67695B3F58D72F53DCAA92AF1CECBB0EB25B16`
+
+Validation by Ariadna: focused canonical Python 3.11 suite **5/5 passed**, including a synthetic two-variant interruption in which the completed first variant is reused, the interrupted second variant alone is recomputed, and final row order and manifest closure are preserved. Static compilation and Ruff checks pass. The broader local suite was not claimed as complete because this venv lacks the unrelated `pytest` dependency used by two pre-existing test modules; Grace remains responsible for the independent integrated-environment run.
+
+**Gate:** this amendment records an infrastructure implementation candidate only. No DET execution is authorized under the modified runner until Grace re-audits the exact hashes above and Sofia/Iban accept the audit. The prior design audit (`9B6D118188626A48924146B99BA162DD88148645BAE78A31F7B988536B4F2C4F`) remains the scientific-method reference; the new audit is scoped to resume identity, atomicity, interruption semantics, and proof that the metric path is unchanged.
+
+### Amendment 43 — 2026-08-25 (DET variant-resume code audit approved; execution gate cleared)
+
+Grace completed the independent code audit requested by Amendment 42:
+
+- audit: `docs/HSI_v2_Audit_Code_D0154_DET_Variant_Resume.md`
+- audit SHA-256: `A338E59BA7B92C03734BB51FE5AA7C860A763BBBC97381D60D3B7D2B8FA848A1`
+- verdict: **APPROVED FOR DET EXECUTION**
+- integrated test suite: **79/79 passed** in 48.89 s.
+
+Ariadna independently recomputed the audit and implementation hashes at filesystem level; all match exactly:
+
+- runner: `F2D35BE182BFA5A5A2552303145E7F310356C8B063886530F2C606630E16280F`
+- resume tests: `900E3F40D7FF305BCAEB491B62D7FA4352F16DBDFBAB327758E3874871177C05`
+- unchanged medium sampler: `505E4D4D97D9050C7F847A1A84DE97C457F3597603E3DC2DE60254D9EC2A2D62`
+- unchanged RQA metric: `1DD6DFC4938F68DDAB4A74B5DA67695B3F58D72F53DCAA92AF1CECBB0EB25B16`
+
+Grace explicitly validated all five requested guards: partial variants are rejected; source/code/plan identity is strict; atomic publication cannot validate a truncated artifact; the legacy sampling and RQA path is invariant; and the interruption/resume test coverage is sufficient. The infrastructure gate introduced by Amendment 42 is therefore cleared under Iban's standing authorization for this DET reconciliation.
+
+Execution scope remains the previously approved five clean targets `{E@24, I@23, D@20, G@20, F@20}` with the unchanged protocol. The July run `d0154-det-provenance-review__20260715T100343` remains a no-result trace and cannot be resumed under the new identity schema; execution must begin in a fresh run directory. Any later interruption may resume only that new run via its exact path and the audited `--resume-run` boundary.
+
+No manuscript edit or numeric reconciliation is authorized by this code-gate closure. The resulting run requires the normal post-execution artifact/hash audit and editorial ruling before any paper-facing use.
+
+### Amendment 44 — 2026-08-26 (DET provenance-review completed; five legacy-display mismatches; post-execution audit pending)
+
+The audit-approved DET provenance-review completed as a fresh, uninterrupted run:
+
+- run: `D:\Iban\Projectes\HSI\results\hsi_v2\d0154_det_provenance_review\d0154-det-provenance-review__20260825T172239`
+- status: `completed`
+- elapsed wall-clock interval: `04:55:14`
+- `resume_count=0`; no variant artifact was reused
+- manifest SHA-256: `AA063AEF9F5D5CCB15F58DE13CA6C9374152B939984AAAF1071D779A8C668ED4`
+- runner SHA-256 recorded by the manifest: `F2D35BE182BFA5A5A2552303145E7F310356C8B063886530F2C606630E16280F` (MATCH with Amendments 42-43).
+
+All nine manifest-declared output hashes were independently recomputed by Ariadna and match exactly:
+
+- `summary.json`: `F2F024689DA40AFE6A31DCD265390DF2FE0ED576E89D63B681E78A39FFF73FCD`
+- `report.md`: `860A577AF54E58B664FC8575261AF5FB0022989087E03A3544FD2A89AE9CC26A`
+- `det_reconciliation.csv`: `E3889A2511053B3F99483FA7ABF7F5FDCF060D4F6E85DD61923A564E0B53CE54`
+- `raw_det_details.json`: `9F83A485E851656AAE93B28E4CECDA72814A3E40A5E4232212D21B8DD53C70D2`
+- `E_det.json`: `72DA8E1E52A172050A9E86B3ED4A5A67AEAB2CF53EB7851EF5236575D36B9C49`
+- `I_det.json`: `05AB03DC869E0527631AB71935E0A9D1CAAA82AA597FDB1C31C55496A8C338AD`
+- `D_det.json`: `E08D2223C46F2C9D59A504DAA027F6046334E011BE270E1388BDCB35F817CDAA`
+- `G_det.json`: `A8E256A9ABFF41BD040A77EF44FFC2FD216EC5438656C9F21C78100A86DFC327`
+- `F_det.json`: `7CAAF8D929B18F5B7FF614CF38FC49904F21EB940F8EBF34FA5483A2A8C98B15`
+
+**Frozen-protocol readout (factual; no editorial ruling yet):**
+
+| Variant | Source | Paper DET | Net legacy DET | Net prefix-control DET | Legacy display |
+|---|---:|---:|---:|---:|---|
+| E | @24 | 0.55 | 0.7432109374490433 | 0.6690650707329879 | `0.74` / mismatch |
+| I | @23 | 0.55 | 0.7485775040754282 | 0.5939187013535623 | `0.75` / mismatch |
+| D | @20 | 0.55 | 0.7473162081221805 | 0.6208249917193246 | `0.75` / mismatch |
+| G | @20 | 0.55 | 0.7490272050086413 | 0.5951826286287144 | `0.75` / mismatch |
+| F | @20 | 0.56 | 0.6614446702740235 | 0.6861039524629454 | `0.66` / mismatch |
+
+The automated status is therefore `review_required=true`: all five legacy-protocol displays differ from the paper values, and the contiguous-prefix decomposition also differs in every row. This is a systematic readout, not a single-row anomaly, but no cause or manuscript consequence is assigned before independent audit.
+
+**Independent arithmetic checks:** for every variant, `medium_sample_count = ceil(observable_bits_scanned / medium_step)`, `representative_step = floor(medium_sample_count / 10000)`, and the final selected sample contains exactly 10,000 bits. Canonical v33 trailing padding accounts for decoded tail additions in I/G/F (`+3`, `+3`, `+1` symbols respectively; E/D `+0`), but the last selected sample positions precede those tails by `2,236,163,609`, `16,379,228`, and `742,005` observable positions. Padding therefore cannot enter any DET sample in this run.
+
+**Gate:** post-execution Grace audit is mandatory before any classification of the mismatch as sanitation recovery, provenance failure, depth effect, or scientific drift. One explicit audit question remains: because every affected target moved while the unaffected canonical B baseline was outside this contract, Grace/Sofia must decide whether a separately preregistered B-only legacy-protocol calibration is required for causal decomposition. No B peek or follow-up run is authorized by this amendment. Manuscript freeze remains active; no table or prose edit is authorized.
+
+### Amendment 45 — 2026-08-26 (Sofia ruling: B-only calibration REQUIRED before any DET attribution; DET cells blocked, not reconciliation-ready)
+
+**Verification (Sofia, filesystem level):** manifest `AA063AEF...` MATCH; spot-recomputation of `summary.json`, `det_reconciliation.csv`, `raw_det_details.json` — all MATCH against Amendment 44's table. Two-party verification standing.
+
+**Ruling 1 — no cause attribution is possible from this run alone, and none is made.** Three live hypotheses: (a) sanitation recovery (all five targets were bug-affected sources; the TE track showed order-of-magnitude signal recovery on clean data, so large DET shifts are plausible); (b) reconstruction infidelity (the "legacy protocol" was folklore-prone — the dynamic-step discovery of Amendment 16 proved the written record did not match the code; the same may hold for other RQA details behind the paper's 0.55); (c) both. The systematic pattern — every row moves, in both the legacy-protocol and prefix-control readouts, with four variants clustering at 0.74-0.75 — indicates a systematic cause but does not select between (a) and (b).
+
+**Ruling 2 — the B-only calibration is REQUIRED and is the decisive experiment** (the Amendment 15 method lesson operationalized: no diagnosis without decomposition). B's generation path is immune to the L0 bug (D-0153): its sources today are the same data that produced the paper's B DET ≈ 0.55. Interpretation matrix, fixed before execution:
+
+- **B reproduces its paper display under the reconstructed protocol** → the reconstruction is faithful → the five mismatches are attributed to sanitation recovery → the five cells update to clean values (whole-row provenance treatment, consolidated footnote).
+- **B fails to reproduce** → the reconstruction is unfaithful (B's data never changed, so the protocol is the only free variable) → NO attribution to sanitation is permitted; the provenance hunt continues; the five clean values remain blocked from the manuscript.
+
+Contract requirements: separately preregistered mini-contract (B source and depth matching the paper's B DET provenance, declared from legacy metadata; the frozen `medium_count`/`representative_step` formulas; fixed threshold seed; predeclared reproduction criterion = display equality at the paper's two-decimal precision, with the full-precision value reported; outcome space `b-calibration-reproduces` / `b-calibration-fails`; no target peek before freeze). Grace audits design and post-execution. Estimated cost ~1h (five variants took 4h55).
+
+**Ruling 3 — sequencing and status.** Grace's post-execution audit of the five-variant run (Ariadna's questions 1-2) proceeds first or in parallel; the B-only contract may draft now and freezes after that audit incorporates any findings. **Unlike every previous track, the five DET cells are `blocked`, not `reconciliation-ready`** — no value may enter the release plan annex until the calibration resolves. DET is now the critical path of the D-0154 closure; the A-check waits on it.
+
+**Ruling 4 — disclosure discipline noted:** the padding non-entry check (quantified distances of 742,005 to 2.24e9 positions between last selected sample and decoded tails) is accepted as complete; padding is excluded as a factor in this run by arithmetic, not by assertion.
+
+No manuscript edit authorized. Editorial freeze unchanged.
+
+### Amendment 46 — 2026-08-26 (B-only calibration prereg: Sofia pass PASSED; both Grace audits anchored; interpretation matrix refined for the §3.4 boundary)
+
+**Verification (Sofia, filesystem level, all MATCH):** prereg `prereg_D0154_DET_B_only_calibration_v0.1_DRAFT.md` SHA-256 `4329AA821A8ECFE96A684E8D27DB79C1DC6539E6677C8394053BF6BCA1EE67BC`; Grace's five-variant readout audit `docs/HSI_v2_Audit_D0154_DET_Provenance_Review_Readout.md` SHA-256 `E2210D28F8693C48DAEC2AEC2A3D2F751D7956DE5CA72892BED9BF2AE6304E74` (verdict AUDITED AND VALIDATED; anchored here for the first time); Grace's prereg audit `docs/HSI_v2_Audit_Prereg_D0154_DET_B_only_Calibration_v0.1.md` SHA-256 `63AD5C66F3D4EEC9D3971220A8E6C36ECFC6651A83ED3911E4F7AECBF345AB30` (verdict APPROVED FOR PROMOTION TO v1.0; §3.4 source-lineage boundary explicitly accepted).
+
+**Sofia editorial pass: PASSED.** Independently checked: the frozen sampling arithmetic (`ceil(246,162,834,941 / 252,105) = 976,430`; `floor(976,430/10,000) = 97`; `medium[::97][:10000]` yields exactly 10,000 samples); the blinding choice of freezing only the paper display "0.55" without consulting the historical full-precision value (stronger than required); the two-outcome space with operational aborts correctly excluded as a scientific class; seed 42 reinitialized immediately before the RQA call; no prefix control or extra depth (single-question discipline).
+
+**Interpretation matrix refined (binding; supersedes the simpler matrix of Amendment 45 in view of the declared §3.4 boundary — the historical multiscale artifact lacks its input-snapshot SHA):**
+
+- `b-calibration-reproduces` → the reconstruction and the source identity are **jointly validated in preponderance**. Declared residual: a two-decimal display match carries a small coincidence probability (order of a few percent for a value landing in any given 0.01 bin); the conclusion is "consistent with faithful reconstruction", and — B being the only bug-immune lineage — sanitation-recovery attribution for the five affected variants then proceeds. The residual is recorded, not hidden, and does not block the attribution.
+- `b-calibration-fails` → **"reconstruction-or-source-identity not validated"**: within this contract, protocol infidelity cannot be distinguished from historical-artifact mislabeling. Either way, no sanitation attribution is permitted and the five DET cells remain `blocked`; the provenance hunt continues with both hypotheses open.
+
+The contract's operational outcomes stay as drafted; this matrix is the single interpretive source of record.
+
+**Remaining gate:** Iban authorization → promotion to v1.0 (content identical except version/freeze metadata; no citation delta required this time) → freeze anchor + OTS → wrapper implementation → Grace code audit → execution.
+
+### Amendment 47 — 2026-08-26 (Iban authorization granted for the B-only DET calibration)
+
+Iban authorizes the B-only DET calibration contract (explicit go, 2026-08-26, relayed via Sofia's session). All design gates satisfied: Sofia editorial pass PASSED with refined interpretation matrix (Amendment 46), Grace prereg audit APPROVED FOR PROMOTION (`63AD5C66...`), Iban authorization GRANTED (this amendment).
+
+Mechanical sequence, owned by Ariadna: promote v0.1_DRAFT (`4329AA82...`) to `prereg_D0154_DET_B_only_calibration_v1.0.md` — content identical except version/freeze metadata, **no content delta authorized**; compute freeze SHA-256 and record the anchoring amendment here; Sofia verifies the promotion diff and OTS-stamps the frozen contract per D-0157; wrapper implementation; Grace pre-execution code audit; execution. Any substantive difference at promotion voids the editorial pass. The Amendment 46 interpretation matrix governs the readout regardless of outcome.
+
+### Amendment 48 — 2026-08-26 (DET B-only calibration v1.0 freeze anchor; implementation awaits Sofia verification + OTS)
+
+**Frozen contract:** `prereg_D0154_DET_B_only_calibration_v1.0.md`, SHA-256 `B51F2AF171357ED53CF99E2769ED5A9A079A9B0BBC8010B35CCFF73A7F0B97D7`.
+
+**Promotion verification (Ariadna):** source draft `prereg_D0154_DET_B_only_calibration_v0.1_DRAFT.md` SHA-256 `4329AA821A8ECFE96A684E8D27DB79C1DC6539E6677C8394053BF6BCA1EE67BC`; a mechanical comparison of the complete scientific body from `## 1. Scope` through `## 12. Boundary` returned exact equality (`12,187` characters in both versions). The only deltas are authorized version/status metadata, the Grace/Sofia/Iban promotion provenance in the header, and the `## 13. Freeze State` transition from draft gates to the frozen execution sequence. No scientific, sampling, estimator, source, outcome, or wording-boundary content changed.
+
+**Current gate:** target execution remains forbidden. Per Amendment 47, Sofia must independently verify the promotion diff and OTS-stamp the v1.0 contract under D-0157 before Ariadna implements the dedicated wrapper. The wrapper then requires Grace pre-execution code audit before any B@23 scan. The Amendment 46 interpretation matrix remains binding.
+
+### Amendment 49 — 2026-08-26 (Sofia verification of the promotion + OTS anchor; wrapper implementation cleared)
+
+**Freeze hash independently recomputed:** `B51F2AF171357ED53CF99E2769ED5A9A079A9B0BBC8010B35CCFF73A7F0B97D7` — MATCH with Amendment 48.
+
+**Promotion diff independently verified** (line-level diff, separate from Ariadna's mechanical body comparison): changes confined to the title, the status block, a revision note citing the Grace prereg audit (`63AD5C66...`) and Amendments 46-47, and §13's transition from draft gates to freeze state. Zero diff hunks in the scientific body (§1-§12), corroborating Ariadna's 12,187-character exact-equality check by an independent method. **No content delta — as required: none was authorized.** The Amendment 46 editorial pass carries over to the frozen contract.
+
+**OTS anchoring (D-0157):** the v1.0 contract is timestamped; `.ots` sidecar alongside the file, to enter the next commit. Calendar attestations immediate; Bitcoin aggregation asynchronous.
+
+**Gate status:** the Amendment 47 sequence advances — **wrapper implementation is cleared**. Next: Grace pre-execution code audit, then the B@23 scan. The Amendment 46 interpretation matrix remains the single interpretive source for the readout.
+
+### Amendment 50 — 2026-08-26 (DET B-only dedicated wrapper implementation candidate; Grace code audit REQUIRED)
+
+**Implementation candidate:**
+
+- `hsi_v2_d0154_det_b_calibration.py` — SHA-256 `1AD1C5D7964F6CF47480D02BE134C18D0B6DE0DC935F21756591D766AECAF77F`.
+- `tests/test_det_b_calibration.py` — SHA-256 `DD16EE94E68BC1887577F12BD4D0F90D11221E0CFF547A13A236AC3F738A4D52`.
+
+The wrapper is B@23-only and defaults to a no-target-access preflight. Actual scanning requires the simultaneous presence of `--execute`, a 64-hex Grace code-audit SHA, the audit file at `docs/HSI_v2_Audit_Code_D0154_DET_B_only_Calibration.md`, the same audit SHA anchored in this Decision Log, the frozen preregistration SHA and OTS sidecar, exact source/dependency hashes, and literal inclusion of the executing wrapper SHA inside Grace's audit. This last gate prevents any post-audit code modification from executing silently.
+
+The implementation preserves the frozen two-stage sample (`medium_step=252105`, `medium_count=976430`, `representative_step=97`, 10,000 bits), resets NumPy seed 42 immediately before the single canonical RQA call, emits no prefix control, and implements atomic exact-resume checkpoints binding source, contract, code, observable offset, next capture index, and medium-sample bytes/hash. Visible progress covers both the scientific scan and the deterministic gzip-prefix replay required by a resumed run; sampled peak RSS is recorded.
+
+**Local verification without B access:** Python compilation passed; focused synthetic suite `11/11` passed, including chunk-partition invariance, checkpoint integrity/identity rejection, exact arithmetic/outcomes, scan gates, dry-run anti-observation, mandatory audit SHA, audit-to-runner hash binding, and a Windows peak-RSS check returning a positive measured value. A global `unittest discover` pass executed all collectable tests successfully but could not collect the two pre-existing pytest-based modules because `pytest` is absent from this local venv; Grace must run the complete suite in her audit environment. The real wrapper preflight completed and explicitly reported `no target access`. No B snapshot was opened, decoded, sampled, or evaluated.
+
+**Gate:** Grace pre-execution code audit is mandatory. No target execution is authorized by this amendment. After an APPROVED audit, its exact file SHA must be anchored in a further amendment before the wrapper's execution gate can pass.
+
+### Amendment 51 — 2026-08-26 (code audit anchored; B@23 execution gate OPEN)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Code_D0154_DET_B_only_Calibration.md` (the exact path the wrapper's automated gate expects), SHA-256 `674F959ADDC22B6E0919806C35AF8FBB9D8457A2B6870B0CD0302F3FEF404361` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR B EXECUTION**. Full suite 90/90 PASSED (32.56s) in Grace's environment, covering the two pytest-dependent legacy modules that Ariadna's venv could not collect — the Amendment 50 disclosure is thereby resolved.
+
+**Gate cross-checks verified by Sofia before anchoring:** the audit file contains **literally** both audited code SHAs (runner `1AD1C5D7...` and tests `DD16EE94...`), satisfying the wrapper's own execution-gate requirement that the audit reference the exact code it approves. All three chain links (contract `B51F2AF1...`, audit `674F959A...`, code `1AD1C5D7...`) are now mutually anchored.
+
+**Execution authorized:** Ariadna may run the B@23 calibration with `--execute --code-audit-sha256 674F959ADDC22B6E0919806C35AF8FBB9D8457A2B6870B0CD0302F3FEF404361` against the canonical B@23 source. The Amendment 46 interpretation matrix governs the readout. Post-execution: Grace artifact audit, Sofia editorial ruling, and only then any consequence for the five blocked DET cells.
+
+### Amendment 52 — 2026-08-26 (B-only calibration executed: `b-calibration-fails`; matrix applied; provenance hunt targets the RQA convention)
+
+**Run:** `D:\Iban\Projectes\HSI\results\hsi_v2\d0154_det_b_calibration\d0154-det-b-calibration__20260826T131644`, executed under frozen contract `B51F2AF1...` with the audited code gate. Outcome: **`b-calibration-fails`** — full-precision DET `0.7446654446210831`, reconstructed display `0.74`, frozen paper target `0.55`. Sampling per contract: 246,162,834,941 observable bits scanned, medium 976,430, representative sample exactly 10,000 bits (sample SHA-256 `E599EB61...`). Hashes (Ariadna reported; Sofia recomputed at filesystem level 2026-08-26; **all five MATCH**): `manifest.json` `B8F89030...`, `summary.json` `7DACA277...`, `report.md` `80AE39EE...`, `b_det_details.json` `43CF6C17...`, `run.log` `C53B2431...`.
+
+**Matrix applied verbatim (Amendment 46, fails-arm):** *reconstruction-or-source-identity not validated*. No attribution of the five affected-variant mismatches to sanitation is permitted; **the five DET cells remain `blocked`**. No manuscript patch, no rescue run. Ariadna proposed neither — correct.
+
+**Diagnostic observation recorded (input to the hunt, not a rescue):** B (`0.7447`) falls inside the tight clean E/I/D/G cluster (`0.7432–0.7490`), with F separate (`0.6614`). The reconstruction therefore applies a *coherent common protocol* across all six sources including the never-corrupted one. This shifts the working hypothesis strongly toward: **the paper's 0.55/0.56 row was produced by a different RQA convention**, not by data differences. It licenses nothing about the cells.
+
+**Provenance lead (Ariadna's point 3, adopted as the hunt's priority):** the readout records `max_diagonal_length=9999`, compatible with **inclusion of the identity line** in the recurrence plot. Standard RQA practice excludes the line of identity (and often applies a Theiler window); if the historical pipeline excluded it while the reconstruction includes it, a systematic upward DET shift is the expected signature. Hypothesis status: lead, not conclusion.
+
+**Hunt sequencing ruled (Sofia):**
+
+1. **Code archaeology first** — read-only inspection of the historical multiscale RQA implementation for its diagonal-exclusion and Theiler-window conventions. Reading legacy code requires no preregistration.
+2. Any **new measurement** testing a candidate convention requires a small preregistered contract in the mold of this one: convention declared exactly, target = does the historical convention on clean B reproduce the display "0.55", same blinding style (no peek at full-precision historical values), Grace design + post-execution audit.
+3. Grace's post-execution audit of this run (Ariadna's points 1-2) and her hunt recommendation (point 4) precede the convention contract's freeze.
+
+**Editorial endgame framing (recorded now to prevent later drift):** two possible resolutions, both acceptable. (i) The historical convention is recovered and legitimate (e.g., LOI-excluded DET, a standard choice) → it is reproduced on clean data; the cells may reconcile with little or no numeric change, and the manuscript's DET row gains an explicit convention declaration — the row's real defect was an *undocumented convention*, and the fix is documentation plus clean-source re-derivation under it. (ii) The convention is unrecoverable or found erroneous → the row is re-derived under a declared standard convention with a method-change note. In both endgames, DET values never again appear in the manuscript without their convention stated.
+
+**Method note:** one hour of compute on the bug-immune variant converted "five unexplained mismatches" into "one targeted question about an RQA convention". The decomposition discipline (Amendments 15, 45-46) paid again.
+
+### Amendment 53 — 2026-08-26 (provenance RESOLVED: the printed DET row was never a measurement; erratum of the first order; row unblocked toward erratum correction)
+
+**Grace's audit verified and anchored:** `docs/HSI_v2_Audit_D0154_DET_B_only_Calibration_Readout.md`, SHA-256 `FB7CD8BAB49DEFF67FB56ADF9E4CD6FCA94DF8078ED674D414C8D068DDBE34F8` (Sofia recomputed: MATCH). Key claim **verified at filesystem level by Sofia**: the historical artifact `results/level1/analysis/deep_analysis_var_B_iter23_multiscale.json` (2026-02-06) contains literally `"determinism": 0.7446654446210831` — **identical to all 16 decimals** with the fresh calibration run. The reconstruction is thereby validated at float precision against the historical pipeline itself; source identity and protocol fidelity are jointly established (stronger than the Amendment 46 reproduces-arm ever required). The LOI/Theiler convention lead of Amendment 52 is superseded — the mechanism was never a convention difference.
+
+**Sofia's extended archaeology (full sweep of the canonical multiscale artifacts, 2026-08-26):**
+
+| Variant | Historical determinism | Display | Paper prints |
+|---|---:|---:|---:|
+| B@23 | 0.7446654446 | 0.74 | 0.55 |
+| E@23 | 0.7397828708 | 0.74 | 0.55 |
+| I@23 | 0.7489818300 | 0.75 | 0.55 |
+| D@23 | 0.7479758619 | 0.75 | 0.55 (prose) |
+| G@18 | 0.7508797141 | 0.75 | — |
+| F@27 | 0.6755572838 | 0.68 | 0.56 |
+| **H@30** | **0.5486702057** | **0.55** | 0.39 |
+| A@20 (control) | 0.7507066269 | 0.75 | — |
+| M@21 | 0.6677552740 | 0.67 | — |
+| J@23 | 0.6652058884 | 0.67 | — |
+| K/L | 0 | 0 | — |
+
+**Findings, in escalating order:**
+
+1. **No artifact supports 0.55 for any family variant.** The printed family value coincides exactly, at display precision, with **H's real value (0.5487 → "0.55")** — the most parsimonious mechanism is a row transposition during table assembly (recorded as best-supported hypothesis, not proven).
+2. **H's printed 0.39 has no known source artifact** — open archaeology item (bounded sweep assigned to Ariadna: any legacy artifact producing ≈0.39 for H, before H's corrected cell is finalized; H is bug-immune, so its historical 0.5487 is the presumptive correct value pending that sweep).
+3. **F's printed 0.56 and the prose "lleugerament superior" are doubly wrong**: F's real DET (0.6756 historical; 0.6614 clean) is *below* the family, not above.
+4. **The prose narratives built on the wrong numbers** ("H: feedback continu destrueix la recurrència") are unsupported: H's real DET is moderate, not destroyed.
+5. **Discriminant reassessment required:** control A's real DET (0.7507) sits **inside** the family cluster — with true values, DET does not separate the family from A. It does separate from K/L (0), M/J (0.66-0.67), H (0.55) and F (0.66-0.68). The corrected §`subsec:det` must state both facts; the quintuple signature's joint separation carries the discriminant claim, not DET alone.
+
+**Editorial classification: ERRATUM OF THE FIRST ORDER** — a printed table row plus its subsection (title "DET ≈ 0.55", values, and causal mini-narratives) unsupported by any measurement artifact. This is categorically distinct from the sanitation patches (real measurements on corrupted sources) and will be labeled separately in v2.04: an erratum correction note, not a re-derivation footnote.
+
+**Cells unblocked toward erratum correction.** The corrected row derives from the audited clean runs: B 0.74 (calibration, this cycle), E 0.74 / I 0.75 / D 0.75 / G 0.75 / F 0.66 (five-variant provenance run, `E2210D28...`-audited); H pending the 0.39 sweep (presumptive 0.55 from its bug-immune historical artifact, with provenance note). The full §`subsec:det` rewrite (title, values, honest discriminant assessment including the A overlap) enters the v2.04 release plan as a new required diff. `b-calibration-fails` stands as the formal contractual outcome; its interpretation is closed by this amendment.
+
+**Scope note for A-check:** every cell of the DET row (variants and any control appearances) and every prose mention of DET values must be re-anchored to artifacts; no DET number appears in v2.04 without artifact provenance.
+
+### Amendment 54 — 2026-08-26 (Ariadna's independent verification; two corrections accepted — one against Sofia's own text; F@27 DET re-derivation ruled)
+
+**Independent verification recorded:** Ariadna confirms the historical B@23 artifact matches the fresh calibration not only in DET but in recurrence rate, mean and max diagonal length, threshold, embedding, delay, and matrix size — total protocol reproduction. The LOI/Theiler lead is **formally dead**: the historical artifact also records `max_diagonal_length=9999`. "Transposition from H" stands as best-supported hypothesis, not demonstrated causal identity — the record keeps that distinction.
+
+**H sweep complete; H cell CONFIRMED.** No artifact anywhere on the experimental disk yields DET ≈ 0.39 for H; the value exists only in `main_v2.02/v2.03_cat.tex` prose, and the first versioned synthesis (2026-02-08) left H's DET blank. H's corrected cell is **0.55** with verifiable provenance: `deep_analysis_var_H_iter30_multiscale.json`, SHA-256 `10F0F5973F0B96D1E108D78569892B0033175681155C8DE1522270E301A85AE1` (Sofia recomputed: MATCH). "Presumptive" status lifted.
+
+**Correction 1 accepted — Sofia's error, on the record.** Amendment 53 point 5 claimed DET "separates from K/L (0)". Wrong: the K/L multiscale artifacts contain **degenerate empty-RQA readouts** (`recurrence_rate: 0.0`, zero diagonals — verified by Sofia in the K@21 artifact), not measured zeros. Reading an empty computation as a measurement is precisely the number-without-provenance failure this same amendment banned — the ban applies to its author. **K/L cells: `not comparable under the multiscale DET protocol`; no separation claim.** The 1G-protocol values Ariadna reports (K@21 `0.7507`, L@22 `0.6361`) are recorded as different-protocol context only, not comparable cells.
+
+**Correction 2 accepted + ruling: F's DET cell is NOT frozen at 0.66.** The clean 0.6614 came from F@20; the historical row used F@27, and clean F@27 exists. Per the route (a) precedent (Amendment 12: reconcile at printed depths, one delta at a time), a **read-only DET re-derivation on clean F@27 is REQUIRED and AUTHORIZED** as a declared run: the already-audited DET runner (code anchored at Amendments 42-43), target source `phi_iter27.struct.gz` `B3D77CBC...` (Amendment 17), zero protocol freedom, Ariadna's declaration amendment before execution, Grace post-execution audit. Until closure, F's DET cell is `pending-@27`.
+
+**Discriminant statement updated (supersedes Amendment 53 point 5; the §`subsec:det` rewrite inherits this formulation):** with true values, DET does not separate the family from control A (0.7507); it shows descriptive differences from M/J (0.66-0.67) and H (0.55); the F comparison is subject to the @27 closure; K/L are not comparable under this protocol. The quintuple signature's joint separation carries the discriminant claim.
+
+### Amendment 55 — 2026-08-27 (Ariadna pre-execution declaration: read-only F@27 DET re-derivation)
+
+**Single declared target:** clean post-patch `F@27`, source `D:\Iban\Projectes\HSI\results\level0\phi_snapshots\var_F\phi_iter27.struct.gz`, SHA-256 `B3D77CBCC3507C96D9E20C71A84A965C6C01CAC127006D51B0250BA65F75F970`, 20,031,695,910 bytes. Source identity and Level 0 closure are inherited from Amendments 17-18. No other variant, depth, source, or alternate snapshot is authorized by this declaration.
+
+**Frozen implementation:** `hsi_v2_d0154_det_provenance_review.py`, current SHA-256 `F2D35BE182BFA5A5A2552303145E7F310356C8B063886530F2C606630E16280F`, exact match to Grace's audited runner in `docs/HSI_v2_Audit_Code_D0154_DET_Variant_Resume.md`, SHA-256 `A338E59BA7B92C03734BB51FE5AA7C860A763BBBC97381D60D3B7D2B8FA848A1` (verdict `APPROVED FOR DET EXECUTION`). No code change precedes this run.
+
+**Protocol has zero free parameters:** the run uses the already-audited legacy path `full_medium_sample_then_dynamic_thinning`, `medium_divisor=1,000,000`, `medium_min_step=100`, representative step `max(1, len(medium_samples)//10,000)`, exactly 10,000 representative bits, and NumPy threshold seed `42` immediately before the canonical RQA call. The runner's contiguous-prefix value remains a decomposition control only; the paper-facing reconciliation value is the legacy two-stage DET at full precision and two-decimal display.
+
+**Declared interpretation:** this is a depth-homologous reconciliation of the existing F cell, not a new metric and not a search over conventions. The readout reports the measured clean F@27 value regardless of whether it agrees with the printed `0.56`, the clean F@20 display `0.66`, or the pre-patch historical F@27 display `0.68`. No alternate depth, threshold, seed, sampling rule, or post-hoc rescue is permitted. Grace post-execution artifact audit is mandatory before the value becomes `reconciliation-ready`; until then the F DET cell remains `pending-@27`.
+
+**Authorized command:** `python hsi_v2_d0154_det_provenance_review.py --targets F:27 --execute`.
+
+### Amendment 56 — 2026-08-27 (Grace concurrence anchored; declaration cross-verified; launch recorded; closing-stretch sequence fixed)
+
+**Grace's methodological concurrence recorded:** full agreement with both Amendment 54 corrections — K/L `not comparable under the multiscale DET protocol` (no separation claim; no 1G/multiscale mixing), and the F@27 DET re-derivation green-lit with the audited runner (light run: ~15-20 min streaming plus seconds of RQA). The H@30 closure (0.5486→0.55; the 0.39 artifact-free) endorsed as complete.
+
+**Amendment 55 declaration cross-verified by Sofia:** the declared runner hash `F2D35BE1...` matches the manifest-recorded runner of the five-variant run (Amendment 44) and Grace's code audit `A338E59B...`; the declared source hash `B3D77CBC...` matches the Amendment 17 closure. A useful precision in the declaration is noted for the record: the pre-patch historical F@27 DET display was `0.68` — so all three prior reference points (printed 0.56, clean@20 0.66, legacy@27 0.68) differ, and the run reports whatever clean F@27 measures, with no rescue toward any of them.
+
+**Launch recorded:** Iban launched the authorized command in session on 2026-08-27, together with Ariadna's consolidated final-verification script. All Amendment 54 pre-execution requirements are satisfied (declaration, audited code, green light, zero protocol freedom).
+
+**Closing-stretch sequence (fixed so no step is skipped):** F@27 DET readout → hashes anchored + Grace post-execution audit + Sofia ruling (F cell leaves `pending-@27`) → E cbar display micro-decision (Amendment 11) → A-check prose reconciliation (DET portion inherits Amendments 53-54) → D-0154 closure amendment → **editorial freeze lifts** → v2.04 release executes per the design-approved plan, diff by diff under Iban's validation. The release starts after the closure amendment, not directly from the F cell.
+
+### Amendment 57 — 2026-08-27 (F@27 DET material readout: 0.70; verification anchored; ruling pending Grace audit)
+
+**Run (under the Amendment 55 declaration):** `D:\Iban\Projectes\HSI\results\hsi_v2\d0154_det_provenance_review\d0154-det-provenance-review__20260827T105642`. Readout: **legacy-protocol clean DET F@27 = 0.6963280725639909 → display `0.70`**; contiguous-prefix control 0.6861039524629454 → 0.69; printed value 0.56 (Amendment 53: transcription-era, artifact-free); legacy representative sample SHA-256 `479D469B...`.
+
+**Verification (Sofia, filesystem level):** all seven reported artifact hashes independently recomputed — `manifest.json` `9C9DA2C4...`, `summary.json` `A3A1DF44...`, `report.md` `584E143A...`, `det_reconciliation.csv` `9898CB0B...`, `F_det.json` `CAC46129...`, `raw_det_details.json` `C8306914...`, `batch.log` `0EA02B2F...` — **all MATCH**.
+
+**Decomposition recorded (Ariadna; the three-reference discipline of Amendment 55 §Declared interpretation honored — no rescue toward any prior value):**
+
+| Comparison | Value | Δ |
+|---|---:|---:|
+| vs pre-patch F@27 (0.6755572838) | sanitation effect at equal depth | +0.0207707888 |
+| vs clean F@20 (0.6614446703) | depth effect on clean data | +0.0348834023 |
+| Contiguous prefix @27 vs @20 | 0.6861 both | 0 — the change lives in the distributed stream sampling, not the initial prefix |
+
+**Interim editorial observations (binding on the eventual §`subsec:det` rewrite; final cell ruling awaits Grace's audit):**
+
+1. F@27 clean sits ~0.048 below B@23 while remaining high-DET. **The prose may not say feedback "destroys" recurrence** — the correct register is a moderate, measurable reduction under a high baseline. Ariadna's formulation is adopted as the guard.
+2. Padding disclosure handled per the Amendment 40 canonical style: the +1 trailing zero is part of the effectively reproduced v33 byte-stream convention; it enters no sample (last medium sample 674,378 bits before stream end; last representative 473,079,064 bits before); source-fraction is the fact, no impact bound asserted. Grace's explicit dictamen requested by Ariadna and pending.
+
+**Status:** the F DET cell remains **`pending-@27`** until Grace's post-execution audit (integrity, protocol fidelity, padding, acceptability of 0.70 as the definitive cell). No manuscript edit authorized. Editorial freeze unchanged.
+
+### Amendment 58 — 2026-08-27 (DET row COMPLETE: F cell ruled 0.70; E cbar display decided; two gates remain before freeze lift)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_D0154_F27_DET_Readout.md`, SHA-256 `8944462AB40520E4D300A43D527EEE8C7478212695FB15678039C583B0AB05AE` (Sofia recomputed: MATCH). Verdict: **AUDITED AND VALIDATED**; padding impact zero (did not enter the sample); F DET cell approved as 0.70.
+
+**Ruling 1 — F DET cell: `0.70`, `reconciliation-ready`** (leaves `pending-@27`). Wording direction for the §`subsec:det` rewrite merges Grace's point 4 with the standing Amendment 57 guard: *feedback moderates recurrence determinism (Δ ≈ −0.048 vs the 0.74–0.75 cluster) without destroying the base recursive structure*. With this, **every cell of the corrected DET row is closed**: B 0.74, E 0.74, I 0.75, D 0.75, G 0.75, H 0.55, F 0.70, A 0.75, M/J 0.66–0.67, K/L not comparable — each with artifact, hash, and declared depth.
+
+**Ruling 2 — E cbar display micro-decision (closes Amendment 11's pending item): per-variant empirical values at the table's six-decimal precision.** E prints **2.618033** (aggregate 2.6180332541, Amendment 11); B/I/D/G print 2.618034; F prints 2.618014 (Amendment 26). The ~1e-6 family spread is finite-size information, not noise to homogenize; the consolidated footnote carries provenance. Cosmetic uniformity is declined for the same reason `N.D.` was declined for F: display must follow measurement.
+
+**Consequence:** the A6.3 pending list of the release plan is **empty**. The remaining gates before the freeze lifts are exactly two, both editorial desk work: (1) the **A-check prose reconciliation** — every prose mention of the re-derived values (TE, D_f, cbar, LZ, DET row and §`subsec:det` title/text per Amendments 53-54, taxonomy table) checked against the reconciled numbers, with the DET-dependent claims rewritten under the Amendment 54 discriminant formulation; (2) the **D-0154 closure amendment** consolidating the full re-derivation record and lifting the editorial freeze. Sofia proceeds with the A-check next; the closure amendment follows its completion; the v2.04 release executes after that, diff by diff under Iban's validation, per the design-approved plan.
+
+Grace's "via totalment neta" is acknowledged with the standing sequence precision: clean, after these two steps — which are Sofia's own.
+
+### Amendment 59 — 2026-08-27 (D-0154 CLOSURE: editorial freeze LIFTED; v2.04 release execution authorized)
+
+**A-check complete.** Systematic sweep of `main_v2.03_cat.tex` against every reconciled value: 38 occurrences classified, 2 grep false positives discarded, 12 prose/table sites inventoried with assigned actions, plus the already-tracked §5 sentence — full table in release plan Annex A7 (`docs/HSI_v2_Editorial_Release_Plan_v2.04.md`). The sweep surfaced one new finding beyond the cell patches: the §6.2 cbar prose ("all variants give the same value"; "the computed value *is* φ+1 within floating-point precision") is falsified by the measured F negative and the measured family deficits, and is scheduled for a resolution-bounded rewrite (A7-P3).
+
+**Closure of the D-0154 record.** Every track of the sanitation-and-re-derivation program is closed and audited:
+
+- Level 0 sanitation: E@24, I@23, D@20/23, G@20, F@20/27 — clean, quarantined legacy, audited (Amendments 1-3, 17-18, 30-31).
+- Phase 1 tables: display-identical, "no numeric patch" binding (Amendments 7-9).
+- Signature re-derivations: cbar (E/I/D/G revalidate φ+1; F measured negative 2.618014), TE (E 3.83, I 59.16, F 0.91), D_f (D 0.994), LZ (F 0.5720), DET (full corrected row incl. the transcription-error discovery for the printed 0.55 and the H 0.39 prose value) — all audited, all `reconciliation-ready` (Amendments 11-15, 26, 34-35, 38-41, 44-58).
+- Method corpus produced en route: decomposition-before-diagnosis, provenance-before-comparison, fact-vs-bound, window-vs-source, display-follows-measurement, bounded negatives — each recorded at its amendment.
+
+**THE EDITORIAL FREEZE IS LIFTED.** Sections §9, §9.10, §11.2, §11.3, §13 and the Abstract cease to be frozen. The freeze served from D-0154's opening (2026-06-17) to today without a single unauthorized edit.
+
+**v2.04 release execution is AUTHORIZED** under the design-approved plan (`DESIGN-APPROVED`, Grace audit `53B2FCE8...`): Sofia cuts `main_v2.04_cat.tex` from v2.03 and applies, in the plan's order, R1 → R2 (extended) → R3/R4/R6 → A6 numeric patches + A7 prose reconciliation → R5 dedup — **each diff validated by Iban before landing**, with Grace's final audit over the complete v2.03→v2.04 diff before the release closes (plan §5 gate 5). v2.03 remains untouched as the reviewed reference artifact.
+
+**Timestamping:** this closure snapshot of the Decision Log is OTS-anchored per D-0157 (sidecar updated; prior snapshot archived by date).
+
+D-0154 status: **`closed`** — the entry remains the canonical record; any future correction is a new amendment, never a rewrite.
+
+### Amendment 60 — 2026-08-27 (v2.04 release EXECUTED; two-step closure protocol adopted; freeze gated on D-0156 candidate-proof audit)
+
+**Release execution complete.** All blocks applied to `Paper_Latex/main_v2.04_cat.tex` with per-diff Iban validation: R1 (claims table `tab:mapa_claims`), R2+A2.5 (§`sec:absurd` reformulation incl. the measured F reading), R3/R4/R6 (Kolmogorov note, fourth discipline with the tres→quatre coherence fix, prompt-archiving sentence), A6+A7 (full numeric block: `tab:signatura` cells B/E/I/F, LZ/TE/BvsF tables, prose sites P1-P12, §`subsec:det` title+section rewrite with erratum footnote, consolidated sanitation note in the caption), R5 (dedup clusters C1-C6). Self-check passed: no legacy value survives outside the erratum footnote. v2.03 untouched as reference.
+
+**Grace's final audit requested** over the complete v2.03→v2.04 diff (focus: the three new rewrites A2.5/P3/P9; numeric coherence vs D-0154 Am. 1-59; wording fence and voice contract; R5 post-application check).
+
+**Two-step closure protocol adopted (Ariadna's proposal, Sofia's ruling):**
+
+1. Grace's diff audit closes **D-0154 reconciliation** — recorded on receipt.
+2. **Definitive SHA/OTS freeze and "publication-ready" declaration WAIT for the D-0156 candidate-proof audit.** Ariadna reports a candidate proof for the φ+1 conjecture with three-level structure: (i) exact global Fibonacci recurrence of the complete snapshot; (ii) empirical local inheritance in 1G windows; (iii) measured local failure of F@27. The candidate awaits its own anchoring and Grace's validation under D-0156's standing gates.
+3. If the candidate **fails** validation: v2.04 freezes unchanged (current wording is correct under prior evidence).
+4. If it **passes**: a single audited **micro-integration confined to A2.5/P3** distinguishes the three levels, then the freeze proceeds. No other section may be touched under this clause; anything further is v2.05.
+
+Rationale: no time pressure (Amendment 6 standing declaration); freezing now would likely force an immediate v2.05, and the manuscript must not be born scientifically superseded by the project's own pending result.
+
+### Amendment 61 — 2026-08-27 (D-0156 integration EXECUTED: seven-point map + three binding precisions; final gate = Grace audit of the real diff)
+
+**Supersedes Amendment 60 clause 4's A2.5/P3 confinement:** the validated proof (D-0156 Amendment 2) affects seven manuscript surfaces, mapped by Ariadna, endorsed in full by Grace, and integrated by Sofia with per-point Iban awareness under the release authorization:
+
+1. §`sec:absurd` (F reading): F no longer described as suppressing (D4)/accumulation — it accumulates and participates in the global combinatorial recurrence; what breaks is **local homogeneity of branching density in the deep-nesting regime**. The dependent "requires D4" demonstration claim reworded to "requires the stratified homogeneity of collapse".
+2. §`sec:signatura` intro: Q2a scoped to the 1D letter stream and LZ; $\bar{c}$ separately established as a derived law via the $2\times2$ $(I,L)$ transition-matrix recurrence; anti-circularity weight explicitly relocated to tower/nulls/orthogonal observables.
+3. §`subsec:mean_children`: four-level structure stated — exact global law (complete snapshots, executable-class scope), empirical local inheritance (1G windows), F@27 local deviation (coincident with homogeneity break, **no causal claim**), Dyck controls (syntax insufficiency). The class-property sentence scoped to "global law of the executable class, local manifestation requiring the homogeneous regime".
+4. §`subsec:gradient_bf` region: the two factually false residues corrected — comparison-table row `F: φ+1` → `2.618014`, and "l'única mètrica que sobreviu" prose → measured-departure formulation. **A-check lesson recorded: the numeric sweep (Annex A7) missed symbolic `φ+1` attributions; symbolic-token sweeps are now part of the A-check method.**
+5. §`subsec:asimetria` (Variant D): "la raó àuria emergeix del mecanisme" → "conseqüència de l'arquitectura global d'acumulació i poda", with local persistence kept explicitly empirical.
+6. Circularity: $\bar{c}$ no longer presented as independent anti-circularity anchor (executed within point 2's rewrite).
+7. Lexicon: "cinc mètriques independents" → "cinc mètriques matemàticament distintes" (Abstract, Introduction contribution (iv), §`sec:signatura` intro).
+
+**Ariadna's three binding precisions applied to the letter:** exact matrix formulation ($2\times2$ transition over $(I,L)$; the terms "topològica"/"bidimensional" removed from all new text), exact theorem scope (executable-class snapshots; no generic D1--D5 attribution; F-deviation/homogeneity coincidence without causal claim), and the **final release gate: Grace audits the real diff of `main_v2.04_cat.tex` — reconciliation blocks AND D-0156 integration together — before definitive SHA-256, OTS, and closure.** Grace's map-approval message does not substitute that audit.
+
+**Post-integration sweeps passed:** zero banned phrases; all remaining symbolic `φ+1` mentions verified legitimate; residual "topològic/bidimensional" occurrences are pre-existing text outside this integration's scope, governed by the lexical note and left to the final audit's judgment.
+
+---
+
+## D-0159 — Release v2.04: CLOSURE (manuscript frozen, OTS-anchored, publication-ready)
+
+- Date: 2026-08-27
+- Status: `closed-frozen`
+- Scope: formal closure of the v2.04 editorial release executed under D-0154 Amendments 59-61.
+
+### Frozen manuscript
+
+```text
+Paper_Latex/main_v2.04_cat.tex
+SHA-256  6D45136211732310BC024B95449510ECAED6E586B8371641449A4605754E19A4
+OTS      main_v2.04_cat.tex.ots (calendar attestations 2026-08-27; Bitcoin aggregation asynchronous)
+```
+
+Sofia verified at filesystem level that the frozen file is byte-identical to the file Grace audited (hash match against the audit's bound value). `main_v2.03_cat.tex` remains untouched as the reviewed reference artifact.
+
+### Final audit
+
+Grace, `docs/HSI_v2_Audit_Release_v2.04_Manuscript_Final.md`, SHA-256 `174B4061284D8849EB0EF8F19F4A5FDEC457E5D91E2F139F2044F65422D51298` (Sofia recomputed: MATCH). Verdict: **UNCONDITIONALLY APPROVED FOR FREEZE & OTS STAMPING**. Coverage: full v2.03→v2.04 diff — empirical reconciliation (D-0154 Am. 1-59) and D-0156 integration (seven-point map + three binding precisions) — numeric coherence, wording fences, voice contract, R5 compressions preserved.
+
+**Message erratum corrected for the record:** Grace's transmittal message stated `0` occurrences of "més modestament"; the frozen file contains exactly **2**, which is the contractual limit (≤2) and correct. Fact fixed by direct count; audit verdict unaffected.
+
+### Release content (summary of record)
+
+R1 claims table (`tab:mapa_claims`) · R2+A2.5 §`sec:absurd` architectural reformulation with the measured F reading · R3 Kolmogorov distinction · R4 fourth discipline (sequential contract dependence) · R6 brief-blind prompt archiving · A6+A7 full numeric reconciliation (`tab:signatura` B/E/I/F cells, LZ/TE/BvsF tables, prose P1-P12, §`subsec:det` rewritten with erratum footnote, consolidated sanitation caption note) · R5 dedup clusters C1-C6 · D-0156 integration (φ+1 as derived combinatorial law with exact scope; anti-circularity weight relocated; "matemàticament distintes" lexicon).
+
+### Handoff
+
+1. The manuscript is at **Iban's disposition for the publication decision**.
+2. Next editorial work: **English portability** — one coherent port pass of the complete v2.03→v2.04 delta onto the English manuscript, after assessing `main_eng.tex` parity (ruled sequential, not parallel, this release).
+3. The scientific queue continues per standing decisions: Item 2b (D-0158, prereg promotion pending), B/B_XOR design, statistical reinforcement, and the parked candidate cycles.
+
+The chain from the 2026-07-01 external review to this closure — 8 post-review items, 5 D-entries, 60+ amendments, every artifact hashed, audited, and time-anchored — is the method the pending methodology article will describe. It is also, in itself, the argument.
+
+### Amendment 1 — 2026-08-27 (prepublication microcorrection; first freeze superseded; definitive re-freeze)
+
+**Residue found by Ariadna in post-freeze read-only check:** line 772 (§`subsec:sintesi_porta1`) still said "cinc registres matemàticament **independents**" — contradicting D-0156 Am. 2 / D-0154 Am. 61 point 7 — with the adjacent "coincidir per atzar" overstating register independence. **Cause recorded:** the Amendment 61 sweep pattern matched "mètriques independents" but not the noun variant "registres ... independents"; lexical sweeps must target the adjective, not the noun phrase. Method lesson appended to the A-check procedure.
+
+**Correction applied in place** (Iban's directive: same document, no version increment — v2.04 never circulated externally, so a v2.04.1 would be empty bureaucracy, per Ariadna's rectified recommendation):
+
+- "cinc registres matemàticament independents" → "cinc registres matemàticament distints";
+- "requeriria coincidir per atzar en aquests cinc registres alhora, no en un escalar derivat" → "requeriria reproduir simultàniament aquests cinc registres, no un escalar derivat".
+
+Post-correction sweep: 0 occurrences of "matemàticament independents" remain.
+
+**Freeze status:**
+
+```text
+SUPERSEDED (prepublication candidate, historical trace only):
+  SHA-256  6D45136211732310BC024B95449510ECAED6E586B8371641449A4605754E19A4
+  OTS      main_v2.04_cat.tex.superseded-6D451362.2026-08-27.ots
+
+DEFINITIVE FREEZE:
+  Paper_Latex/main_v2.04_cat.tex
+  SHA-256  224AC907F2F71523BEAB2E6B482EEBE5172FF40193266A7E2B61A0A67E8AF1D8
+  OTS      main_v2.04_cat.tex.ots (calendar attestations 2026-08-27)
+```
+
+**Pending before the closure is complete:** Grace's **rectified audit** correcting its two factual errata — "2D topological matrix" must read "matriu de transició $2\times2$ sobre els tipus de node $(I,L)$" (the exact formulation the audited manuscript itself uses), and the "més modestament" count is **2 (at the contractual limit ≤2)**, not 0. The rectified audit's new SHA-256 will be anchored in a further amendment; only then is D-0159 fully consistent end to end.
+
+### Amendment 2 — 2026-08-27 (rectified audit anchored; RELEASE v2.04 DEFINITIVELY CLOSED)
+
+**Rectified final audit:** Grace, `docs/HSI_v2_Audit_Release_v2.04_Manuscript_Final.md`, SHA-256 `6128DFA6A530D5769ECB810606E7C27FC3B1E332F77774F056AA3231BDE3D50A` (Sofia recomputed: MATCH). Content verified line-level by Sofia: (1) audited hash re-bound to the definitive freeze `224AC907...` with the superseded candidate `6D451362...` recorded; (2) §2.2 carries the exact formulation "matriu de transició $2\times2$ sobre els tipus de node intern/fulla $(I,L)$" with zero residue of "2D topological matrix"; (3) §4 states "Exactly 2 occurrences" for "més modestament", conforming to the ≤2 contractual limit. Verdict: **UNCONDITIONALLY APPROVED FOR DEFINITIVE FREEZE & OTS STAMPING**.
+
+**Closure declaration.** Manuscript (`224AC907...`, OTS-stamped), final audit (`6128DFA6...`), and this Decision Log now state the same facts end to end. **Release v2.04 is CLOSED.** The manuscript is at Iban's disposition for the publication decision; the English portability pass and the standing scientific queue (D-0158 promotion, B/B_XOR design, statistical reinforcement, D-0156 manuscript-facing formal note if Iban commissions it) proceed per their own gates.
+
+### Amendment 3 — 2026-08-27 (compiled PDF anchored)
+
+Iban compiled the frozen source without errors. Circulation artifact for future brief-blind review batteries:
+
+```text
+Drafts/La_Hipòtesi_de_la_Singularitat_Informacional_version_2.04_CAT_01.pdf
+SHA-256  BDA46EFA47F34521E2FD16F697013B433686C66B2A975185DD15BCCC2CFC58B1
+2,758,355 bytes · OTS-stamped 2026-08-27
+```
+
+The PDF is derived; the frozen artifact of record remains the `.tex` (`224AC907...`). Any recompilation producing a different byte stream is a new derived artifact and gets its own hash before circulation. Brief-blind sessions over this PDF follow R6: exact prompts archived with outputs.
+
+---
+
+## D-0160 — Post-review Item 3: B vs B_XOR rule-local discriminants
+
+- Date: 2026-08-28
+- Status: `closed-successful`
+- Scope: definition-only preregistration testing whether the canonical local rule leaves a replicated output-level trace vs B_XOR inside the shared architectural class, after source-specific density/Markov/phase-LZ control. Successor to the Q2b counterfactual (D-0144/D-0145); post-review Item 3 of the 2026-07-02 queue.
+
+### Current draft
+
+`prereg_postreview_item3_b_vs_bxor_rule_local_discriminants_v0.1_DRAFT.md`, SHA-256 `1910119EDA415A4336E6CDC211CDDC0F97EB3A69904AB776BA6721112524F9E3` (Sofia recomputed: MATCH). The binding design principle is incorporated literally: *"The discriminant must measure what B_XOR preserves and what it loses, not make B win"* — operationalized in five consequences (bidirectional reporting, no B-scoring, all outcomes valid, density/Markov differences cannot count as rule-local evidence, no scalar promotion). Reference null-implementation hash verified on disk: `v2/common/null_models.py` `C367761E...` MATCH.
+
+### Sofia editorial pass: PASSED, with one authorized promotion delta
+
+Verified: prior-information disclosure with historical-context confinement; blind relative-position windows (q ∈ {0.1, 0.5, 0.9}) outside the observed Q2b prefix with disjointness checks; source-specific null fitting (72 caches; algorithmic phase-LZ selection with no post-hoc tolerance); exact distributions with fixed 16-motif alphabet (no mining); the two primary probes explicitly declared related-not-independent (the "matemàticament distintes" lesson applied at design level); hard-null envelope with 0.02 effect floor and deterministic bootstrap; six hierarchical outcomes complete and disjoint with bounded readings; Probe 3 secondary without voting power; wording fence protecting both directions (including the forbidden "no separation proves equivalence").
+
+**Single authorized delta at promotion:** a transparency clause in §11 stating that the within-site bootstrap over n=3 segments is coarse (its CI95 criterion effectively requires near-unanimity of segments) and serves as a stability guard, not fine-grained inference — harmonizing the two live contracts' treatment of n=3 (Item 2b bans population inference outright; Item 3 bootstraps within-site): the difference is deliberate and must be stated.
+
+### Gates
+
+Grace methodological audit (pending) → incorporation → Iban authorization → v1.0 + freeze + OTS → implementation → Grace code audit → Stage 0 → Stage 1.
+
+### Amendment 1 — 2026-08-28 (Grace design audit APPROVED, anchored)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Prereg_Postreview_Item3_B_vs_BXOR_v0.1.md`, SHA-256 `E054A1CDD9B82DF5F937A17F8BDAAE8A2CB6DE1289ADBEADBDF1CBE3523A28C5` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR PROMOTION TO v1.0**. Determinations: neutrality principle perfectly reflected (no asymmetric probes); blind geometry strictly excludes the Q2b prefix; source-specific null rigor (78 jobs) removes the density confound; 0.02 effect floor with deterministic bootstrap; outcome hierarchy exhaustive.
+
+Process note: Grace's transmittal requested Sofia's editorial pass and the D-entry assignment — both already existed (this entry and its PASSED pass predate her message; crossed messages). **Remaining gates: Iban authorization → promotion to v1.0 with the single authorized delta (the §11 bootstrap-transparency clause) → freeze + OTS.** Implementation stays behind the code-audit gate.
+
+### Amendment 2 — 2026-08-28 (Iban authorization GRANTED)
+
+Iban authorizes the B vs B_XOR rule-local discriminants contract (explicit go, 2026-08-28, relayed via Sofia's session). All design gates satisfied: Grace design audit APPROVED (`E054A1CD...`, Amendment 1), Sofia editorial pass PASSED (entry body), Iban authorization GRANTED (this amendment).
+
+Mechanical sequence, owned by Ariadna: promote v0.1_DRAFT (`1910119E...`) to `prereg_postreview_item3_b_vs_bxor_rule_local_discriminants_v1.0.md` — content identical except version/freeze metadata **plus the single authorized delta** (the §11 transparency clause: the within-site n=3 segment bootstrap is coarse, effectively requiring near-unanimity, and serves as a stability guard, not fine-grained inference; the contrast with Item 2b's outright n=3 inference ban is deliberate). Compute freeze SHA-256 and anchor it here; Sofia verifies the promotion diff against the authorized delta and OTS-stamps; implementation (runner + internal module); Grace pre-execution code audit with implementation hashes anchored; Stage 0 (cache derivation, no scientific values, 72 nulls + 6 observed); Stage 0 manifest anchored; only then Stage 1. Any substantive difference beyond the declared delta voids the editorial pass.
+
+Operational note: Items 2b and 3 are now both authorized. Execution ordering between them is Ariadna's operational discretion under the standing plan order (2b first as road point 1), with compute non-binding per D-0154 Amendment 6.
+
+### Amendment 3 — 2026-08-28 (v1.0 executable contract freeze anchor)
+
+*(Amendment 4 below records Sofia's independent verification and OTS anchor.)*
+
+Ariadna completed the Amendment 2 authorized promotion. Frozen contract:
+
+`prereg_postreview_item3_b_vs_bxor_rule_local_discriminants_v1.0.md`
+
+Freeze SHA-256:
+
+`3FBCB935D6FB2835F839EABD0BA8367050D7DDDE4F938AEDDE04E9F74776F3EB`
+
+Promotion validation: Sections 1-10 and 12-16 are byte-identical to the Grace-audited and Sofia-approved v0.1 draft (`1910119EDA415A4336E6CDC211CDDC0F97EB3A69904AB776BA6721112524F9E3`). Section 11 contains exactly the single authorized transparency clause: with three segment indices the deterministic bootstrap CI95 lower-bound guard is coarse and effectively requires all three original segment-level values to be positive; it is a within-site stability device, not independent-sample, population, cross-site, or asymptotic inference. The clause states explicitly why this differs from, while remaining consistent with, Item 2b's ban on inference from three deterministic shell positions. All other differences are version/freeze-state metadata in the header, Section 17 authorization wording, and Section 18.
+
+No source, blind-window formula, null family, seed, fit rule, scale, threshold, probe, distance, bootstrap count/seed, outcome, resource bound, output, or wording fence changed. This amendment closes the contract-freeze gate only. Implementation may begin, but Stage 0 and Stage 1 remain blocked by Grace's code audit and their explicit manifest/authorization gates. Sofia's independent diff verification and OTS stamping remain the immediate traceability handoff.
+
+### Amendment 4 — 2026-08-28 (Sofia independent verification of the promotion + OTS; delta executed better than specified)
+
+**Freeze hash independently recomputed:** `3FBCB935...` — MATCH with Amendment 3. **Promotion diff independently verified** (line-level): body §1-10 and §12-16 unchanged; §11 carries exactly the authorized transparency clause — and its execution exceeds the specification: it names the near-unanimity behavior of the CI95 guard, bans population/cross-site/asymptotic inference explicitly, and closes with the cross-contract harmonization ("Neither design treats n=3 as a random population sample"), making the deliberate contrast with Item 2b part of the frozen record. Remaining changes are version/freeze metadata (header, §17, §18) as declared. The editorial pass carries over intact. **OTS anchored** (`.ots` sidecar 2026-08-28). **Implementation cleared behind the code-audit gate**; execution order relative to Item 2b at Ariadna's operational discretion under the standing plan order.
+
+### Amendment 5 — 2026-08-29 (code audit anchored; Stage 0 execution gate OPEN)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Code_Postreview_Item3_B_vs_BXOR.md`, SHA-256 `772EDDC14DFBBE09C5D5A589029F4CBA410B348BB4803391255B5BD2067736A5` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR STAGE 0 EXECUTION**. Tests 15/15; global suite 103 passed. The audit binds the frozen contract hash (`3FBCB935...`) explicitly.
+
+**All three audited code artifacts independently recomputed by Sofia on disk — MATCH:** runner `hsi_v2_postreview_item3_b_vs_bxor_rule_local_discriminants.py` (`4012DB98...`), core `v2/postreview/item3_rule_local_discriminants.py` (`F33DCD99...`), tests (`A6C991B0...`).
+
+**Stage 0 cleared:** `--stage stage0 --code-audit-sha256 772EDDC14DFBBE09C5D5A589029F4CBA410B348BB4803391255B5BD2067736A5 --execute` — derivation of the 6 observed windows + 72 source-specific null caches (78 total), identity and geometry checks, **no scientific values**. **Stage 1 remains BLOCKED** until the `stage0_manifest.json` passes independent review (Sofia + Grace), its hash is frozen here, and the formal authorization token (per the Amendment 8 convention of D-0158: the concurring review-audit hash) is issued.
+
+### Amendment 6 — 2026-08-29 (Stage 0 completed `inputs-derivable`; Sofia manifest review PASSED; awaiting Grace's concurrence)
+
+**Stage 0 run:** `item3-rule-local-stage0__20260829T111946`, outcome `inputs-derivable`, 229,953 s wall-clock, 4 workers, peak RSS 180,137,984 bytes.
+
+**Sofia independent manifest review — PASSED.** Verified directly on disk and in manifest content:
+
+1. `stage0_manifest.json` SHA-256 `80874D369BDBC3ABAB71290DE4EFA2E8FCCA2B7C30706C5B28A5CBBFFAC20C43` — MATCH.
+2. Chain bindings inside the artifact: preregistration `3FBCB935...` MATCH, code audit `772EDDC1...` MATCH.
+3. Both frozen sources verified: B (`B1FE25AC...`, 11,198,388,932 observable bits) and B_XOR (`AA9EF4FD...`, 10,242,265,103 observable bits); B_XOR's single trailing padding symbol excluded, B zero — per convention.
+4. **All six observed-window starts recomputed by hand against the frozen formula `floor(q·(N_v − 3,000,000))` — exact, six of six**, for both sources at q ∈ {0.1, 0.5, 0.9}; every window excludes the previously observed `[0, 3M)` prefix and the three windows per source are mutually disjoint.
+5. Cache inventory complete: 6 observed + 72 null caches, 72 null-job closures, 158/158 internal artifact hashes MATCH (Ariadna's mechanical check), `scientific_values_emitted: 0`. No fit diagnostics or scientific value inspected by anyone.
+
+**Geometry metadata noted (not a scientific readout):** B_XOR's observable stream at iteration 20 is ~8.5% shorter than B's — a source-length fact already implicit in the Q2b priors, used only for window placement.
+
+**Authorization state:** Sofia's half of the double review is complete. Upon Grace's concurring review, the Stage 1 token is her concurrence-audit hash (D-0158 Amendment 8 convention). No Stage 1 execution before that anchor.
+
+### Amendment 7 — 2026-08-29 (Grace concurrence anchored; Stage 1 CLEARED)
+
+**Grace's concurring review:** `docs/HSI_v2_Audit_Item3_Stage0_Manifest_Review.md`, SHA-256 `8C13B9D981927961E16639A211331AFF3C436D01194EE2246B4944745481EF92` (Sofia recomputed: MATCH; the audit text contains the Stage 0 manifest hash `80874D36...` literally — chain closed inside the artifact). Verdict: **STAGE 0 VERIFIED AND APPROVED** (158/158 artifacts, both sources, six disjoint windows outside the Q2b prefix, 72/72 null caches, anti-observation barrier, RSS bound).
+
+**Both halves of the double review are complete and anchored. Stage 1 CLEARED** with the frozen invocation (token = concurrence-audit hash, per convention):
+
+```text
+--stage stage1
+--stage0-manifest <run_dir>\stage0_manifest.json
+--stage0-manifest-sha256 80874D369BDBC3ABAB71290DE4EFA2E8FCCA2B7C30706C5B28A5CBBFFAC20C43
+--code-audit-sha256 772EDDC14DFBBE09C5D5A589029F4CBA410B348BB4803391255B5BD2067736A5
+--stage1-authorization-sha256 8C13B9D981927961E16639A211331AFF3C436D01194EE2246B4944745481EF92
+--execute
+```
+
+The scientific readout proceeds under the frozen §12 hierarchy: two primary probes (orientation-resolved fiber kernel; oriented four-bit extension motifs) over six blind windows against the hard-null envelope of 72 source-specific surrogates, Probe 3 as non-voting qualifier. Post-execution: hashes anchored, Grace artifact audit, Sofia editorial ruling.
+
+### Amendment 8 — 2026-08-29 (Stage 1 completed: `source-statistics-or-null-mimicry`; Sofia verification; Grace audit pending)
+
+**Run:** `item3-rule-local-stage1__20260829T113135`, 78/78 jobs, 208,688 s, 4 workers, aggregate peak RAM 713,809,920 bytes, zero reused jobs, Stage 0/authorization tokens MATCH. Manifest SHA-256 `FCDA8322A25E5BDB95973B91E83857D3DC50CDB185DA51DB8836E8F9CCB7FC7B` (Sofia recomputed: MATCH). Ariadna: 165/165 artifacts MATCH.
+
+**Sofia's independent first-match application from the raw site medians — outcome CONFIRMED:** raw-positive 3/3 on both probes (D1 ∈ [0.1696, 0.1911], D2 ∈ [0.9017, 0.9246], all ≥ 0.02); hard-null-positive 0/3 on both (G1 ∈ [−0.2498, −0.1996], G2 ∈ [−0.0469, −0.0328], all < 0.02); region-positive False/False; §12.5 matches first → `source-statistics-or-null-mimicry`.
+
+**Descriptive texture (no outcome effect):** Markov-1 defines the hard-null envelope in all 18 site×segment×probe combinations, and its G1 gaps are strongly negative — the null *pairs* differ from each other more than B differs from B_XOR on the fiber kernel. Probe 2's enormous raw motif distance (≈0.92) is almost exactly reproduced by the phase-matched-LZ nulls (gap ≈ 0): the motif difference is density/phase-driven. Probe 3 (non-voting): 0.047 / 0.058 / 0.079.
+
+**Bounded reading (contract §12.5 and wording fence):** B and B_XOR differ descriptively in replicated fashion, but the differences are matched or exceeded by source-specific nulls. Under the tested probes, scales, sites, and nulls, **no output-level separation attributable to the local rule beyond density, Markov-1, and phase/LZ structure is identified.** This is not equivalence, not a refutation of P3, and not superiority of either source.
+
+**Manuscript consonance (recorded now; formal ruling after Grace's audit):** the v2.04 §`sec:absurd` reformulation — the signature discriminates the architectural class, not the local rule P3 selects, whose canonicity rests on minimality "sense discriminant empíric propi sota el protocol actual" — is **exactly consistent with this outcome**. The dedicated experiment retro-validates the editorial choice made in the release: the manuscript already says what the data now independently establish, and would need no change even when this result enters the next-release ledger.
+
+**Gates:** Grace post-execution audit (integrity, envelope recomputation, hierarchy validation) → joint ruling → entry to the next-release evidence ledger.
+
+### Amendment 9 — 2026-08-29 (readout audited; Sofia ruling; ITEM 3 CLOSED SUCCESSFULLY)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Item3_B_vs_BXOR_Readout.md`, SHA-256 `08B73074CC590847B399CE2F272B781D90AA1B68A48BCB26711901E0CD9349B5` (Sofia recomputed: MATCH). Verdict: **AUDITED AND EMPIRICALLY VALIDATED** — 165/165 artifacts, mathematical recomputation of all probe distances and envelope gaps, contractual classification confirmed. **Triple concordance again**: Ariadna, Sofia, and Grace applied the §12 hierarchy independently from raw values with identical results.
+
+**Sofia editorial ruling:**
+
+1. Outcome **accepted as final**: `source-statistics-or-null-mimicry`. **Item 3 is CLOSED, successfully** — a successful *experiment* whose scientific answer is a delimitation: under the tested probes, no output-level trace of the local rule survives source-specific statistical control.
+2. **The double reading is binding for any future use** (mirroring the D-0156 discipline): (a) the local rule leaves no measured projective signature beyond source statistics — P3's empirical status remains motivational-selective, exactly as v2.04 §`sec:absurd` states; (b) *simultaneously*, the result **strengthens the architecture-class claim**: the projective regime and signature are robust under local-rule replacement (multiple realizability confirmed by dedicated preregistered test), not a fragile artifact of one rule. Neither half may be quoted without the other.
+3. **Manuscript status:** no edit — v2.04 closed and, notably, already consonant (Amendment 8 note). This result is the second entry of the next-release evidence ledger, its wording pre-bounded by the contract fence (no equivalence, no P3 refutation, no superiority).
+4. **Queue effect:** post-review Items 1, 2, 2b, 3 are all resolved. The active front advances to **road point 3: multi-seed statistical reinforcement over the clean tables** (Item 4 of the original queue), which requires its own preregistration per standing decisions.
+5. D-0160 entry status: **`closed-successful`**.
+
+---
+
+## D-0161 — Post-review Item 4: Gate 1 multi-seed generative-null reinforcement
+
+- Date: 2026-08-29
+- Status: `v1.0-frozen-implementation-authorized`
+- Scope: large-ensemble statistical reinforcement of the clean Gate 1 tail tables — 511-seed source-specific ensembles of three strong null families over four fixed sources, joint Pareto-tail Monte Carlo exceedance with Holm correction. Road point 3; final experimental item of the 2026-07-02 post-review queue.
+
+### Current draft
+
+`prereg_postreview_item4_gate1_multiseed_monte_carlo_v0.1_DRAFT.md`, SHA-256 `DD7E3F3D36A32337A30EBC4A6ABB52A85CA6201602F503C8786C09DED994514A` (Sofia recomputed: MATCH).
+
+### Sofia editorial pass: PASSED — no content delta required
+
+Verified on the three requested focus points and beyond:
+
+1. **Validity of the fitted-model contrast:** the terminology correction (permutation → plug-in Monte Carlo conditional on fitted generators) is formally right — observed/null labels are not exchangeable here — and §9 already carries the honest conditionality caveat (no parameter-estimation uncertainty integrated; not an exact permutation p-value under a composite null). The known plug-in double-use-of-data limitation is declared, consistent with the house convention of fitting nulls on the full analysis window.
+2. **Outcome hierarchy:** seven outcomes, first-match, complete and disjoint — including a dedicated `canonical-tail-baseline-not-reproduced` outcome that institutionalizes the display-reproduction discipline as a hard gate before any statistics.
+3. **Compact profiles:** sufficiency for exact R/S/A recomputation declared, equivalence to the canonical pipeline gated on Grace's code audit before Stage 0, frozen null caches guarantee regenerability. Artifact economy (avoiding a six-figure file count) without evidentiary loss.
+4. **Arithmetic verified:** 1/512 rank resolution < 0.05/12 first-step Holm threshold (the all-12-rejectable claim is correct); 6,132 = 4×3×511; seed ledger exhaustive over {1..511} and contains the historical six-seed family.
+5. **Source anchors cross-checked against the D-0154 closure hashes — all four MATCH** (B@20 `B1FE25AC...`, I@23 `913452A3...`, D@20 `67E870C1...`, G@20 `3A8977E8...`). **Cross-check resolved:** the draft's I@23 observable length (265,785,965,991) differs by exactly +3 from the TE run's consumed count (Amendment 13: 265,785,965,994) — reconciled by the v33 padding convention (Amendment 38 disclosed +3 trailing symbols for I, consumed by the TE decoder and excluded here). The two figures are mutually consistent, not contradictory.
+6. E excluded from voting (B-identical chain, no independent replicate — with the wording-fence clause banning any E-as-independent-vote claim); F/H excluded with stated rationale; the §18 clause "no gate may be collapsed because compute cost is non-binding" adopted as house doctrine.
+
+### Gates
+
+Grace design/statistical audit (pending) → Iban authorization → v1.0 promotion (no delta authorized) + freeze + OTS → implementation → Grace code audit (incl. compact/full equivalence fixtures) → Stage 0 (6,136 caches, no scientific values) → double manifest review + token → Stage 1 → post-execution audit → ruling.
+
+### Amendment 1 — 2026-08-29 (Grace design audit APPROVED, anchored)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Prereg_Postreview_Item4_Multiseed_v0.1.md`, SHA-256 `C787233402ABF5B9D0C77D6866B8C27020AC12912A4FFF52DF7C6BBFE5E5ADAA` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR PROMOTION TO v1.0**. Determinations: the plug-in Monte Carlo correction theoretically impeccable; source selection (E excluded as B-fossil, F/H as different deterministic regimes) methodologically incontestable; 511-seed power arithmetic confirmed (1/512 < 0.05/12); joint Pareto criterion and compact-profile design endorsed.
+
+Process note: Grace's transmittal requested Sofia's editorial pass and the D-entry — both predate her message (this entry; crossed messages, the standing pattern). **Both review gates are now closed. Remaining gate: Iban authorization** → v1.0 promotion (no content delta authorized) → freeze + OTS → implementation.
+
+### Amendment 2 — 2026-08-29 (Iban authorization GRANTED)
+
+Iban authorizes the Gate 1 multi-seed generative-null reinforcement contract (explicit go, 2026-08-29, relayed via Sofia's session). All design gates satisfied: Sofia editorial pass PASSED with no delta (entry body), Grace design/statistical audit APPROVED (`C7872334...`, Amendment 1), Iban authorization GRANTED (this amendment).
+
+Mechanical sequence, owned by Ariadna: promote v0.1_DRAFT (`DD7E3F3D...`) to `prereg_postreview_item4_gate1_multiseed_monte_carlo_v1.0.md` — content identical except version/freeze metadata, **no content delta authorized**; anchor the freeze SHA-256 here; Sofia verifies the promotion diff and OTS-stamps; implementation (runner + batch/statistics modules); Grace code audit including the compact/full-profile equivalence fixtures; Stage 0 (6,136 caches, zero scientific values); double manifest review with concurrence-audit token (standing convention); Stage 1; post-execution audit; ruling. Per the contract's own §18: no gate may be collapsed because compute cost is non-binding.
+
+This is the final experimental item of the 2026-07-02 post-review queue. Upon its closure, the road advances to point 4 (the gated Level 2 approach).
+
+### Amendment 3 — 2026-08-29 (v1.0 promoted and freeze hash anchored)
+
+Ariadna promoted the accepted draft to `prereg_postreview_item4_gate1_multiseed_monte_carlo_v1.0.md`, SHA-256 `F8A4188170B8980599199B8E1696286A564B982E2703197E75A11E306B6FA31A`.
+
+Promotion verification: Sections 1-18 have identical UTF-8 body SHA-256 in draft and v1.0 (`91115551613701E7F14159F24C606101783EFCF15C1068CACD9F5CF2E7BCCBDB`). The only differences are the authorized version/status metadata and Section 19 freeze state. No scientific or operational content delta was introduced.
+
+The v1.0 freeze is now anchored. Implementation of the public runner and internal batch/statistics modules is authorized; Stage 0 remains blocked until Grace audits the implementation, including exact compact/full-profile equivalence fixtures, resource bounds, compiled paths, progress, and resume behavior. Sofia's independent promotion verification and OTS stamping remain the next closure actions for the contract artifact.
+
+### Amendment 4 — 2026-08-29 (Sofia verification + OTS; two status-drift corrections recorded; implementation cleared)
+
+**Freeze hash independently recomputed:** `F8A41881...` — MATCH with Amendment 3. **Promotion diff independently verified** (line-level diff, method separate from Ariadna's body-hash comparison): changes confined to version/status header, revision note, and §19 freeze state; zero hunks in §§1-18 — corroborating her shared-body SHA (`91115551...`) by an independent method. The D-0161 editorial pass carries over intact. **OTS anchored** (`.ots` sidecar 2026-08-29).
+
+**Two status-drift corrections of the same class, both caught before any consequence:**
+
+1. Ariadna self-caught and corrected, before handoff, a mechanical status replacement that had temporarily pointed at D-0160 — disclosed in her report, final states verified.
+2. Sofia's verification then found the same drift class elsewhere: **D-0158's header still read `draft-pending-audits`** despite Amendment 10's `closed-successful` declaration. Header aligned with the declaration, correction annotated in place. Lesson noted: entry-header status fields are living state and must be updated in the same edit that declares a status change in an amendment.
+
+**Implementation cleared.** Next: runner + statistics modules → Grace code audit (equivalence fixtures mandatory) → Stage 0 (6,136 caches) → double manifest review + token → Stage 1.
+
+### Amendment 5 — 2026-08-30 (code audit anchored; Stage 0 execution gate OPEN)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Code_Postreview_Item4_Multiseed.md`, SHA-256 `0FF76C55969A0BC051234447C0C68DF9D73FAE23C6B44FAA8B85143F9ED87EB8` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR STAGE 0 EXECUTION**. Tests 10/10; global suite 124/124. The audit binds the frozen contract (`F8A41881...`) explicitly.
+
+**All four audited code artifacts independently recomputed by Sofia on disk — MATCH:** runner `hsi_v2_postreview_item4_gate1_multiseed_monte_carlo.py` (`7BC9C5CF...`), core `v2/postreview/item4_multiseed_monte_carlo.py` (`7B175F45...`), statistics `v2/postreview/item4_statistics.py` (`5DA326A4...`), tests (`73BC13B9...`).
+
+**Stage 0 cleared:** `--stage stage0 --code-audit-sha256 0FF76C55969A0BC051234447C0C68DF9D73FAE23C6B44FAA8B85143F9ED87EB8 --execute` — the four observed caches plus the 6,132-null ensemble, identity checks, determinism fixtures, **no scientific values**. **Stage 1 remains BLOCKED** until the double manifest review (Sofia + Grace, with cache-inventory verification) and the concurrence-audit token, per standing convention.
+
+### Amendment 6 — 2026-08-30 (Stage 0 completed `inputs-derivable` after ~45.6h; Sofia manifest review PASSED; awaiting Grace's concurrence)
+
+**Stage 0 run:** `item4-gate1-multiseed-stage0__D0161`, outcome `inputs-derivable`, 164,219.7 s (~45h37m).
+
+**Sofia independent manifest review — PASSED.** Verified directly on disk and in manifest content:
+
+1. `stage0_manifest.json` SHA-256 `EEDB50D328F4DC23381F31D7902B1AE53FA1C71338A6F640DCDFF5E8EDC9523B` — MATCH.
+2. Chain bindings inside the artifact: preregistration `F8A41881...` MATCH, code audit `0FF76C55...` MATCH; every null-cache entry additionally binds the null-implementation hash (`C367761E...`) and the observed-cache hash it was fitted to.
+3. **Full inventory recomputed by direct grouping over the 6,132 null entries: all 12 source×family combinations carry exactly 511 caches with unique seeds spanning the complete range 1..511, and the historical six-seed family is contained in every combination.** Four observed caches of exactly 3,000,000 bits each.
+4. `compiled_fixture_match: true`; `scientific_values_emitted: []`; 12,277 artifact-hash entries.
+5. **Barrier note (preempting the question):** null entries carry fit metadata (fitted density, transition counts/probabilities) — this is provenance material the contract's §7 explicitly allows storing, and none of it is a Phase 1 tail coordinate, exceedance count, or outcome-relevant statistic. No barrier violation.
+
+**Authorization state:** Sofia's half of the double review is complete. Grace's exhaustive artifact/equivalence verification pending; upon her concurrence, her audit hash becomes the Stage 1 token (standing convention). No scientific computation before that anchor.
+
+### Amendment 7 — 2026-08-30 (Grace concurrence anchored; Stage 1 CLEARED — the post-review program's final readout may run)
+
+**Grace's concurring review:** `docs/HSI_v2_Audit_Item4_Stage0_Manifest_Review.md`, SHA-256 `2FBDEF830D2E30000C375E574995AC93AD14B8B10EC88D90672E0E806317F41E` (Sofia recomputed: MATCH; the audit text contains the Stage 0 manifest hash `EEDB50D3...` literally). Verdict: **STAGE 0 VERIFIED AND APPROVED** — 12,277/12,277 artifacts, 4/4 observed caches, exact 1..511 seed coverage across the 12 combinations, fixtures true, anti-observation barrier intact.
+
+**Both halves of the double review complete and anchored. Stage 1 CLEARED** with the frozen invocation (token = concurrence-audit hash, standing convention):
+
+```text
+--stage stage1
+--stage0-manifest <run_dir>\stage0_manifest.json
+--stage0-manifest-sha256 EEDB50D328F4DC23381F31D7902B1AE53FA1C71338A6F640DCDFF5E8EDC9523B
+--code-audit-sha256 0FF76C55969A0BC051234447C0C68DF9D73FAE23C6B44FAA8B85143F9ED87EB8
+--stage1-authorization-sha256 2FBDEF830D2E30000C375E574995AC93AD14B8B10EC88D90672E0E806317F41E
+--execute
+```
+
+Stage 1 executes the 6,136 Phase 1 jobs, the baseline reproduction gate (§11), the joint Pareto-tail Monte Carlo exceedance (§9), and Holm over the 12 contrasts (§10), under the frozen seven-outcome hierarchy (§12). Post-execution: hashes anchored, Grace artifact audit, Sofia editorial ruling — the closing readout of the 2026-07-02 post-review queue.
+
+### Amendment 8 — 2026-08-30 (Stage 1 completed: `gate1-tail-multiseed-reinforced-across-tested-sources`; Sofia verification; Grace audit pending)
+
+**Run:** `item4-gate1-multiseed-stage1__D0161`. Hashes (Ariadna reported; Sofia recomputed, **all MATCH**): `manifest.json` `6C73EFD0...`, `summary.json` `DE147E47...`, `report.md` `1CF3F542...`.
+
+**Sofia's independent statistical verification:** all 12 source×family contrasts report p = 0.001953125 = 1/512 exactly — which, under the frozen formula p=(1+C)/512, **arithmetically requires C=0**: not one of the 6,132 surrogates jointly matches or exceeds its observed source's tail vector. Independent Holm step-down application: with 12 identical raw p-values of 1/512, the first threshold 0.05/12 = 0.00417 admits rejection and the cascade rejects all 12, adjusted p = 12/512 = 0.0234375 — matching Ariadna's recomputation. The four clean baselines reproduce (prerequisite for the hierarchy to reach §12.4). First-match selects **`gate1-tail-multiseed-reinforced-across-tested-sources`** — the maximal outcome — with count_v[P_v] = 4.
+
+**Interpretive caution recorded as binding for any future use (Ariadna's formulation adopted):** in the 12 ensembles no null reaches the observed retention R; but A (active tail transport) is often exceeded by nulls, and S shows some exceedances for G. **The result sustains the joint exceptionality of the preregistered vector under the Pareto order — it does not sustain per-coordinate superiority.** The inference remains conditional on the fitted generators and on the tested sources, prefixes, metrics, and finite depths; it is not an exact permutation test, does not integrate fit uncertainty, and establishes neither universality nor asymptotic persistence.
+
+**Gates:** Grace's exhaustive audit of the 12,344 registered artifacts and independent recomputation → Sofia editorial ruling → entry to the next-release evidence ledger.
+
+### Amendment 9 — 2026-08-30 (readout audited; Sofia ruling; ITEM 4 CLOSED — THE POST-REVIEW PROGRAM IS COMPLETE)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Item4_Multiseed_Readout.md`, SHA-256 `4376BE701B93C87ADC5312C0BE39DCE90BF3E628FECFD36CDCC7CB0FDF4555E1` (Sofia recomputed: MATCH). Verdict: **AUDITED AND EMPIRICALLY VALIDATED** — 12,344/12,344 artifacts; baseline reproduction exact with delta 0.0 at 4/4 sources; 12/12 contrasts confirmed (C=0/511, raw p=1/512, Holm-adjusted 0.0234375 < 0.05, all rejected); conjunction 4/4. **Triple concordance for the fourth consecutive readout**: Ariadna, Sofia, and Grace recomputed the statistics independently with identical results.
+
+**Sofia editorial ruling:**
+
+1. Outcome **accepted as final**: `gate1-tail-multiseed-reinforced-across-tested-sources` — the maximal outcome of the frozen hierarchy, with the Amendment 8 interpretive caution (joint Pareto exceptionality, not per-coordinate superiority; conditional plug-in inference) **binding on every future use**.
+2. **Item 4 is CLOSED, successfully.** D-0161 status: `closed-successful`. This result is the third entry of the next-release evidence ledger.
+3. **THE 2026-07-02 POST-REVIEW PROGRAM IS COMPLETE.** All experimental items resolved with full chains: Item 1 (φ+1 proven as combinatorial law, D-0156), Item 2 (delimited as same-prefix invariance, D-0155), Item 2b (shell separation stable at two orders of magnitude, D-0158), Item 3 (no rule-local trace beyond source statistics — architecture-class robustness, D-0160), Item 4 (Gate 1 tail exceptionality formally reinforced at 511 seeds per contrast, D-0161). Every readout triple-verified; every artifact hashed; every contract OTS-anchored.
+4. **Road status:** point 3 closed. The road advances to **point 4 — the gated Level 2 approach**, whose standing gates are unchanged: Ariadna's analytic Stage C0 for the contact-structure bridge (no data), the Gate-1 hardening under stronger nulls (Markov-3, syntax-preserving Dyck) as the likely first experimental contract of that line, and the L2-01/L2-02 hard negatives as binding constraints. Points 5 (methodology article) and 6 (English + publication) follow per the standing plan.
+
+---
+
 ---
 
 ## D-0155 — Post-review Item 2 B-markov1@24 gate-plane preregistration
@@ -10819,6 +12050,23 @@ Validation notes:
 
 Execution is now authorized under this frozen v1.0 contract, subject to D-0154 remaining the priority compute path: if Level 0 sanitization for `D@20`, `G@20`, or `F@20` requires the machine, Item 2 waits. *(Compute-priority clause later relaxed by D-0154 Amendment 6: parallel execution at Ariadna's discretion.)*
 
+### Amendment 5 — 2026-08-27 (retroactive execution anchor; prefix-identity delimitation; entry closed-delimited)
+
+**Anchoring gap recorded honestly:** the contract executed on **2026-07-03** (run `postreview-item2-bmarkov1-gate-plane__20260703T115436`, launch day of the Priority A batch) and its readout was **never anchored in this log** — recovered by Ariadna on 2026-08-27 during queue recovery, 55 days later. Process miss, no data consequence: the artifacts sat untouched and hash-intact. Lesson: an executed contract's readout anchors the same day it completes, no exceptions in busy weeks.
+
+**Retroactive execution anchor (Sofia verified all five at filesystem level 2026-08-27, all MATCH):** run `D:\Iban\Projectes\HSI\results\hsi_v2\postreview_item2_bmarkov1_iter24_gate_plane\postreview-item2-bmarkov1-gate-plane__20260703T115436`; `manifest.json` `9DB137D5...`, `summary.json` `6696DED3...`, `report.md` `9C45506F...`, `per_depth_gate_plane.csv` `E2101AD0...`, `per_seed_markov1_gate_plane.csv` `5268D332...`. Formal outcome: **`markov1-separation-stable-at-iter24`**, with G(20)=G(24)=0.7231684146 and D(20)=D(24)=0.7931707635, ΔG=ΔD=0.0 exactly.
+
+**Delimitation (note anchored):** `docs/HSI_v2_D0155_Postexecution_Prefix_Identity_Note.md`, SHA-256 `E9E896D1EE21E21FF154510A2581077AB93F81D68F8E56CD88722C23E1FB1174` (Sofia recomputed: MATCH). The first 3M observable bits of B@20 and B@24 are **bit-identical** (shared prefix SHA-256 `43ABCFA6...C9B4`): B's accumulative property makes the frozen 3×1M-prefix window depth-invariant, so every observed and null readout was equal across depths **by construction** — the exact zero deltas are a tautology, not a stability measurement.
+
+**Interpretive ruling (Sofia):**
+
+1. The formal outcome **stands as recorded** — the contract was executed faithfully; outcomes are contract-relative.
+2. Its scientific reading is **delimited** to: *same-prefix pipeline invariance under source-depth extension*. It establishes nothing about persistence, expansion, or contraction on material generated after iteration 20. **No manuscript-facing claim may cite D-0155 as evidence of depth-24 Markov-1 robustness on new material.**
+3. **Design blind spot owned by all three gates:** Ariadna drafted, Grace audited, and Sofia editorially passed a contract whose scientific question was structurally unanswerable under its own frozen protocol — none of the three noticed that for accumulative variants the analysis window must be checked against the source-growth geometry. Design lesson, binding henceforth: **window-vs-source distinction is an explicit checklist item for any contract over accumulative sources.**
+4. Grace's post-execution audit of the delimitation note remains requested (Ariadna's ask); this ruling does not pre-empt it.
+
+**Entry status: `closed-delimited`.** Successor track: D-0158 (growth shells), which samples previously unobserved material and is a new experiment, not a rescue.
+
 ---
 
 ## D-0156 — Post-review Item 1: c̄ = φ+1 formalizable conjecture (analytic cycle)
@@ -10868,6 +12116,14 @@ All four approach φ+1 **from below**. Observation for the analytic work: the de
 
 No claim-bearing use beyond this log until the analytic cycle produces its own audited readout.
 
+### Amendment 2 — 2026-08-27 (candidate proof AUDITED AND MATHEMATICALLY VALIDATED; conjecture becomes derived law)
+
+**Proof note:** `docs/HSI_v2_D0156_cbar_Combinatorial_Reduction_Note.md`, SHA-256 `39309425D7BC385C35FEFAE57D9139772390E7813BFD51E26839CC8EE99D6AE1` (Sofia recomputed: MATCH). **Grace's audit:** `docs/HSI_v2_Audit_D0156_cbar_Combinatorial_Proof.md`, SHA-256 `1A2C6D7FF5A2303CC05AAE792F4395CD15C930FF39EA050E8D2B7E7B713C9C4B` (Sofia recomputed: MATCH; path correction by Ariadna — Grace's message cited a non-existent path without `Audit_`; the verification-before-anchoring rule caught it once more). Verdict: **AUDITED AND MATHEMATICALLY VALIDATED**.
+
+**Result, with its exact scope (Ariadna's binding precisions of 2026-08-27):** $\bar{c} \to \varphi+1$ is established as an exact consequence of a global combinatorial recurrence of the syntactic tree, expressed by a $2\times2$ transition matrix over internal/leaf node types $(I,L)$ — a combinatorial recurrence, not a letter substitution and not any geometric structure. Proven for the complete snapshots of the executable class $\{B,D,E,F,G,I\}$ sharing envelope syntax, simultaneous leaf pruning, and intermediate-state-chain accumulation. **Not** attributable generically to any D1--D5 system. F@27's measured local deviation does **not** refute the global law: it coincides with the deep-nesting local-homogeneity break, with **no causal relation established**. Q2a remains valid for the 1D letter stream and LZ.
+
+**Status effects:** the D-0156 outcome space's "recurrence found" arm is realized positively. The double editorial reading is binding (Ariadna's formulation): $\bar{c}$ ceases to be a mysterious coincidence and becomes a proven architectural law — and simultaneously loses weight as independent evidence (anti-circularity weight shifts to the projective tower, strong nulls, and orthogonal observables). Manuscript integration executed under D-0154 Amendment 61.
+
 ---
 
 ## D-0157 — Continuous cryptographic timestamping of process artifacts (OpenTimestamps)
@@ -10887,5 +12143,160 @@ The project's hash-chain audit discipline proves *internal consistency* (no post
 **Origin:** Iban's proposal (2026-07-03); Sofia's assessment and implementation the same day. For the pending methodology article, this converts the temporal-precedence section from proposal to exercised practice.
 
 **Pilot artifacts:** `prereg_postreview_item2_bmarkov1_iter24_gate_plane_v1.0.md` (frozen, SHA-256 `3181DD50...` per D-0155 Amendment 4) and a snapshot of this Decision Log including the present entry.
+
+---
+
+## D-0158 — Post-review Item 2b: B-markov1 growth-shells (successor to D-0155)
+
+- Date: 2026-08-27
+- Status: `closed-successful` *(header aligned 2026-08-29 with Amendment 10's declaration; drift caught during the D-0161 promotion verification)*
+- Scope: Markov-1 separation on **previously unobserved material** — blind positions (10% / 50% / 90%) inside the growth shells `B@20 \ B@19` and `B@24 \ B@23`, inherited Phase 1 / Markov-1 protocol, six canonical seeds.
+- Cycle: successor to D-0155 after its prefix-identity delimitation (D-0155 Amendment 5). A new preregistered experiment, **not** a reinterpretive rescue.
+
+### Trigger
+
+D-0155's frozen protocol analyzed the first 3M observable bits at both depths; B's accumulative property makes that window depth-invariant (prefix SHA-256 identical at @20 and @24). The external review's original question — does the separation persist on material generated at greater depth — therefore remains open and requires shell sampling.
+
+### Current draft
+
+`prereg_postreview_item2b_bmarkov1_growth_shells_v0.1_DRAFT.md`, SHA-256 `1D01193D4F43D74CF938E1938B87C68A8619D5BE70D99BF4EC0A9934E5BA88DE` (Sofia recomputed at filesystem level 2026-08-27: MATCH). Stage 0 verifies exact nesting and freezes six caches; Stage 1 applies the inherited protocol. Shell windows were not opened or inspected when positions and outcome rules were drafted. Operational architecture declared (bounded RAM, I/O-compute separation, post-freeze multiprocess parallelism, ETA progress, per-job resume, Numba kernels). No executable code exists yet.
+
+### Gates
+
+Grace design audit (shell homology, offsets, hierarchical outcomes, inherited thresholds, operational architecture) + Sofia editorial pass → amendments → Iban authorization → v1.0 freeze + OTS → implementation → Grace code audit → Stage 0 → Stage 1. No implementation before the reviews.
+
+### Amendment 1 — 2026-08-27 (Grace design audit APPROVED, anchored; Sofia editorial pass pending)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Prereg_Postreview_Item2b_Growth_Shells_v0.1.md`, SHA-256 `07F8C0343BBE180722F17AADBBEE4E9588861D49528602F76D77D82CCE2B9AE2` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR PROMOTION TO v1.0**. Determinations: D-0155 delimitation accepted ("same-prefix pipeline invariance"); the six shell windows at q ∈ {0.1, 0.5, 0.9} within `B@20\B@19` and `B@24\B@23` verified mathematically exact; Stage 0 (<4GB streaming) / Stage 1 (Numba + 42-job multiprocess) architecture approved; outcome hierarchy well-ordered and disjoint.
+
+**Remaining gates:** Sofia editorial pass of the v0.1 draft (next in queue; the D-0154 v2.04 release execution takes precedence in Sofia's work order) → Iban authorization → promotion + freeze + OTS. No implementation before these.
+
+### Amendment 2 — 2026-08-28 (Sofia editorial pass: PASSED; all review gates closed; Iban authorization is the remaining gate)
+
+**Sofia editorial pass of `prereg_postreview_item2b_bmarkov1_growth_shells_v0.1_DRAFT.md` (SHA `1D01193D...`, re-verified MATCH): PASSED.** Independently verified at text and arithmetic level:
+
+1. **All six shell-window offsets recomputed by hand from the frozen rational formula** — depth 20 (4,697,899,349 / 7,585,672,497 / 10,473,445,645) and depth 24 (290,224,154,948 / 466,469,434,976 / 642,714,715,004) — all exact.
+2. Source anchors consistent with the standing record (B@24 `B766982B...` matches the Stage 2/Item 2 anchor; B@20 `B1FE25AC...` matches the Item 3 draft's citation of the same snapshot).
+3. The D-0155 lesson institutionalized: Stage 0 verifies exact observable-prefix nesting (B@19⊂B@20, B@23⊂B@24) before any extraction; windows exclude the observed 3M prefix by construction.
+4. Outcome hierarchy complete and disjoint, with the depth-20 shell baseline guard (`C(20) ≥ 2`) playing the role the Item 2 precedent demands, a `position-heterogeneous` fallback that refuses dishonest collapsing, and the explicit ban on population inference from n=3 deterministic probes.
+5. Non-scientific Stage 0 with immutable hashed caches; resource, progress, and resume discipline consistent with house rules; wording fence adequate.
+
+No blocking notes; no content delta required. **Remaining gate: Iban authorization** → promotion to v1.0 (version/freeze metadata only) → SHA freeze + OTS → implementation → Grace code audit → Stage 0 → manifest review → Stage 1.
+
+### Amendment 3 — 2026-08-28 (Iban authorization GRANTED)
+
+Iban authorizes the growth-shells contract (explicit go, 2026-08-28, relayed via Sofia's session, in direct answer to the authorization request of Amendment 2). All design gates satisfied: Grace design audit APPROVED (`07F8C034...`, Amendment 1), Sofia editorial pass PASSED with hand-verified window arithmetic (Amendment 2), Iban authorization GRANTED (this amendment).
+
+Mechanical sequence, owned by Ariadna: promote v0.1_DRAFT (`1D01193D...`) to `prereg_postreview_item2b_bmarkov1_growth_shells_v1.0.md` — content identical except version/freeze metadata, **no content delta authorized**; compute freeze SHA-256 and anchor it here; Sofia verifies the promotion diff and OTS-stamps; implementation of the runner; Grace pre-execution code audit; Stage 0 (source identity + nesting verification + cache freeze, no scientific values); Stage 0 manifest review; only then Stage 1. Any substantive difference at promotion voids the editorial pass.
+
+### Amendment 4 — 2026-08-28 (v1.0 executable contract freeze anchor)
+
+Ariadna completed the Amendment 3 mechanical promotion. Frozen contract:
+
+`prereg_postreview_item2b_bmarkov1_growth_shells_v1.0.md`
+
+Freeze SHA-256:
+
+`C087C99D2808064ECE68976F2991C120C7C7DAF682F3A6BBB828FA9988C55653`
+
+Promotion validation: the complete scientific and operational body, Sections 1-14, is byte-identical to the Grace-audited and Sofia-approved v0.1 draft (`1D01193D4F43D74CF938E1938B87C68A8619D5BE70D99BF4EC0A9934E5BA88DE`). The only differences are the authorized v1.0 status/revision metadata and the appended freeze-state metadata in Section 15. No source, offset, seed, scale, null, threshold, metric, outcome, resource bound, output, wording fence, or gate changed.
+
+This amendment closes the contract-freeze gate only. Implementation may now begin, but Stage 0 and Stage 1 remain blocked by their explicit downstream gates: Grace's pre-execution code audit, Stage 0 authorization, frozen Stage 0 manifest review, and Stage 1 authorization. Sofia's independent promotion-diff verification and OTS stamping remain the immediate traceability handoff.
+
+### Amendment 5 — 2026-08-28 (Sofia independent verification of the promotion + OTS; runner implementation cleared)
+
+**Freeze hash independently recomputed:** `C087C99D...` — MATCH with Amendment 4. **Promotion diff independently verified** (line-level, method separate from Ariadna's byte comparison): changes confined to the status header, the revision note, and the appended §15 freeze state; zero hunks in the scientific body §1-14. The Amendment 2 editorial pass carries over intact. **OTS anchored** (`.ots` sidecar 2026-08-28; enters the next commit). **Runner implementation is cleared**; Stage 0 and Stage 1 stay behind their gates.
+
+### Amendment 6 — 2026-08-28 (code audit anchored; Stage 0 execution gate OPEN)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Code_Postreview_Item2b_Growth_Shells.md`, SHA-256 `0FC984F9B4D46DEC1C0072AC2D02F645ACB8B061A95C71FDC2D9B3F85EF5F985` (Sofia recomputed: MATCH). Verdict: **APPROVED FOR STAGE 0 EXECUTION**. Tests 9/9; global suite 99/99.
+
+**All five audited code artifacts independently recomputed by Sofia on disk — MATCH:** runner `hsi_v2_postreview_item2b_bmarkov1_growth_shells.py` (`3EC890A4...`), core `v2/postreview/item2b_growth_shells.py` (`948D0A49...`), **updated canonical** `hsi_v2_phase1_run.py` (`1E40ADED...`), `v2/common/io.py` (`65A8EA10...`), tests (`E7942694...`).
+
+**Canonical-runner evolution note:** `hsi_v2_phase1_run.py` is shared infrastructure and its hash now differs from the execution-time hashes recorded in earlier D-0154/D-0155 manifests. Historical provenance is unaffected (each run's manifest records the hash it executed); future runs of any track must record and be audited against the current hash.
+
+**Stage 0 cleared:** `--stage stage0 --code-audit-sha256 0FC984F9B4D46DEC1C0072AC2D02F645ACB8B061A95C71FDC2D9B3F85EF5F985 --execute`. Stage 0 emits identity, nesting verification, caches, and manifest only — no scientific values.
+
+**Stage 1 gate (mechanized):** Stage 1 remains BLOCKED until `stage0_manifest.json` is emitted, reviewed by Sofia and Grace, its SHA-256 frozen in this entry, and the explicit authorization provided via `--stage1-authorization-sha256`. The gate-in-code pattern of the B-only calibration extends to two stages.
+
+### Amendment 7 — 2026-08-28 (Stage 0 completed `inputs-derivable`; Sofia manifest review PASSED; authorization value frozen, effective upon Grace's concurrence)
+
+**Stage 0 run:** `item2b-growth-shells-stage0__20260828T121210`, outcome `inputs-derivable`, 4,151.6 s, peak RSS 219,123,712 bytes (≪ 4 GiB contractual bound).
+
+**Sofia independent manifest review — PASSED.** Verified directly on disk and in the manifest content:
+
+1. `stage0_manifest.json` SHA-256 `EFB5795A7E9938611122E402F0E2E903F449D61573AEA786B581B616E3D06911` — MATCH with Ariadna's report.
+2. The manifest binds the frozen contract (`C087C99D...`) and the code audit (`0FC984F9...`) — chain closed inside the artifact itself.
+3. **Prefix nesting verified with exact contractual bit counts:** B@19⊂B@20 over 3,975,956,062 bits; B@23⊂B@24 over 246,162,834,941 bits; the single B@24 trailing padding symbol excluded per convention (0 for all others).
+4. **All six window starts in the manifest match Sofia's Amendment 2 hand-computed values exactly** (4,697,899,349 / 7,585,672,497 / 10,473,445,645 / 290,224,154,948 / 466,469,434,976 / 642,714,715,004) — frozen formula, manual verification, and executed extraction agree three ways.
+5. Six `uint8` caches of exactly 3,000,000 elements, each hash-anchored with metadata sidecars; 15 artifact hashes present; compiled-fixture match true; **no scientific value anywhere in the manifest**. Stage 1 not started.
+
+**Authorization value frozen:** upon Grace's concurring review of the same manifest, Stage 1 is authorized with:
+
+```text
+--stage1-authorization-sha256 EFB5795A7E9938611122E402F0E2E903F449D61573AEA786B581B616E3D06911
+```
+
+Both reviews are required by the Amendment 6 gate; Sofia's half is complete with this amendment. No Stage 1 execution before Grace's concurrence is recorded here.
+
+### Amendment 8 — 2026-08-28 (Grace concurrence anchored; authorization token DEFINITION SUPERSEDED; Stage 1 CLEARED)
+
+**Grace's concurring review:** `docs/HSI_v2_Audit_Item2b_Stage0_Manifest_Review.md`, SHA-256 `9417B047791C435A8986A4E5F472C4C33F15A7CB7148A0ECB6BF8B079C798D74` (Sofia recomputed: MATCH; the audit text contains the Stage 0 manifest hash `EFB5795A...` literally — chain closed inside the artifact). Verdict: **STAGE 0 VERIFIED AND APPROVED** (15/15 artifacts, prefix identities, 6/6 caches, anti-observation barrier, RSS bound).
+
+**Authorization token definition — Amendment 7's is superseded, on the record:** Sofia froze the token as the manifest hash before Grace's review arrived with a different convention. Code inspection (runner lines 987-997) shows the runner validates the token's format only and records it in the Stage 1 manifest — its semantics are governance-defined. **Grace's convention is adopted as superior:** the token must prove the *review* occurred, not merely that the manifest exists (the manifest hash is already separately supplied and integrity-checked via `--stage0-manifest-sha256`). The chain becomes: manifest hash ⊂ review audit ⊂ this log ⊂ the Stage 1 manifest's recorded token.
+
+**Stage 1 CLEARED** with the exact frozen invocation:
+
+```text
+--stage stage1
+--stage0-manifest <run_dir>\stage0_manifest.json
+--stage0-manifest-sha256 EFB5795A7E9938611122E402F0E2E903F449D61573AEA786B581B616E3D06911
+--code-audit-sha256 0FC984F9B4D46DEC1C0072AC2D02F645ACB8B061A95C71FDC2D9B3F85EF5F985
+--stage1-authorization-sha256 9417B047791C435A8986A4E5F472C4C33F15A7CB7148A0ECB6BF8B079C798D74
+--execute
+```
+
+Both halves of the Amendment 6 gate are now satisfied and anchored. The 42 scientific jobs may run. Post-execution: hashes anchored, Grace artifact audit, Sofia editorial ruling under the frozen outcome hierarchy.
+
+### Amendment 9 — 2026-08-28 (Stage 1 completed: `markov1-shell-separation-stable-at-iter24`; Sofia verification; Grace audit pending)
+
+**Run:** `item2b-growth-shells-stage1__20260828T153838`, status `completed`, 42/42 jobs, 730,344 s wall-clock, 4 effective workers, per-job preflight peak RSS 924,110,848 bytes within budget. Manifest SHA-256 `DA554C525B3E3204A3E2CAA12596A1ACA601F12E7116139425F213869E5B75D2` (Sofia recomputed: MATCH). Ariadna's independent verification: 803/803 declared artifacts MATCH; authorization token recorded.
+
+**Readout (Sofia recomputed the hierarchy independently from the summary's raw G/D values — application CORRECT):**
+
+| q | G@20 | G@24 | ΔG | D@20 | D@24 | ΔD |
+|---|---|---|---|---|---|---|
+| 0.1 | 0.7576 | 0.7119 | −0.0456 | 0.8177 | 0.7809 | −0.0368 |
+| 0.5 | 0.7776 | 0.8373 | +0.0598 | 0.8284 | 0.8387 | +0.0104 |
+| 0.9 | 0.8138 | 0.8443 | +0.0305 | 0.8319 | 0.8457 | +0.0138 |
+
+C(20)=3 (baseline established); C(24)=3; zero positions with ΔG≤−0.05; one with ΔG≥+0.05; two with |ΔG|<0.05 → **`markov1-shell-separation-stable-at-iter24`** by the frozen first-match hierarchy.
+
+**Magnitude note (descriptive):** observed B retention across the six blind windows is 0.7121–0.8480 while the maximum of the six locally fitted Markov-1 surrogates is 0.000185–0.003733 — the separation on genuinely new material is not marginal but two orders of magnitude, and every window clears both frozen guards (G≥0.30, D≥0.20) simultaneously.
+
+**Near-miss recorded, not reinterpreted:** q=0.1 has ΔG=−0.0456, inside the stability band by 0.0044. The frozen thresholds decide; positional variation is honestly visible in the per-window table and licenses nothing beyond the contractual outcome.
+
+**Bounded reading (per contract §12):** the separation against locally fitted Markov-1 holds between finite depths 20 and 24 at the three predeclared blind shell positions. No stationarity, no asymptotic persistence, no Gate 2, no geometric claim.
+
+**Gates:** Grace post-execution audit pending (artifacts, readout fidelity, hierarchy application) → Sofia editorial ruling → the result then accumulates for the next release era (v2.04 is closed; no manuscript edit). The scientific queue's successor decisions come only after the joint ruling.
+
+### Amendment 10 — 2026-08-28 (readout audited; Sofia ruling; ITEM 2b CLOSED SUCCESSFULLY)
+
+**Independent audit:** Grace, `docs/HSI_v2_Audit_Item2b_Growth_Shells_Readout.md`, SHA-256 `C9B8D6F762848D7BF1A8E4C5DD7D9BC3D8FE55203622368A8625DA72375E5985` (Sofia recomputed: MATCH). Verdict: **AUDITED AND EMPIRICALLY VALIDATED** — 803/803 artifacts, mathematical recomputation of all G/D/Δ values and the contractual classification.
+
+**Triple-concordance note:** the outcome hierarchy was applied independently three times from raw values — Ariadna (execution report), Sofia (Amendment 9), Grace (audit) — with identical results at every step. This is the strongest verification state a readout has reached in the project.
+
+**Sofia editorial ruling:**
+
+1. Outcome **accepted as final**: `markov1-shell-separation-stable-at-iter24`. **Item 2b is CLOSED, successfully.** The external review's original robustness question (2026-07-01) is answered on genuinely new material: the separation against locally fitted Markov-1 holds at both finite depths across all three blind positions, at two orders of magnitude, with honest positional texture recorded.
+2. **Manuscript status:** no edit — v2.04 is closed. This result is the first entry of the **next-release evidence ledger**; when a future release opens, its integration follows the standard chain (its wording pre-bounded by the contract's §12 fence: no stationarity, no asymptotic persistence).
+3. **Queue effect:** the Item 3 (B vs B_XOR) runner implementation is now the active front, per the standing plan order; its contract is frozen (`3FBCB935...`) and awaiting code.
+4. D-0158 entry status: **`closed-successful`** — amendments remain the only mechanism for any future addition.
+
+---
+
+### Boundary
+
+No shell readout, no manuscript edit, no D-0155 reinterpretation is authorized by this entry. D-0154's closing editorial work (A-check, closure amendment, v2.04 release) is not blocked by this track and proceeds independently.
 
 ---

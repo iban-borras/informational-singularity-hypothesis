@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -140,6 +141,57 @@ def load_struct_metadata(struct_path: Path) -> Dict:
         return {}
     with open(metadata_path, "r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def load_observable_cache(
+    cache_path: Path,
+    *,
+    expected_bits: int,
+) -> tuple[np.ndarray, Dict, Path]:
+    """Load and verify an immutable uint8 observable-window cache."""
+    cache_path = cache_path.expanduser().resolve()
+    metadata_path = cache_path.with_suffix(".json")
+    if not cache_path.exists():
+        raise FileNotFoundError(f"Observable cache not found: {cache_path}")
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Observable cache metadata not found: {metadata_path}")
+
+    with open(metadata_path, "r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+
+    bits = np.load(cache_path, allow_pickle=False)
+    if bits.dtype != np.uint8 or bits.ndim != 1:
+        raise ValueError(
+            f"Observable cache must be a one-dimensional uint8 array, got {bits.dtype} {bits.shape}."
+        )
+    if bits.size != expected_bits:
+        raise ValueError(
+            f"Observable cache length mismatch: expected {expected_bits}, got {bits.size}."
+        )
+    if bits.size and not np.all(bits <= 1):
+        raise ValueError("Observable cache contains values outside {0,1}.")
+
+    declared_length = metadata.get("observable_length")
+    if declared_length != expected_bits:
+        raise ValueError(
+            f"Observable cache sidecar length mismatch: expected {expected_bits}, got {declared_length}."
+        )
+    declared_sha256 = str(metadata.get("cache_sha256", "")).upper()
+    actual_sha256 = _sha256_file(cache_path)
+    if declared_sha256 != actual_sha256:
+        raise ValueError(
+            f"Observable cache SHA-256 mismatch: expected {declared_sha256}, got {actual_sha256}."
+        )
+
+    return np.ascontiguousarray(bits), metadata, metadata_path
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
 
 
 def load_observable_prefix_bits(

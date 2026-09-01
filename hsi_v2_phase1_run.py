@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from v2.common.io import (
     companion_metadata_path,
+    load_observable_cache,
     load_observable_prefix_bits,
     load_struct_metadata,
     normalize_variant,
@@ -50,6 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--variant", type=str, help="HSI variant code, e.g. B, F, A, M.")
     parser.add_argument("--iteration", type=int, help="Iteration to analyze. Defaults to latest available.")
     parser.add_argument("--input", type=str, help="Explicit path to phi_iter*.struct.gz. Overrides variant/iteration.")
+    parser.add_argument(
+        "--observable-cache",
+        type=str,
+        help=(
+            "Immutable uint8 .npy observable cache with a same-stem JSON sidecar. "
+            "Mutually exclusive with structural input resolution."
+        ),
+    )
     parser.add_argument(
         "--level0-root",
         type=str,
@@ -142,6 +151,14 @@ def main() -> int:
         parser.error("--min-segment-support must be positive when provided.")
     if args.cv_max <= 0:
         parser.error("--cv-max must be positive.")
+    if args.observable_cache and args.input:
+        parser.error("--observable-cache and --input are mutually exclusive.")
+    if args.observable_cache and args.level0_root:
+        parser.error("--level0-root is not used with --observable-cache.")
+    if args.observable_cache and args.segment_offset_bits != 0:
+        parser.error("--segment-offset-bits must be zero with --observable-cache.")
+    if args.observable_cache and (not args.variant or args.iteration is None):
+        parser.error("--observable-cache requires explicit --variant and --iteration provenance.")
 
     try:
         scales = parse_scales(args.scales)
@@ -152,30 +169,65 @@ def main() -> int:
     if args.segment_bits < max(scales):
         parser.error("--segment-bits must be at least as large as the maximum scale.")
 
-    try:
-        struct_path = resolve_struct_path(
-            input_path=args.input,
-            variant=args.variant,
-            iteration=args.iteration,
-            level0_root=args.level0_root,
-        )
-    except FileNotFoundError as exc:
-        print(f"\n[Error] {exc}", file=sys.stderr)
-        return 2
-
-    metadata = load_struct_metadata(struct_path)
-    variant_label = infer_variant_label(args.variant, metadata)
-    iteration = args.iteration if args.iteration is not None else metadata.get("iteration")
     analyzed_bits = args.segment_bits * args.num_segments
-    loaded_bits = args.segment_offset_bits + analyzed_bits
+    struct_path: Path | None = None
+    cache_path: Path | None = None
+    cache_metadata_path: Path | None = None
+    cache_metadata: dict | None = None
+
+    if args.observable_cache:
+        cache_path = Path(args.observable_cache).expanduser().resolve()
+        try:
+            bits, cache_metadata, cache_metadata_path = load_observable_cache(
+                cache_path,
+                expected_bits=analyzed_bits,
+            )
+        except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"\n[Error] {exc}", file=sys.stderr)
+            return 2
+        metadata = cache_metadata
+        variant_label = normalize_variant(args.variant)
+        iteration = args.iteration
+        loaded_bits = analyzed_bits
+    else:
+        try:
+            struct_path = resolve_struct_path(
+                input_path=args.input,
+                variant=args.variant,
+                iteration=args.iteration,
+                level0_root=args.level0_root,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"\n[Error] {exc}", file=sys.stderr)
+            return 2
+        metadata = load_struct_metadata(struct_path)
+        variant_label = infer_variant_label(args.variant, metadata)
+        iteration = args.iteration if args.iteration is not None else metadata.get("iteration")
+        loaded_bits = args.segment_offset_bits + analyzed_bits
+
     analysis_variant_label = variant_label
 
-    phase_print(
-        "Resolved input snapshot",
-        f"variant={variant_label} | iteration={iteration} | source={struct_path.name}",
-        quiet=args.quiet,
-    )
-    if args.segment_offset_bits > 0:
+    if cache_path is not None:
+        phase_print(
+            "Verified observable cache",
+            f"variant={variant_label} | iteration={iteration} | source={cache_path.name}",
+            quiet=args.quiet,
+        )
+    else:
+        assert struct_path is not None
+        phase_print(
+            "Resolved input snapshot",
+            f"variant={variant_label} | iteration={iteration} | source={struct_path.name}",
+            quiet=args.quiet,
+        )
+
+    if cache_path is not None:
+        phase_print(
+            "Using frozen observable window",
+            f"{loaded_bits:,} verified bits",
+            quiet=args.quiet,
+        )
+    elif args.segment_offset_bits > 0:
         phase_print(
             "Loading observable slice",
             (
@@ -192,12 +244,14 @@ def main() -> int:
             quiet=args.quiet,
         )
 
-    load_progress = ProgressIndicator("Loading observable bits", total=loaded_bits) if not args.quiet else None
-    if load_progress is not None:
-        with load_progress:
-            bits = load_observable_prefix_bits(struct_path, total_bits=loaded_bits, progress=load_progress)
-    else:
-        bits = load_observable_prefix_bits(struct_path, total_bits=loaded_bits)
+    if cache_path is None:
+        assert struct_path is not None
+        load_progress = ProgressIndicator("Loading observable bits", total=loaded_bits) if not args.quiet else None
+        if load_progress is not None:
+            with load_progress:
+                bits = load_observable_prefix_bits(struct_path, total_bits=loaded_bits, progress=load_progress)
+        else:
+            bits = load_observable_prefix_bits(struct_path, total_bits=loaded_bits)
 
     source_bits = bits
     sequence_kind = "observed"
@@ -325,8 +379,16 @@ def main() -> int:
             "null_model": args.null_model,
             "null_seed": args.null_seed if args.null_model else None,
             "null_model_details": null_metadata,
-            "input_struct_path": str(struct_path),
-            "input_metadata_path": str(companion_metadata_path(struct_path)),
+            "input_struct_path": str(struct_path) if struct_path is not None else None,
+            "input_metadata_path": (
+                str(companion_metadata_path(struct_path))
+                if struct_path is not None
+                else str(cache_metadata_path)
+            ),
+            "input_observable_cache_path": str(cache_path) if cache_path is not None else None,
+            "input_observable_cache_sha256": (
+                cache_metadata.get("cache_sha256") if cache_metadata is not None else None
+            ),
             "segment_bits": args.segment_bits,
             "num_segments": args.num_segments,
             "segment_offset_bits": args.segment_offset_bits,
@@ -340,6 +402,7 @@ def main() -> int:
             "min_segment_support_effective": effective_segment_support,
             "cv_max": args.cv_max,
             "sampling_policy": "prefix_consecutive_segments" if args.segment_offset_bits == 0 else "offset_consecutive_segments",
+            "input_mode": "observable_cache" if cache_path is not None else "structural_snapshot",
             "pattern_space_mode": "locally_stable_patterns",
             "projection_main_policy": "prefix" if "prefix" in policies else policies[0],
             "projection_control_policies": [policy for policy in policies if policy != "prefix"],
@@ -391,8 +454,16 @@ def main() -> int:
             "manifest": str(run_dir / "manifest.json"),
         },
         "inputs": {
-            "struct_path": str(struct_path),
-            "metadata_path": str(companion_metadata_path(struct_path)),
+            "struct_path": str(struct_path) if struct_path is not None else None,
+            "metadata_path": (
+                str(companion_metadata_path(struct_path))
+                if struct_path is not None
+                else str(cache_metadata_path)
+            ),
+            "observable_cache_path": str(cache_path) if cache_path is not None else None,
+            "observable_cache_sha256": (
+                cache_metadata.get("cache_sha256") if cache_metadata is not None else None
+            ),
             "sequence_kind": sequence_kind,
             "source_variant": variant_label,
             "source_iteration": iteration,

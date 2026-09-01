@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import math
 import os
@@ -29,8 +30,8 @@ REPO_DIR = Path(__file__).resolve().parent
 if str(REPO_DIR) not in sys.path:
     sys.path.insert(0, str(REPO_DIR))
 
-from level1_deep_analysis import recurrence_analysis
-from utils.streaming_phi_loader import StreamingPhiLoader
+from level1_deep_analysis import recurrence_analysis  # noqa: E402
+from utils.streaming_phi_loader import StreamingPhiLoader  # noqa: E402
 
 DEFAULT_TARGETS = "E:24,I:23,D:20,G:20,F:20"
 DEFAULT_OUTPUT_ROOT = "results/hsi_v2/d0154_det_provenance_review"
@@ -54,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--threshold-seed", type=int, default=42)
     parser.add_argument("--chunk-bytes", type=int, default=50_000_000)
     parser.add_argument("--skip-source-hash", action="store_true")
+    parser.add_argument(
+        "--resume-run",
+        default=None,
+        help="Resume an interrupted run directory at completed-variant boundaries.",
+    )
     parser.add_argument("--execute", action="store_true")
     return parser
 
@@ -63,15 +69,38 @@ def main() -> int:
     load_dotenv()
     args = build_parser().parse_args()
 
+    if args.resume_run and not args.execute:
+        raise SystemExit("--resume-run requires --execute.")
+    if args.resume_run and args.skip_source_hash:
+        raise SystemExit("--resume-run requires SHA-256 source identity; remove --skip-source-hash.")
+
     targets = parse_targets(args.targets)
     results_base = resolve_results_base(args.results_base)
     output_root = resolve_results_path(args.output_dir, results_base)
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    run_dir = output_root / f"d0154-det-provenance-review__{timestamp}"
+    previous_manifest: dict[str, Any] | None = None
+    if args.resume_run:
+        run_dir = Path(args.resume_run).expanduser().resolve()
+        manifest_path = run_dir / "manifest.json"
+        if not run_dir.is_dir() or not manifest_path.is_file():
+            raise SystemExit(f"Resume run is missing its manifest: {manifest_path}")
+        previous_manifest = read_json(manifest_path)
+        generated_at = str(previous_manifest.get("generated_at", ""))
+        if not generated_at:
+            raise RuntimeError("Resume manifest has no generated_at timestamp.")
+    else:
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        run_dir = output_root / f"d0154-det-provenance-review__{timestamp}"
+        generated_at = datetime.now().isoformat(timespec="seconds")
+
+    code_hashes = {
+        "runner": sha256_file(Path(__file__)),
+        "medium_sampler": sha256_file(REPO_DIR / "utils" / "streaming_subsample.py"),
+        "rqa_metric": sha256_file(REPO_DIR / "level1_deep_analysis.py"),
+    }
 
     plan = {
         "status": "planned" if not args.execute else "running",
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": generated_at,
         "script": Path(__file__).name,
         "decision_log_context": "D-0154 Amendment 10 DET provenance-review",
         "results_base": str(results_base),
@@ -89,9 +118,17 @@ def main() -> int:
         },
         "implementation_provenance": {
             "medium_sampler": "utils/streaming_subsample.py::streaming_multiscale_subsample",
-            "medium_sampler_sha256": sha256_file(REPO_DIR / "utils" / "streaming_subsample.py"),
+            "medium_sampler_sha256": code_hashes["medium_sampler"],
             "rqa_metric": "level1_deep_analysis.py::recurrence_analysis",
-            "rqa_metric_sha256": sha256_file(REPO_DIR / "level1_deep_analysis.py"),
+            "rqa_metric_sha256": code_hashes["rqa_metric"],
+        },
+        "code_hashes": code_hashes,
+        "resume_protocol": {
+            "schema_version": 1,
+            "boundary": "completed_variant_artifact",
+            "source_identity": "sha256" if not args.skip_source_hash else "unverified",
+            "atomic_variant_artifacts": True,
+            "resume_eligible": not args.skip_source_hash,
         },
     }
 
@@ -99,24 +136,54 @@ def main() -> int:
         print_plan(plan)
         return 0
 
-    run_dir.mkdir(parents=True, exist_ok=False)
     log_path = run_dir / "batch.log"
     manifest_path = run_dir / "manifest.json"
-    write_json(manifest_path, plan)
-    write_log_header(log_path, plan)
+    if previous_manifest is None:
+        run_dir.mkdir(parents=True, exist_ok=False)
+        resume_count = 0
+        write_json(manifest_path, {**plan, "resume_count": resume_count})
+        write_log_header(log_path, plan)
+    else:
+        validate_resume_plan(previous_manifest, plan)
+        resume_count = int(previous_manifest.get("resume_count", 0)) + 1
+        write_json(
+            manifest_path,
+            {
+                **previous_manifest,
+                **plan,
+                "status": "running",
+                "resume_count": resume_count,
+                "last_resumed_at": datetime.now().isoformat(timespec="seconds"),
+            },
+        )
+        log(log_path, f"[resume] Variant-boundary resume #{resume_count}: {run_dir}")
 
     log(log_path, "[phase] Discovering clean sources")
     sources = discover_sources(targets, results_base, args.skip_source_hash)
+    if previous_manifest is not None and previous_manifest.get("sources") is not None:
+        validate_resume_sources(previous_manifest["sources"], sources)
+    running_manifest = {
+        **plan,
+        "status": "running",
+        "resume_count": resume_count,
+        "sources": sources,
+    }
+    if previous_manifest is not None:
+        running_manifest["last_resumed_at"] = datetime.now().isoformat(timespec="seconds")
+    write_json(manifest_path, running_manifest)
 
     summary: dict[str, Any] = {
         "status": "running",
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": generated_at,
         "run_dir": str(run_dir),
         "targets": targets,
         "protocol": plan["protocol"],
         "implementation_provenance": plan["implementation_provenance"],
         "sources": sources,
         "rows": [],
+        "resumed": previous_manifest is not None,
+        "resume_count": resume_count,
+        "reused_variants": [],
         "review_required": False,
         "notes": [
             "Read-only DET provenance review over clean D-0154 snapshots.",
@@ -127,58 +194,70 @@ def main() -> int:
     }
 
     details: dict[str, Any] = {}
-    for variant, iteration in targets.items():
-        record = sources[variant]
-        struct_path = Path(record["struct_path"])
-        log(log_path, f"[variant] {variant}@{iteration}")
+    try:
+        for variant, iteration in targets.items():
+            record = sources[variant]
+            struct_path = Path(record["struct_path"])
+            identity = build_variant_identity(plan, variant, iteration, record)
+            artifact_path = run_dir / f"{variant}_det.json"
+            cached = load_completed_variant(artifact_path, identity)
+            if cached is not None:
+                log(log_path, f"[resume] Reusing completed variant {variant}@{iteration}")
+                row = cached["row"]
+                detail = cached["detail"]
+                summary["reused_variants"].append(variant)
+            else:
+                log(log_path, f"[variant] {variant}@{iteration}")
+                legacy_bits, legacy_sample = build_legacy_det_bits(
+                    struct_path,
+                    int(record["sequence_length"]),
+                    args.det_bits,
+                    args.medium_divisor,
+                    args.medium_min_step,
+                    args.chunk_bytes,
+                    log_path,
+                )
+                prefix_bits = build_prefix_det_bits(struct_path, args.det_bits)
 
-        legacy_bits, legacy_sample = build_legacy_det_bits(
-            struct_path,
-            int(record["sequence_length"]),
-            args.det_bits,
-            args.medium_divisor,
-            args.medium_min_step,
-            args.chunk_bytes,
-            log_path,
+                legacy_det = compute_det(legacy_bits, args.threshold_seed)
+                prefix_det = compute_det(prefix_bits, args.threshold_seed)
+                row, detail = build_variant_result(
+                    variant,
+                    iteration,
+                    record,
+                    legacy_bits,
+                    prefix_bits,
+                    legacy_sample,
+                    legacy_det,
+                    prefix_det,
+                )
+                write_json(
+                    artifact_path,
+                    {
+                        "status": "completed",
+                        "completed_at": datetime.now().isoformat(timespec="seconds"),
+                        "execution_identity": identity,
+                        "row": row,
+                        "detail": detail,
+                    },
+                )
+
+            summary["rows"].append(row)
+            details[variant] = detail
+            write_json(run_dir / "summary.json", summary)
+            write_csv(run_dir / "det_reconciliation.csv", summary["rows"])
+    except (Exception, KeyboardInterrupt) as exc:
+        write_json(
+            manifest_path,
+            {
+                **running_manifest,
+                "status": "interrupted",
+                "interrupted_at": datetime.now().isoformat(timespec="seconds"),
+                "failure": {"type": type(exc).__name__, "message": str(exc)},
+            },
         )
-        prefix_bits = build_prefix_det_bits(struct_path, args.det_bits)
-
-        legacy_det = compute_det(legacy_bits, args.threshold_seed)
-        prefix_det = compute_det(prefix_bits, args.threshold_seed)
-
-        paper_value = PAPER_DET.get(variant)
-        row = {
-            "variant": variant,
-            "iteration": iteration,
-            "paper_det": paper_value,
-            "paper_display": display_det(paper_value),
-            "legacy_det": legacy_det.get("determinism"),
-            "legacy_display": display_det(legacy_det.get("determinism")),
-            "prefix_det": prefix_det.get("determinism"),
-            "prefix_display": display_det(prefix_det.get("determinism")),
-            "legacy_status": compare_display(paper_value, legacy_det.get("determinism")),
-            "prefix_status": compare_display(paper_value, prefix_det.get("determinism")),
-            "legacy_sample_bits": len(legacy_bits),
-            "prefix_bits": len(prefix_bits),
-            "medium_step": legacy_sample["medium_step"],
-            "medium_sample_count": legacy_sample["medium_sample_count"],
-            "representative_step": legacy_sample["representative_step"],
-            "legacy_observable_interval": legacy_sample["legacy_observable_interval"],
-            "observable_bits_scanned": legacy_sample["observable_bits_scanned"],
-            "legacy_sample_sha256": legacy_sample["sample_sha256"],
-        }
-        summary["rows"].append(row)
-        details[variant] = {
-            "variant": variant,
-            "iteration": iteration,
-            "source": record,
-            "legacy_sample": legacy_sample,
-            "legacy_det": legacy_det,
-            "prefix_det": prefix_det,
-        }
-        write_json(run_dir / f"{variant}_det.json", details[variant])
-        write_json(run_dir / "summary.json", summary)
-        write_csv(run_dir / "det_reconciliation.csv", summary["rows"])
+        log(log_path, f"[interrupted] {type(exc).__name__}: {exc}")
+        raise
 
     summary["review_required"] = any(row["legacy_status"] != "match" for row in summary["rows"])
     summary["status"] = "completed"
@@ -192,7 +271,9 @@ def main() -> int:
         **plan,
         "status": "completed",
         "finished_at": datetime.now().isoformat(timespec="seconds"),
-        "script_sha256": sha256_file(Path(__file__)),
+        "script_sha256": code_hashes["runner"],
+        "resume_count": resume_count,
+        "reused_variants": summary["reused_variants"],
         "sources": sources,
         "outputs": {},
     }
@@ -200,13 +281,120 @@ def main() -> int:
     manifest["outputs"] = hash_outputs(run_dir)
     write_json(manifest_path, manifest)
     manifest_sha = sha256_file(manifest_path)
-    (run_dir / "manifest.sha256").write_text(f"{manifest_sha}  manifest.json\n", encoding="utf-8")
+    atomic_write_text(run_dir / "manifest.sha256", f"{manifest_sha}  manifest.json\n")
 
     print("D-0154 DET provenance review completed.")
     print(f"Output: {run_dir}")
     print(f"Manifest SHA-256: {manifest_sha}")
     print(f"Review required: {summary['review_required']}")
     return 0
+
+
+def validate_resume_plan(saved: dict[str, Any], candidate: dict[str, Any]) -> None:
+    if saved.get("status") == "completed":
+        raise RuntimeError("Completed DET runs cannot be resumed.")
+    keys = (
+        "script",
+        "decision_log_context",
+        "results_base",
+        "run_dir",
+        "targets",
+        "protocol",
+        "implementation_provenance",
+        "code_hashes",
+        "resume_protocol",
+    )
+    for key in keys:
+        if saved.get(key) != candidate.get(key):
+            raise RuntimeError(f"Resume rejected: plan field {key!r} changed.")
+
+
+def validate_resume_sources(
+    saved: dict[str, dict[str, Any]], candidate: dict[str, dict[str, Any]]
+) -> None:
+    if saved.keys() != candidate.keys():
+        raise RuntimeError("Resume rejected: source variants changed.")
+    for variant in saved:
+        if saved[variant] != candidate[variant]:
+            raise RuntimeError(f"Resume rejected: source identity changed for {variant}.")
+
+
+def build_variant_identity(
+    plan: dict[str, Any],
+    variant: str,
+    iteration: int,
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "decision_log_context": plan["decision_log_context"],
+        "targets": plan["targets"],
+        "variant": variant,
+        "iteration": iteration,
+        "source": source,
+        "protocol": plan["protocol"],
+        "implementation_provenance": plan["implementation_provenance"],
+        "code_hashes": plan["code_hashes"],
+    }
+
+
+def load_completed_variant(
+    path: Path, expected_identity: dict[str, Any]
+) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    artifact = read_json(path)
+    if artifact.get("status") != "completed":
+        raise RuntimeError(f"Resume rejected: incomplete variant artifact {path.name}.")
+    if artifact.get("execution_identity") != expected_identity:
+        raise RuntimeError(f"Resume rejected: identity mismatch in {path.name}.")
+    if not isinstance(artifact.get("row"), dict) or not isinstance(
+        artifact.get("detail"), dict
+    ):
+        raise RuntimeError(f"Resume rejected: malformed variant artifact {path.name}.")
+    return artifact
+
+
+def build_variant_result(
+    variant: str,
+    iteration: int,
+    source: dict[str, Any],
+    legacy_bits: str,
+    prefix_bits: str,
+    legacy_sample: dict[str, Any],
+    legacy_det: dict[str, Any],
+    prefix_det: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    paper_value = PAPER_DET.get(variant)
+    row = {
+        "variant": variant,
+        "iteration": iteration,
+        "paper_det": paper_value,
+        "paper_display": display_det(paper_value),
+        "legacy_det": legacy_det.get("determinism"),
+        "legacy_display": display_det(legacy_det.get("determinism")),
+        "prefix_det": prefix_det.get("determinism"),
+        "prefix_display": display_det(prefix_det.get("determinism")),
+        "legacy_status": compare_display(paper_value, legacy_det.get("determinism")),
+        "prefix_status": compare_display(paper_value, prefix_det.get("determinism")),
+        "legacy_sample_bits": len(legacy_bits),
+        "prefix_bits": len(prefix_bits),
+        "medium_step": legacy_sample["medium_step"],
+        "medium_sample_count": legacy_sample["medium_sample_count"],
+        "representative_step": legacy_sample["representative_step"],
+        "legacy_observable_interval": legacy_sample["legacy_observable_interval"],
+        "observable_bits_scanned": legacy_sample["observable_bits_scanned"],
+        "legacy_sample_sha256": legacy_sample["sample_sha256"],
+    }
+    detail = {
+        "variant": variant,
+        "iteration": iteration,
+        "source": source,
+        "legacy_sample": legacy_sample,
+        "legacy_det": legacy_det,
+        "prefix_det": prefix_det,
+    }
+    return row, detail
 
 
 def build_legacy_det_bits(
@@ -468,7 +656,7 @@ def write_report(path: Path, summary: dict[str, Any]) -> None:
             "- If the net legacy DET differs, escalation should use the decomposition columns before interpretation.",
         ]
     )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(lines) + "\n")
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -479,17 +667,30 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         for key in row:
             if key not in fields:
                 fields.append(key)
-    with open(path, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
+    handle = io.StringIO(newline="")
+    writer = csv.DictWriter(handle, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(rows)
+    atomic_write_text(path, handle.getvalue())
 
 
 def write_json(path: Path, payload: Any) -> None:
+    serialized = json.dumps(json_safe(payload), indent=2) + "\n"
+    atomic_write_text(path, serialized)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(json_safe(payload), handle, indent=2)
-        handle.write("\n")
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(temp_path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -527,10 +728,10 @@ def log(log_path: Path, message: str) -> None:
 
 
 def write_log_header(log_path: Path, plan: dict[str, Any]) -> None:
-    with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write("# D-0154 DET provenance review\n\n")
-        handle.write(json.dumps(json_safe(plan), indent=2))
-        handle.write("\n\n")
+    text = "# D-0154 DET provenance review\n\n"
+    text += json.dumps(json_safe(plan), indent=2)
+    text += "\n\n"
+    atomic_write_text(log_path, text)
 
 
 def sha256_file(path: Path) -> str:
@@ -545,6 +746,8 @@ def hash_outputs(run_dir: Path) -> dict[str, str]:
     hashes: dict[str, str] = {}
     for path in sorted(run_dir.rglob("*")):
         if not path.is_file() or path.name in {"manifest.json", "manifest.sha256", "batch.log"}:
+            continue
+        if path.name.startswith(".") and path.name.endswith(".tmp"):
             continue
         hashes[path.relative_to(run_dir).as_posix()] = sha256_file(path)
     return hashes

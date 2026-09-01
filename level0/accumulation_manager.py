@@ -12,6 +12,7 @@ Date: November 2025
 
 import os
 import gzip
+import time
 from pathlib import Path
 from typing import Optional, Union, IO
 
@@ -63,6 +64,11 @@ class AccumulationManager:
         # Buffer for batched writes (optimization)
         self.buffer = []
         self.buffer_size = 10_000  # Flush every 10K appends
+        self.buffer_chars = 0
+        self.buffer_char_limit = 64 * 1024 * 1024
+        self.write_chunk_chars = 16 * 1024 * 1024
+        self.progress_min_chars = 1_000_000_000
+        self._write_failed = False
 
         # Clean up old files from previous runs (both compressed and uncompressed)
         # This prevents stale files from lingering when switching compression modes
@@ -136,13 +142,17 @@ class AccumulationManager:
         """
         # Add to buffer
         self.buffer.append(state)
+        self.buffer_chars += len(state)
 
         # Update metadata
         self.current_length += len(state)
         self.clean_bits_count += sum(1 for c in state if c in '01')
 
         # Flush if buffer is full
-        if len(self.buffer) >= self.buffer_size:
+        if (
+            len(self.buffer) >= self.buffer_size
+            or self.buffer_chars >= self.buffer_char_limit
+        ):
             self._flush()
 
     def append_from_file(self, source_path: Path, chunk_size: int = 50_000_000) -> int:
@@ -190,11 +200,58 @@ class AccumulationManager:
         return total_appended
 
     def _flush(self):
-        """Flush buffer to disk."""
-        if self.buffer:
+        """Flush buffered states without materializing a second giant string."""
+        if self._write_failed:
+            raise RuntimeError(
+                "Accumulation write previously failed; restart from the last durable checkpoint"
+            )
+        if not self.buffer:
+            return
+
+        pending = self.buffer
+        total_chars = self.buffer_chars
+        self.buffer = []
+        self.buffer_chars = 0
+
+        show_progress = total_chars >= self.progress_min_chars
+        started = time.perf_counter()
+        written = 0
+        next_percent = 10
+        if show_progress:
+            print(
+                f"   [accumulation] Flushing {total_chars/1e9:.2f} GB "
+                f"in {self.write_chunk_chars/(1024*1024):.0f} MiB chunks...",
+                flush=True,
+            )
+
+        try:
             with self._open_file('a') as f:
-                f.write(''.join(self.buffer))
-            self.buffer = []
+                for state in pending:
+                    for start in range(0, len(state), self.write_chunk_chars):
+                        chunk = state[start:start + self.write_chunk_chars]
+                        f.write(chunk)
+                        written += len(chunk)
+
+                        if show_progress and written * 100 >= next_percent * total_chars:
+                            elapsed = time.perf_counter() - started
+                            print(
+                                f"   [accumulation] {min(100, next_percent):3d}% "
+                                f"({written:,}/{total_chars:,} chars, {elapsed:.1f}s)",
+                                flush=True,
+                            )
+                            while written * 100 >= next_percent * total_chars:
+                                next_percent += 10
+        except Exception:
+            # The temporary accumulation may now be partial. Do not let __del__
+            # append the same logical data again; checkpoint recovery rebuilds it.
+            self._write_failed = True
+            raise
+
+        if show_progress:
+            print(
+                f"   [accumulation] Flush complete in {time.perf_counter()-started:.1f}s",
+                flush=True,
+            )
     
     def get_length(self) -> int:
         """Get total length without loading file."""
@@ -333,5 +390,9 @@ class AccumulationManager:
 
     def __del__(self):
         """Cleanup on deletion (optional)."""
-        # Flush buffer to ensure data is written
-        self._flush()
+        # Destructors must never retry a partial write or mask the root error.
+        try:
+            if not getattr(self, "_write_failed", False):
+                self._flush()
+        except Exception:
+            pass
